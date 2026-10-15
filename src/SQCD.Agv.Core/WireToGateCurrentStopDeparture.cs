@@ -315,7 +315,7 @@ public static class WireToGateStagingPickupStop
     public static bool OffersLoadCancellationBeforeAnySublot(
         WireToGateJourneySnapshot journey,
         IReadOnlyCollection<string> knownStagingStationIds) =>
-        true;
+        !Is(journey, knownStagingStationIds);
 
     /// <summary>
     /// The <c>publicStationFunction</c> the plan gives <paramref name="stationId"/>: the first one a leg at that station carries,

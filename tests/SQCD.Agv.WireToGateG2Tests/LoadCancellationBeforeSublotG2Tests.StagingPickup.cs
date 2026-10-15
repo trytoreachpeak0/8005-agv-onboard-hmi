@@ -26,9 +26,13 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     public async Task AStagingPickupOffersNoCancellationBeforeAnySublot()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        // An empty seed: the harness otherwise waits for the entry to be offered, which here is the point not to happen. The
+        // journal is new, so the recovery state the entry reads is empty either way; the entry request and the worklist are
+        // still waited for.
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
             token,
-            server => server.JourneyWorkType = WireToGateStagingPickupStop.StagingToWire);
+            server => server.JourneyWorkType = WireToGateStagingPickupStop.StagingToWire,
+            seed: WireToGateRecoveryState.Empty);
 
         // 对照：车认出了待送点（「出发」入口在），录入请求也到了。
         Assert.True(harness.Business.CurrentStopDeparture.Shown);
@@ -38,9 +42,12 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.False(harness.Business.CanRequestLoadCancellationBeforeAnySublot);
         Assert.False(harness.Business.IsLoadCancellationDemandSelectionRequired);
 
-        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Business.RequestLoadCancellationAsync("待送点上硬按一次。", token));
-        Assert.Equal("RECOVERY_OPERATION_CONTEXT_MISSING", refused.Message);
+        // A press on an entry that was never offered -- a stale screen -- is what it has always been: refused before anything
+        // goes out, and said to the operator.
+        Assert.False(await harness.Business.RequestLoadCancellationAsync("待送点上硬按一次。", token));
+        await harness.WaitForRecoveryBlockedAsync(
+            OnboardCommandRejectionText.DescribeRecoveryBlocked("RECOVERY_OPERATION_CONTEXT_MISSING"),
+            token);
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
         Assert.True(harness.Business.CanSubmitSublot);
         Assert.Equal(0, harness.Io.UnlockCount);

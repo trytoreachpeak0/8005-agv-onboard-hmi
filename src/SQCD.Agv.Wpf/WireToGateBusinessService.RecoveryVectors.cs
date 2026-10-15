@@ -420,14 +420,17 @@ public sealed partial class WireToGateBusinessService
     /// </remarks>
     public WireToGateLoadCancellationPress BindLoadCancellationPress(string reason, string? selectedDemandId)
     {
-        LoadCancellationTarget? pressed = LoadCancellationSubject(Volatile.Read(ref _lastRecoveryState), selectedDemandId);
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        LoadCancellationTarget? pressed = LoadCancellationSubject(state, selectedDemandId);
         return new WireToGateLoadCancellationPress(
             pressed?.DemandId,
             pressed?.IsLoadInFlight ?? false,
             cancellationToken => RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
                 () => RequestBoundLoadCancellationAsync(reason, selectedDemandId, pressed?.Key, cancellationToken),
-                cancellationToken));
+                cancellationToken),
+            // The same judgement as 「出发」 and the caption: the confirmation says 「撤销本次开仓」 there (8005-agv-onboard-hmi#348).
+            WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []));
     }
 
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
@@ -894,6 +897,19 @@ public sealed partial class WireToGateBusinessService
             || _session.CurrentJourney.IsNonBusinessStop
             || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
             || !IsStopOf(worklist, request))
+        {
+            return NoLoadCancellationBeforeSublot;
+        }
+
+        // Nor at the staging pickup stop (CP-0012 revision four, REQ-0211; 8005-agv-onboard-hmi#348): there "not loading this
+        // one today" is the operator's 「出发」, which puts what was not loaded back to be dispatched, and the server refuses this
+        // cancellation (8005-agv-control-server#713). One already sent is the exception -- left by an earlier version, or by a
+        // stop recognized only later -- and is let through to be resent and settled: while it is out, sublot entry and 「出发」
+        // are both shut (CanSubmitSublot, LoadCancellationOpen), so shutting this entry too would leave it nowhere to go.
+        if (state.PendingLoadCancellation is not { SlotOperationAttemptId: null }
+            && !WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+                _session.CurrentJourney,
+                state.StagingPickupStationIds ?? []))
         {
             return NoLoadCancellationBeforeSublot;
         }
