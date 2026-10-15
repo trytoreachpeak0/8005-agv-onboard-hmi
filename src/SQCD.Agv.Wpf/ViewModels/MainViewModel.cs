@@ -938,7 +938,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private void SyncCargoHoldingTimerCore()
     {
-        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT", CargoHoldingDeadlineAt: not null }
+        // LOADING with a deadline counts down too (8005-agv-onboard-hmi#352): the same line as LoadingPhaseText.Describe.
+        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT" or "LOADING", CargoHoldingDeadlineAt: not null }
             && !_stationDepartureCountdownStopped;
         if (!ticking)
         {
@@ -1318,7 +1319,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 待送点的认法不另写一份：「出发」入口出现（<see cref="CurrentStopDepartureDisplay.IsShown"/>）就是待送点取货停靠，两者出自
     /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。
     /// </remarks>
-    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.IsShown);
+    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.AtStagingPickupStop);
 
     public bool CanRequestLoadCancellation
     {

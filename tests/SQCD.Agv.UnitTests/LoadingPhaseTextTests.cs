@@ -15,6 +15,51 @@ public sealed class LoadingPhaseTextTests
     private static readonly TimeZoneInfo China = TimeZoneInfo.CreateCustomTimeZone("CST+8", TimeSpan.FromHours(8), "CST", "CST");
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 2, 0, 0, TimeSpan.Zero);
 
+    /// <summary>
+    /// 8005-agv-onboard-hmi#352（C11 定）：服务端给了持货期限，装货阶段还开着（<c>LOADING</c>）也显示倒计时——待送点有追加进来、
+    /// 还没扫的需求时，服务端发的是 <c>LOADING</c>，期限照样在走。没有期限的 <c>LOADING</c> 照旧不显示。
+    /// </summary>
+    [Fact]
+    public void LoadingWithACargoHoldingDeadlineCountsDownLikeTheHoldingWait()
+    {
+        LoadingPhaseView loading = LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(90), null), Now, China);
+
+        Assert.Equal(LoadingPhaseLine.CargoHolding, loading.Line);
+        Assert.Equal("ACTIVE", loading.Code);
+    }
+
+    /// <summary>
+    /// 用户 10-15 定（待送点）、C11 同日定（机台同一句）：<c>LOADING</c> 带期限说的是还有任务没扫码、到点带已装的货走，
+    /// 单独一句；持货等单照旧「等待更多任务」。到期那一句不变。
+    /// </summary>
+    [Fact]
+    public void TheLoadingCountdownSaysTasksAreStillToBeScanned()
+    {
+        LoadingPhaseView loading = LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(90), null), Now, China);
+        Assert.Equal("还有任务待扫码，最迟 10:01 带已装的货离站（剩 01:30）", loading.Text);
+        Assert.Equal("ACTIVE", loading.Code);
+
+        Assert.Equal(
+            "等待更多任务，最迟 10:01 离站（剩 01:30）",
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null), Now, China).Text);
+        Assert.Equal(
+            LoadingPhaseText.CargoHoldingExpiredText,
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(-1), null), Now, China).Text);
+    }
+
+    /// <summary>
+    /// 装满与结束不因为期限还在就改成倒计时：机台的持货期限进入 <c>CLOSED</c> 之后照旧下发（program#94 语义表：不清空）。
+    /// </summary>
+    [Theory]
+    [InlineData("VEHICLE_FULL", null, LoadingPhaseLine.VehicleFull)]
+    [InlineData("CLOSED", "CARGO_HOLDING_TIMEOUT", LoadingPhaseLine.Closed)]
+    public void AFullOrClosedPhaseKeepsItsLineWhenTheDeadlineIsStillGiven(string state, string? reason, LoadingPhaseLine line)
+    {
+        Assert.Equal(
+            line,
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase(state, Now.AddSeconds(90), reason), Now, China).Line);
+    }
+
     [Fact]
     public void NoLoadingPhaseShowsNoLine()
     {

@@ -183,6 +183,178 @@ public sealed class CurrentStopDepartureTests
         Assert.Same(once, machine);
     }
 
+    // ---- 8005-agv-onboard-hmi#352 (CP-0014): 「出发」 at a machine pickup stop once its loads are done ----
+
+    /// <summary>
+    /// The ticket's two waits: the cargo-holding wait, and the station departure wait alone -- including a journey that does
+    /// not hold cargo, whose screen still reads <c>LOADING</c> because the server does not announce that step. The loading
+    /// phase decides nothing: an empty worklist ending <c>COMPLETED</c> at the pickup leg the vehicle stands at does.
+    /// </summary>
+    [Theory]
+    [InlineData("CARGO_HOLDING_WAIT", null)]
+    [InlineData("LOADING", null)]
+    [InlineData("VEHICLE_FULL", null)]
+    [InlineData("CLOSED", "CARGO_HOLDING_TIMEOUT")]
+    [InlineData("CLOSED", "PLANNED_LOADING_COMPLETE")]
+    public void AMachinePickupWhoseLoadsAreDoneOffersDepartureWhateverItsLoadingPhase(string state, string? closedReason)
+    {
+        Assert.True(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(LoadsDone(), new WireToGateLoadingPhase(state, null, closedReason)), [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>Loads still committed to the stop: nothing is offered before every one of them is done.</summary>
+    [Fact]
+    public void AMachinePickupWithLoadsStillCommittedOffersNoDeparture()
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(Worklist(Machine, Item("WIRE_TO_GATE")), new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", null, null)),
+            [Staging],
+            basketLoadedHere: false));
+    }
+
+    /// <summary>
+    /// A stop that ended for any other reason loaded nothing at its last item -- cancelled, compensated, released, expired --
+    /// and a stop with not one basket loaded is no stop "loaded and done" (CP-0014 section 5, item 7).
+    /// </summary>
+    [Theory]
+    [InlineData("LOAD_CANCELLED")]
+    [InlineData("LOAD_COMPENSATED")]
+    [InlineData("DEMAND_RELEASED")]
+    [InlineData("STATION_DEADLINE_EXPIRED")]
+    [InlineData("OPERATOR_DEPARTED")]
+    [InlineData("TRIP_TERMINATED")]
+    public void AMachinePickupThatEndedWithoutItsLastLoadOffersNoDeparture(string stopEndedReason)
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(LoadsDone() with { StopEndedReason = stopEndedReason }), [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>
+    /// 8005-agv-onboard-hmi#352, C11's follow-up: a basket loaded at this stop and still on board offers 「出发」 even when the
+    /// stop's last item ended otherwise -- A loaded, B cancelled before any sublot. Without one, the same stop offers nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("LOAD_CANCELLED")]
+    [InlineData("LOAD_COMPENSATED")]
+    public void ABasketLoadedHereOffersDepartureWhateverEndedTheLastItem(string stopEndedReason)
+    {
+        WireToGateJourneySnapshot journey = MachineAt(LoadsDone() with { StopEndedReason = stopEndedReason, OperationSessionId = null });
+
+        Assert.True(WireToGateMachinePickupStop.OffersDeparture(journey, [Staging], basketLoadedHere: true));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(journey, [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>A basket loaded here does not offer it while loads are still committed to the stop.</summary>
+    [Fact]
+    public void ABasketLoadedHereDoesNotOfferItBeforeTheStopsLoadsAreDone()
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(Worklist(Machine, Item("WIRE_TO_GATE"))), [Staging], basketLoadedHere: true));
+    }
+
+    /// <summary>
+    /// Only while the vehicle stands at that pickup: once the plan has moved past it the vehicle has left, and a worklist at
+    /// another station than the leg is not this stop's.
+    /// </summary>
+    [Theory]
+    [InlineData("TO_PICKUP", "COMPLETED", Machine)]
+    [InlineData("TO_PICKUP", "ACTIVE", Machine)]
+    [InlineData("TO_DROPOFF", "ARRIVED", Machine)]
+    [InlineData("TO_PICKUP", "ARRIVED", "ST-WB-02")]
+    public void OnlyThePickupLegTheVehicleStandsAtOffersIt(string legType, string state, string legStation)
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(LoadsDone(), legs: [Leg(1, legType, legStation, state), Leg(2, "TO_DROPOFF", "WB-09", "PLANNED")]),
+            [Staging],
+            basketLoadedHere: true));
+    }
+
+    [Fact]
+    public void WithNoPlanThereIsNoStopToDepartFrom()
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(Journey(LoadsDone()), [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>The staging station keeps its own rule (CP-0012), whether the server names it or the vehicle remembers it.</summary>
+    [Fact]
+    public void TheStagingStationIsNeverAMachinePickup()
+    {
+        WireToGateJourneySnapshot atStaging = MachineAt(
+            LoadsDone() with { StationId = Staging },
+            legs: [Leg(1, "TO_PICKUP", Staging, "ARRIVED"), Leg(2, "TO_DROPOFF", "WB-09", "PLANNED")]);
+
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(atStaging, [Staging], basketLoadedHere: false));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_STAGING"), [], basketLoadedHere: false));
+        Assert.True(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_BONDING"), [Staging], basketLoadedHere: false));
+    }
+
+    [Fact]
+    public void ANonBusinessStopIsNeverOne()
+    {
+        WireToGateJourneySnapshot journey = MachineAt(LoadsDone());
+        WireToGateJourneySnapshot idle = journey with
+        {
+            VehicleBusinessState = journey.VehicleBusinessState! with { ActivePurpose = "IDLE_RETURN" }
+        };
+
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(idle, [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>
+    /// The appended pickups a press puts back to be dispatched (CP-0014: the confirmation names how many): the pickup legs
+    /// after the one the vehicle stands at that are not done.
+    /// </summary>
+    [Fact]
+    public void ThePickupStopsAfterThisOneAreCounted()
+    {
+        WireToGateJourneySnapshot journey = MachineAt(
+            LoadsDone(),
+            new WireToGateLoadingPhase("LOADING", DateTimeOffset.UnixEpoch.AddMinutes(5), null),
+            legs:
+            [
+                Leg(1, "TO_PICKUP", Machine, "ARRIVED"),
+                Leg(2, "TO_PICKUP", "ST-WB-02", "PLANNED"),
+                Leg(3, "TO_PICKUP", "ST-WB-03", "PLANNED"),
+                Leg(4, "TO_DROPOFF", "WB-09", "PLANNED")
+            ]);
+
+        Assert.Equal(2, WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey));
+        Assert.Equal(0, WireToGateMachinePickupStop.PickupStopsAfterCurrent(MachineAt(
+            LoadsDone(), new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", DateTimeOffset.UnixEpoch.AddMinutes(5), null))));
+    }
+
+    /// <summary>
+    /// Review M1: a press puts the stops after this one back only while the loading phase is still open with the cargo-holding
+    /// deadline running (CP-0014 note 3: it counts as that deadline expiring now). Once the phase has ended -- full, closed,
+    /// or a journey that does not hold cargo and so has no deadline -- a press only ends the station departure wait, and the
+    /// vehicle goes on to those stops: nothing is put back, and the confirmation names none.
+    /// </summary>
+    [Theory]
+    [InlineData("LOADING", true, null, 1)]
+    [InlineData("CARGO_HOLDING_WAIT", true, null, 1)]
+    [InlineData("LOADING", false, null, 0)]
+    [InlineData("CARGO_HOLDING_WAIT", false, null, 0)]
+    [InlineData("VEHICLE_FULL", true, null, 0)]
+    [InlineData("CLOSED", true, "CARGO_HOLDING_TIMEOUT", 0)]
+    public void OnlyARunningCargoHoldingDeadlinePutsTheStopsAfterThisOneBack(
+        string state,
+        bool deadline,
+        string? closedReason,
+        int expected)
+    {
+        WireToGateJourneySnapshot journey = MachineAt(
+            LoadsDone(),
+            new WireToGateLoadingPhase(state, deadline ? DateTimeOffset.UnixEpoch.AddMinutes(5) : null, closedReason),
+            legs:
+            [
+                Leg(1, "TO_PICKUP", Machine, "ARRIVED"),
+                Leg(2, "TO_PICKUP", "ST-WB-02", "PLANNED"),
+                Leg(3, "TO_DROPOFF", "WB-09", "PLANNED")
+            ]);
+
+        Assert.Equal(expected, WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey));
+    }
+
     // ---- review M3: every branch of the entry's judgement, one fact at a time from "everything clear" ----
 
     [Fact]
@@ -295,18 +467,78 @@ public sealed class CurrentStopDepartureTests
         };
         WireToGateCurrentStopWorklist worklist = Worklist(stationId) with { Revision = revision };
 
-        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, worklist));
-        Assert.False(WireToGateCurrentStopDepartureGate.BelongsToStop(settled with { Result = null }, worklist));
+        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, worklist, currentLeg: null));
+        Assert.False(WireToGateCurrentStopDepartureGate.BelongsToStop(settled with { Result = null }, worklist, currentLeg: null));
     }
 
-    /// <summary>Review L2: the not-allowed refusal names the not-a-staging-stop case too.</summary>
-    [Fact]
-    public void TheNotAllowedRefusalNamesTheNotAStagingStopCase()
+    /// <summary>
+    /// Review M2: a press at a machine pickup stop belongs to the stop's pickup leg for as long as the vehicle stands at it
+    /// (<c>ARRIVED</c>), whatever worklist revisions come after -- the server may send another empty worklist before the
+    /// plan moves (a refreshed deadline, or one ending <c>OPERATOR_DEPARTED</c>). Once the leg is left, or another leg is the
+    /// current one, it no longer does.
+    /// </summary>
+    [Theory]
+    [InlineData("leg-1", "ARRIVED", true)]
+    [InlineData("leg-1", "ACTIVE", false)]
+    [InlineData("leg-1", "COMPLETED", false)]
+    [InlineData("leg-2", "ARRIVED", false)]
+    public void AMachinePressBelongsToItsPickupLegWhileTheVehicleStandsThere(string legId, string state, bool expected)
     {
-        Assert.Contains(
-            "本站不是待送点",
-            WireToGateCurrentStopDepartureText.RejectionText("ACTION_NOT_ALLOWED_IN_STATE"),
-            StringComparison.Ordinal);
+        WireToGateCurrentStopDeparture settled = new WireToGateCurrentStopDeparture(
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            Machine,
+            2,
+            null,
+            "operator-1",
+            "SESSION",
+            DateTimeOffset.UnixEpoch) with
+        {
+            MovementLegId = "leg-1",
+            Result = new("00000000-0000-4000-8000-000000000003", new string('a', 64), "ACCEPTED", null, 2, DateTimeOffset.UnixEpoch)
+        };
+        WireToGateCurrentStopWorklist newer = LoadsDone() with { Revision = 5 };
+
+        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, newer, Leg(1, "TO_PICKUP", Machine, state) with
+        {
+            MovementLegId = legId
+        }));
+    }
+
+    /// <summary>
+    /// Review L2 of 8005-agv-onboard-hmi#349, moved by #352: a machine pickup is no longer refused for not being the staging
+    /// stop, so the not-allowed refusal names what does refuse it there -- loads not yet done -- and no longer the staging stop.
+    /// </summary>
+    [Fact]
+    public void TheNotAllowedRefusalNamesALoadNotYetDone()
+    {
+        string text = WireToGateCurrentStopDepartureText.RejectionText("ACTION_NOT_ALLOWED_IN_STATE");
+
+        Assert.Contains("本站还没装完", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("待送点", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// CP-0014 (UC-002): the machine confirmation says the vehicle leaves at once, that no correction is possible afterwards,
+    /// and how many appended pickups go back to be dispatched -- not the staging stop's baskets and items.
+    /// </summary>
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(2, true)]
+    public void TheMachineConfirmationSaysItLeavesAtOnceWithNoCorrectionAfterwards(int pickupStopsAfter, bool namesThem)
+    {
+        string text = WireToGateCurrentStopDepartureText.MachineConfirmationText(pickupStopsAfter);
+
+        Assert.StartsWith("本站已装完", text, StringComparison.Ordinal);
+        Assert.Contains("立即离站", text, StringComparison.Ordinal);
+        // 用户 10-15 定：持货时屏上倒计时的标签是「本站作业剩余」，不点名哪一个标签。
+        Assert.Contains("不再等本站倒计时走完", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("离站剩余", text, StringComparison.Ordinal);
+        Assert.Contains("不能再在本站纠错", text, StringComparison.Ordinal);
+        Assert.Equal(namesThem, text.Contains($"后面还没装货的 {pickupStopsAfter} 个取货站点退回待派", StringComparison.Ordinal));
+        Assert.DoesNotContain("待送点", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("调度", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("#", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -456,6 +688,34 @@ public sealed class CurrentStopDepartureTests
                     new WireToGateMovementLeg("leg-2", "TO_DROPOFF", "BUSINESS", "d-1", null, 2, "WB-09", "MAP-26", "PLANNED")
                 ],
                 new string('0', 64))
+        };
+
+    private static WireToGateCurrentStopWorklist LoadsDone() =>
+        new(Machine, 3, "00000000-0000-4000-8000-000000000021", null, [], new string('0', 64), "COMPLETED");
+
+    private static WireToGateMovementLeg Leg(int sequence, string legType, string stationId, string state) =>
+        new($"leg-{sequence}", legType, "BUSINESS", "d-1", null, sequence, stationId, "MAP-26", state);
+
+    /// <summary>A machine pickup the vehicle stands at: its pickup leg <c>ARRIVED</c>, the dropoff ahead.</summary>
+    private static WireToGateJourneySnapshot MachineAt(
+        WireToGateCurrentStopWorklist worklist,
+        WireToGateLoadingPhase? loadingPhase = null,
+        WireToGateMovementLeg[]? legs = null) =>
+        Journey(worklist, loadingPhase ?? new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", null, null)) with
+        {
+            UpcomingStopPlan = new WireToGateUpcomingStopPlan(
+                1,
+                legs ?? [Leg(1, "TO_PICKUP", worklist.StationId, "ARRIVED"), Leg(2, "TO_DROPOFF", "WB-09", "PLANNED")],
+                new string('0', 64))
+        };
+
+    private static WireToGateJourneySnapshot WithFunctionAtCurrentLeg(WireToGateJourneySnapshot journey, string function) =>
+        journey with
+        {
+            UpcomingStopPlan = journey.UpcomingStopPlan! with
+            {
+                Legs = [.. journey.UpcomingStopPlan.Legs.Select(leg => leg.Sequence == 1 ? leg with { PublicStationFunction = function } : leg)]
+            }
         };
 
     private static WireToGateWorklistItem Item(string workType, string stopRole = "PICKUP") =>
