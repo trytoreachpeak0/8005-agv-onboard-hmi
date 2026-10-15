@@ -35,13 +35,20 @@ public static class WireToGateHmiOperationStageExtensions
 /// It never grants authority to perform IO; the server command and the physical
 /// executor remain the only sources of business and hardware authority.
 /// </summary>
+/// <param name="IsRecoveryVector">
+/// The doors are a recovery vector's (compensation, correction, cancellation, fault cargo handoff, forced mechanical
+/// recovery), not an ordinary load or unload's. Its <see cref="OperationType"/> is only a stand-in for those -- a
+/// correction reads as Load although it first waits for the slot to be emptied -- so a reader that words the operator's
+/// next step from the type must not take this one at its word (onboard-hmi#354 review M1).
+/// </param>
 public sealed record WireToGateHmiOperationSnapshot(
     string SlotOperationAttemptId,
     OperationType OperationType,
     IReadOnlyList<int> Slots,
     WireToGateHmiOperationStage Stage,
     string Guidance,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt,
+    bool IsRecoveryVector = false);
 
 public sealed record WireToGateOperatorEvent(
     DateTimeOffset Timestamp,
