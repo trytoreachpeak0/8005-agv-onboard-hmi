@@ -23,37 +23,28 @@ public sealed class LoadingPhaseTextTests
     public void LoadingWithACargoHoldingDeadlineCountsDownLikeTheHoldingWait()
     {
         LoadingPhaseView loading = LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(90), null), Now, China);
-        LoadingPhaseView holding = LoadingPhaseText.Describe(
-            new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null), Now, China);
 
-        Assert.Equal(holding, loading);
         Assert.Equal(LoadingPhaseLine.CargoHolding, loading.Line);
         Assert.Equal("ACTIVE", loading.Code);
     }
 
     /// <summary>
-    /// 用户 10-15 定：待送点上 <c>LOADING</c> 带期限，说的是还有任务没扫码、到点带已装的货走，单独一句；同一状态在机台照旧，
-    /// 待送点的持货等单也照旧。到期那一句不变。
+    /// 用户 10-15 定（待送点）、C11 同日定（机台同一句）：<c>LOADING</c> 带期限说的是还有任务没扫码、到点带已装的货走，
+    /// 单独一句；持货等单照旧「等待更多任务」。到期那一句不变。
     /// </summary>
     [Fact]
-    public void TheStagingStopsLoadingCountdownSaysTasksAreStillToBeScanned()
+    public void TheLoadingCountdownSaysTasksAreStillToBeScanned()
     {
-        WireToGateLoadingPhase loading = new("LOADING", Now.AddSeconds(90), null);
-
-        LoadingPhaseView staging = LoadingPhaseText.Describe(loading, Now, China, atStagingPickupStop: true);
-        Assert.Equal("还有任务待扫码，最迟 10:01 带已装的货离站（剩 01:30）", staging.Text);
-        Assert.Equal("ACTIVE", staging.Code);
+        LoadingPhaseView loading = LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(90), null), Now, China);
+        Assert.Equal("还有任务待扫码，最迟 10:01 带已装的货离站（剩 01:30）", loading.Text);
+        Assert.Equal("ACTIVE", loading.Code);
 
         Assert.Equal(
             "等待更多任务，最迟 10:01 离站（剩 01:30）",
-            LoadingPhaseText.Describe(loading, Now, China, atStagingPickupStop: false).Text);
-        Assert.Equal(
-            "等待更多任务，最迟 10:01 离站（剩 01:30）",
-            LoadingPhaseText.Describe(
-                new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null), Now, China, atStagingPickupStop: true).Text);
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null), Now, China).Text);
         Assert.Equal(
             LoadingPhaseText.CargoHoldingExpiredText,
-            LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(-1), null), Now, China, atStagingPickupStop: true).Text);
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(-1), null), Now, China).Text);
     }
 
     /// <summary>

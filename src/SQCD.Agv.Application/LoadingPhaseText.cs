@@ -43,14 +43,14 @@ public static class LoadingPhaseText
     public const string CargoHoldingExpiredText = "已到期，等待服务端";
 
     /// <summary>
-    /// 待送点上 <c>LOADING</c> 带持货期限时那一句的开头（用户 10-15 定，<c>8005-agv-onboard-hmi#352</c>）：还有追加进来的任务没扫，
-    /// 期限到了就带已装的货走，没扫的放回待派。
+    /// <c>LOADING</c> 带持货期限时那一句的开头（待送点由用户 10-15 定，机台由 C11 同日定为同一句，<c>8005-agv-onboard-hmi#352</c>）：
+    /// 还有任务没装、期限在走，到点带已装的货走，没装的放回待派。
     /// </summary>
-    public const string StagingTasksToScanText = "还有任务待扫码";
+    public const string TasksToScanText = "还有任务待扫码";
 
     private const string Leaving = "离站";
 
-    private const string StagingTasksToScanLeaving = "带已装的货离站";
+    private const string TasksToScanLeaving = "带已装的货离站";
 
     public const string VehicleFullText = "已装满，装完已承诺的任务后离站";
 
@@ -77,13 +77,11 @@ public static class LoadingPhaseText
 
     /// <param name="zone">「最迟几点离站」用的时区，界面传车载端本地时区。</param>
     /// <param name="stationDepartureDeadlineAt">本站清单的站点离站期限，没有时为空。</param>
-    /// <param name="atStagingPickupStop">车停在待送点取货停靠：那里 <c>LOADING</c> 带期限时用待送点自己的一句。</param>
     public static LoadingPhaseView Describe(
         WireToGateLoadingPhase? phase,
         DateTimeOffset now,
         TimeZoneInfo zone,
-        DateTimeOffset? stationDepartureDeadlineAt = null,
-        bool atStagingPickupStop = false)
+        DateTimeOffset? stationDepartureDeadlineAt = null)
     {
         ArgumentNullException.ThrowIfNull(zone);
         return phase?.State switch
@@ -95,8 +93,8 @@ public static class LoadingPhaseText
                 LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt),
                 now,
                 zone,
-                atStagingPickupStop ? StagingTasksToScanText : CargoHoldingText,
-                atStagingPickupStop ? StagingTasksToScanLeaving : Leaving),
+                TasksToScanText,
+                TasksToScanLeaving),
             "CARGO_HOLDING_WAIT" => CargoHolding(
                 LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone, CargoHoldingText, Leaving),
             "VEHICLE_FULL" => new LoadingPhaseView(LoadingPhaseLine.VehicleFull, VehicleFullText, "VEHICLE_FULL"),
