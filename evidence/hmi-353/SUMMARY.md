@@ -2,7 +2,7 @@
 
 票：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/353
 需求：CP-0014 修订项二（`REQ-0211`），基线 v1.13.0；追踪 program#184。服务端对应 cs#726。
-协议：`4.0.0` 候选 `4d67655c`（`SUPERSEDING_CANDIDATE`），不改协议、不刷新 vendored 索引。证据所在提交：红 `ca98b87`、实现 `c4ae8e6`、滚动测试 `a5a3582`、补用例 `c6c349e`；审查第一阶段之后：M2 用例 `2ad9b4a`、修复 `d68bdf7`、P2 断言 `277d047`。全量 G2（06）跑在 `c6c349e` 上，审查之后的改动由 08～10 覆盖。
+协议：`4.0.0` 候选 `4d67655c`（`SUPERSEDING_CANDIDATE`），不改协议、不刷新 vendored 索引。证据所在提交：红 `ca98b87`、实现 `c4ae8e6`、滚动测试 `a5a3582`、补用例 `c6c349e`；审查第一阶段之后：M2 用例 `2ad9b4a`、修复 `d68bdf7`、P2 断言 `277d047`。全量 G2（06）跑在 `c6c349e` 上（协议 `4d67655c`），审查之后的改动由 08～10 覆盖；改绑 `3fb214e5`（`4103b2a`）并合入 hmi#352（merge `a2b0c06`）之后由 12～14 覆盖。
 
 原始输出精简后入库，只留判定行。完整 G2 证据目录在本机
 `F:/8005-scratch/g2-hmi353/protocol-v4.0.0/20261015T125028737Z-c6c349ef41e5`（未入库，体积大）。
@@ -19,6 +19,9 @@
 | `08-phase2-mutations.txt` | 审查第一阶段之后的 4 轮变异 | P1 视图模型去掉待送点判断：机台用例红 2；P2 业务层去掉待送点判断：先存活，补断言（`277d047`）后红 2；P3 车上已装的排除失效：M2 新用例红 1；P4 L1 分支失效：L1 新用例红 1 |
 | `09-phase2-targeted.txt` | 第二阶段定向：`MultiDemandJourneyG2Tests` 整类、`LoadCancellationBeforeSublotG2Tests`、屏幕状态与滚动测试，head `277d047` | 235 通过 / 0 失败（第一遍用了 `--no-build`、跑的是变异版二进制，作废） |
 | `10-phase2-unit-full.txt` | 第二阶段单元测试项目全量 | 1212 通过 / 0 失败 |
+| `12-merge-unit-full.txt` | 合入 hmi#352 之后（merge `a2b0c06`）单元测试项目全量 | 1261 通过 / 0 失败 |
+| `13-merge-targeted.txt` | 合入之后 G2 定向：`MultiDemandJourneyG2Tests`、`CurrentStopDepartureG2Tests`、`LoadCancellationBeforeSublotG2Tests`、屏幕状态与滚动测试 | 258 通过 / 0 失败 |
+| `14-merge-full-g2-*` | 合入之后 `run-w2g-g2.ps1` 全量，协议 `3fb214e5`，head `a2b0c06` | `PASS`：单元 1261/0，G2 994/0，schema 核对 26009 行 0 违规（已知违规 4 行） |
 
 **M7 为什么存活**：M7 让「业务状态变了就重算每行按钮」这一路失效。补了 `ARowCancellationBecomesPressableWhenTheEntryRequestArrivesAfterTheWorklist` 之后仍然绿。原因是录入请求到达等业务变化都会发操作员事件，产品（`App.xaml.cs`）和 G2 夹具在事件后都刷新日志状态，清单随之整张重建，行上的按钮状态就跟着更新了。所以在现有流程里，这一路是一层冗余保险，不是唯一入口。留给审查判断要不要补一个只走这一路的用例。
 
