@@ -190,6 +190,60 @@ public sealed class DoorOpenPromptViewModelTests
         Assert.Equal(DoorOpenPromptTier.Waiting, viewModel.DoorOpenPromptTier);
     }
 
+    /// <summary>
+    /// 恢复向量的门不出横幅（审查 M1，调度 10-16 裁定）：装货修正按 Load 投影，却先等仓空；补偿按 Unload 投影。两者都有自己的
+    /// 详细提示，用户批的文案只管普通装卸。对照：同一快照不标恢复向量时横幅照常出现。
+    /// </summary>
+    [Theory]
+    [InlineData(OperationType.Load)]
+    [InlineData(OperationType.Unload)]
+    public async Task NoBannerOverARecoveryVectorsOpenDoor(OperationType projectedAs)
+    {
+        FakeIoModuleClient io = new();
+        await using OnboardController controller = Controller(io);
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now));
+        OpenDoors(io, 3);
+
+        viewModel.ApplyWireToGateOperatorEvent(new(Now, "OPERATION_PROGRESS", "进度", new WireToGateHmiOperationSnapshot(
+            "VECTOR-1", projectedAs, [3], WireToGateHmiOperationStage.WaitingOperator, "进度", Now, IsRecoveryVector: true)));
+        Assert.False(viewModel.HasDoorOpenPrompt);
+
+        viewModel.ApplyWireToGateOperatorEvent(new(Now, "OPERATION_PROGRESS", "进度", new WireToGateHmiOperationSnapshot(
+            "ATTEMPT-1", projectedAs, [3], WireToGateHmiOperationStage.WaitingOperator, "进度", Now)));
+        Assert.True(viewModel.HasDoorOpenPrompt);
+    }
+
+    /// <summary>
+    /// IO 读数一时读不到（审查 M2）：横幅先收起、不写新文案，仓位卡片照常显示「状态未知」；但计时不清零，读数回来后接着走。
+    /// 否则 Modbus 时断时续时，2 分钟的升级每断一次就从 0 重计，横幅可能永远到不了红色档。
+    /// </summary>
+    [Fact]
+    public async Task AnUnreadableReadingHidesTheBannerButTheClockRunsOn()
+    {
+        FakeIoModuleClient io = new();
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller(io);
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        OpenDoors(io, 3);
+        viewModel.ApplyWireToGateOperatorEvent(Operation(OperationType.Unload, WireToGateHmiOperationStage.WaitingOperator, 3));
+
+        clock.Advance(TimeSpan.FromSeconds(100));
+        io.SetUnreadable(2);
+        io.PublishSnapshot();
+        Assert.False(viewModel.HasDoorOpenPrompt);
+        Assert.Equal("仓门：状态未知", viewModel.Lockers[2].DoorText);
+
+        clock.Advance(TimeSpan.FromSeconds(10));
+        OpenDoors(io, 3);
+        Assert.True(viewModel.HasDoorOpenPrompt);
+        Assert.Equal(DoorOpenPromptTier.Waiting, viewModel.DoorOpenPromptTier);
+
+        clock.Advance(TimeSpan.FromSeconds(10));
+        viewModel.RefreshDoorOpenPrompt();
+        Assert.Equal(DoorOpenPromptTier.Overdue, viewModel.DoorOpenPromptTier);
+        Assert.Equal("车在等关门：3号仓门已开 2 分 00 秒。门不关好，车不会继续。", viewModel.DoorOpenPromptDetail);
+    }
+
     [Fact]
     public async Task TheOperationEndingTakesThePromptAway()
     {
