@@ -262,6 +262,48 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     private static readonly string[] SublotsAAndB = ["SUBLOT-A", "SUBLOT-B"];
 
+    /// <summary>
+    /// 审查第一阶段 M2：重启后，更早装好的 A 还留在待送点清单上，而它既不是在途那次、也不是上一次完成的装货，侧标回到「待分配」。
+    /// 日志里的「车上待交接的需求」（<c>LoadsOnBoard</c>）记着它在车上：A 那一行没有「取消」，硬按也什么都不发；B 照旧可取消。
+    /// 不挡的话，取消会把车上有料的需求终结掉，是写错 MES 数据。
+    /// </summary>
+    [Fact]
+    public async Task AfterARestartARowAlreadyOnBoardOffersNoCancellation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = await NewJournalSeededAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                LoadsOnBoard = [new WireToGateLoadOnBoard(SettledLoadOf(DemandA))]
+            },
+            token);
+        await using Harness harness = await StartStagingLoadStopAsync(
+            NewIoWithCargo(),
+            WireToGateStagingPickupStop.StagingToWire,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-B"];
+            },
+            journalPath);
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()) is
+                [{ DemandId: DemandA }, { DemandId: DemandB, OffersCancellation: true, CanPressCancellation: true }],
+            "B's row cancellation",
+            token);
+
+        WorklistItemRow a = harness.OnUi(() => harness.ViewModel.WorklistItems[0]);
+        Assert.Equal("UNASSIGNED", a.SideCode);
+        Assert.False(a.OffersCancellation);
+        Assert.False(a.CanPressCancellation);
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandA));
+
+        Assert.True(await harness.Business.BindWorklistRowCancellationPress("硬按 A。", DemandA).SendAsync(token));
+        Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
     /// <summary>验收 3（回归）：机台取货，同样两条需求，清单上没有行内「取消」，共用入口照旧要先选。</summary>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
