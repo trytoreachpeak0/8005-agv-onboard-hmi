@@ -1,0 +1,7 @@
+ca98b87 上跑本票新用例（实现之前，只有最小桩）
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARowThatLeftTheWorklistBeforeTheConfirmationSendsNothing [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.EveryUnloadedRowAtTheStagingStopHasItsOwnCancellationAndTheSharedEntryStaysHidden [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARowWithALoadUnderwayOffersNoCancellationAndTheOthersWait [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.PressingARowCancelsThatDemandOnlyAndTheRowLeavesWithTheNextWorklist [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedRowCancellationLeavesTheRowAndScanningAsTheyWere [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARowPressWhoseAnswerWasLostIsResentUnchangedAndTheOtherRowsWait [5 s]

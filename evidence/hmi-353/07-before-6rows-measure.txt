@@ -1,0 +1,21 @@
+window 1024x698 content 989.3333333333334x640.6666666666666
+row 0: 77
+row 1: 66
+row 2: 85
+row 3: 303
+row 4: 110
+outer viewport 275 extent 515 canScroll=True
+list top in outer 123, list height 310, items 6
+  item 0: top 125 h 51 fullyVisible=True
+     sublot 'N2510150001.01' width 189 desired 111
+  item 1: top 176 h 51 fullyVisible=True
+     sublot 'N2510150002.01' width 189 desired 111
+  item 2: top 227 h 51 fullyVisible=False
+     sublot 'N2510150003.01' width 189 desired 111
+  item 3: top 279 h 51 fullyVisible=False
+     sublot 'N2510150004.01' width 189 desired 111
+  item 4: top 330 h 51 fullyVisible=False
+     sublot 'N2510150005.01' width 189 desired 111
+  item 5: top 381 h 51 fullyVisible=False
+     sublot 'N2510150006.01' width 189 desired 111
+inner scrollviewer: viewport 6 extent 6 panning Both; outer panning None
