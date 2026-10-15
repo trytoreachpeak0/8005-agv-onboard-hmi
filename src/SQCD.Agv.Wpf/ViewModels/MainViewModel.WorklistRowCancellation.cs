@@ -20,14 +20,21 @@ public sealed partial class MainViewModel
 {
     private Func<string, bool>? _worklistRowCancellationCanPress;
     private Func<string, WireToGateLoadCancellationPress>? _worklistRowCancellationBinder;
+    private Func<bool>? _sharedEntryOffersCancellationBeforeAnySublot;
 
-    /// <summary>接上业务服务的两样：这一行按不按得动，按下时取下按键（<see cref="LoadCancellationPressWiring"/>）。</summary>
+    /// <summary>
+    /// 接上业务服务的三样（<see cref="LoadCancellationPressWiring"/>）：这一行按不按得动，按下时取下按键，以及共用入口此刻给的
+    /// 是不是扫码前取消——待送点上那只剩「那一行已离开清单」的收尾，按钮照每行叫「取消」（审查 L1）。
+    /// </summary>
     internal void ConfigureWorklistRowCancellation(
         Func<string, bool> canPress,
-        Func<string, WireToGateLoadCancellationPress> binder)
+        Func<string, WireToGateLoadCancellationPress> binder,
+        Func<bool> sharedEntryOffersCancellationBeforeAnySublot)
     {
         _worklistRowCancellationCanPress = canPress ?? throw new ArgumentNullException(nameof(canPress));
         _worklistRowCancellationBinder = binder ?? throw new ArgumentNullException(nameof(binder));
+        _sharedEntryOffersCancellationBeforeAnySublot = sharedEntryOffersCancellationBeforeAnySublot
+            ?? throw new ArgumentNullException(nameof(sharedEntryOffersCancellationBeforeAnySublot));
         RunOnUiThread(RefreshWorklistRowCancellationCore);
     }
 
@@ -58,11 +65,15 @@ public sealed partial class MainViewModel
     public string WorklistCountText =>
         CurrentStopDeparture.IsShown && WorklistItems.Count > 0 ? $"（共 {WorklistItems.Count} 条）" : string.Empty;
 
-    /// <summary>这一行有没有「取消」：待送点取货停靠上、还没装的那几行。</summary>
-    private bool OffersWorklistRowCancellation(string sideCode) =>
+    /// <summary>
+    /// 这一行有没有「取消」：待送点取货停靠上、还没装的那几行。侧标是「待分配」还不够：重启后更早装好的那一条侧标也回到
+    /// 「待分配」，日志里的「车上待交接的需求」才记着它在车上（8005-agv-onboard-hmi#353 审查 M2）。
+    /// </summary>
+    private bool OffersWorklistRowCancellation(string demandId, string sideCode) =>
         _worklistRowCancellationCanPress is not null
         && CurrentStopDeparture.IsShown
-        && sideCode == WorklistItemSides.Unassigned.Code;
+        && sideCode == WorklistItemSides.Unassigned.Code
+        && !(_journaledOperations is { } journaled && WireToGateBusinessService.IsLoadedOnBoard(journaled, demandId));
 
     private bool CanPressWorklistRowCancellation(string demandId, bool offered) =>
         offered && _worklistRowCancellationCanPress?.Invoke(demandId) == true;
@@ -72,7 +83,7 @@ public sealed partial class MainViewModel
     {
         foreach (WorklistItemRow row in WorklistItems)
         {
-            bool offered = OffersWorklistRowCancellation(row.SideCode);
+            bool offered = OffersWorklistRowCancellation(row.DemandId, row.SideCode);
             if (row.AtStagingPickupStop != CurrentStopDeparture.IsShown
                 || row.OffersCancellation != offered
                 || row.CanPressCancellation != CanPressWorklistRowCancellation(row.DemandId, offered))

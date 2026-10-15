@@ -493,7 +493,8 @@ public sealed partial class WireToGateBusinessService
         WireToGateSessionSnapshot session = _session.Current;
         if (!session.Connected
             || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable))
-            || !WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []))
+            || !WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? [])
+            || IsLoadedOnBoard(state, demandId))
         {
             return null;
         }
@@ -871,9 +872,11 @@ public sealed partial class WireToGateBusinessService
     /// on the screen; the judgement is the one the caption and 「出发」 use.
     /// </summary>
     private string LoadCancellationCaptionHere() =>
-        WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
-            _session.CurrentJourney,
-            Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? []));
+        WireToGateLoadCancellationText.Caption(
+            WireToGateStagingPickupStop.Is(
+                _session.CurrentJourney,
+                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? []),
+            CanRequestLoadCancellationBeforeSublot());
 
     /// <summary>
     /// The cancellation before any sublot is entered (ADR-cross-0046, first case; onboard-hmi#76):
@@ -919,6 +922,17 @@ public sealed partial class WireToGateBusinessService
                 ? availability is LoadCancellationBeforeSublotAvailability.SentSelectionMissing
                 : availability is not LoadCancellationBeforeSublotAvailability.None);
     }
+
+    /// <summary>
+    /// Whether the journal has <paramref name="demandId"/> loaded on board (<see cref="WireToGateRecoveryState.LoadsOnBoard"/>).
+    /// </summary>
+    /// <remarks>
+    /// The load in flight and the last settled load are excluded already (<see cref="JudgeLoadCancellationBeforeSublot"/>); an
+    /// earlier load at the same staging stop is not, and after a restart its row is back to 「待分配」. A cancellation before any
+    /// sublot over it would end a demand whose cargo is on the vehicle (8005-agv-onboard-hmi#353 review M2).
+    /// </remarks>
+    internal static bool IsLoadedOnBoard(WireToGateRecoveryState state, string demandId) =>
+        state.LoadsOnBoard?.Any(load => string.Equals(load.DemandId, demandId, StringComparison.Ordinal)) == true;
 
     /// <summary>Whether this stop's worklist has a row for <paramref name="demandId"/>.</summary>
     private bool HasWorklistRow(string demandId) =>

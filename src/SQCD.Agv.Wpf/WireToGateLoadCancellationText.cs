@@ -30,6 +30,14 @@ public static class WireToGateLoadCancellationText
     public static string Caption(bool atStagingPickupStop) =>
         atStagingPickupStop ? StagingCaption : MachineCaption;
 
+    /// <param name="beforeAnySublot">
+    /// Whether what the shared entry offers is a cancellation before any sublot. At the staging pickup stop that is only the
+    /// one whose row has left the worklist (8005-agv-onboard-hmi#353 review L1): it ends the demand like a row's 「取消」, so it
+    /// is worded like one, not as 「撤销本次开仓」, which puts the demand back.
+    /// </param>
+    public static string Caption(bool atStagingPickupStop, bool beforeAnySublot) =>
+        atStagingPickupStop && beforeAnySublot ? RowCaption : Caption(atStagingPickupStop);
+
     /// <param name="detail">The sentence naming what the press acts on; empty when there is nothing to name.</param>
     public static string ConfirmationText(bool atStagingPickupStop, string detail) =>
         atStagingPickupStop

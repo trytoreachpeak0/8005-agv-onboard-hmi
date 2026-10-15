@@ -477,7 +477,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 _journaledOperations,
                 _slotGroupLayout);
             // 待送点上还没装的行各有一个「取消」（8005-agv-onboard-hmi#353）。
-            bool offersCancellation = OffersWorklistRowCancellation(side.Code);
+            bool offersCancellation = OffersWorklistRowCancellation(item.DemandId, side.Code);
             WorklistItems.Add(new WorklistItemRow(
                 item.DemandId,
                 item.Sublot,
@@ -1324,9 +1324,12 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     /// <remarks>
     /// 待送点的认法不另写一份：「出发」入口出现（<see cref="CurrentStopDepartureDisplay.IsShown"/>）就是待送点取货停靠，两者出自
-    /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。
+    /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。待送点上共用入口给的是扫码前取消时（只剩那一行
+    /// 已离开清单的收尾），叫「取消」，与清单每行一样（8005-agv-onboard-hmi#353 审查 L1）。
     /// </remarks>
-    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.IsShown);
+    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(
+        CurrentStopDeparture.IsShown,
+        CanRequestLoadCancellation && _sharedEntryOffersCancellationBeforeAnySublot?.Invoke() == true);
 
     public bool CanRequestLoadCancellation
     {
@@ -1337,6 +1340,9 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(CanPressLoadCancellation));
             }
+
+            // 待送点上按钮的字跟着入口给的是什么走（审查 L1），同一个 true 底下也可能换。
+            OnPropertyChanged(nameof(LoadCancellationCaption));
 
             // 无条件重算：入口开着不变、而「要不要先选」变了，是常有的事——在途装货的取消结清之后，
             // 同一个 true 底下要选的答案就换了。只在值变化时重算会把那一刻漏掉。
@@ -1897,6 +1903,22 @@ public sealed partial class MainViewModel : ViewModelBase
 
         WireToGateLoadCancellationPress press = binder(selectedDemandId);
         bool staging = press.AtStagingPickupStop;
+        // 待送点上共用入口只在那一行已离开清单时还给扫码前取消（8005-agv-onboard-hmi#353 审查 L1）：照每行「取消」那一套说。
+        // 已授权的那次带着需求；已发出、答复没回来的那次在那一行离开清单后没有对象，按下只是本机不再等它。两种都照每行说。
+        if (staging
+            && !press.SubjectIsLoadInFlight
+            && _sharedEntryOffersCancellationBeforeAnySublot?.Invoke() == true)
+        {
+            return new LoadCancellationConfirmation(
+                press.SubjectDemandId is { } endedDemandId
+                    && WorklistItems.FirstOrDefault(item => item.DemandId == endedDemandId) is { } row
+                    ? WireToGateLoadCancellationText.RowSubject(row.Sublot, row.TaskTypeText, row.ExpectedBasketCountText)
+                    : WireToGateLoadCancellationText.RowSubjectGone,
+                press.SendAsync,
+                staging,
+                EndsTheDemandAtStagingPickupStop: true);
+        }
+
         string detail = press.SubjectDemandId is not { } subjectDemandId
             ? SelectedWorklistItem is { } picked ? DescribeLoadCancellationSubject(picked, staging) : string.Empty
             : WorklistItems.FirstOrDefault(item => item.DemandId == subjectDemandId) is { } subject

@@ -24,6 +24,7 @@ internal static class LoadCancellationPressWiring
             business.CanRequestWorklistRowCancellation,
             demandId => business.BindWorklistRowCancellationPress(
                 WireToGateBusinessService.LoadCancellationDefaultReason,
-                demandId));
+                demandId),
+            () => business.CanRequestLoadCancellationBeforeAnySublot);
     }
 }

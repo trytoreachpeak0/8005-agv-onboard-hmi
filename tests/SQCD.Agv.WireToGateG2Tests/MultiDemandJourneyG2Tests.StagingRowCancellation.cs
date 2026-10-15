@@ -218,9 +218,13 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 录入请求晚于清单到：到之前行上有按钮但按不动（扫码前取消要有开着的录入请求），到了之后变成可按。清单本身没变，按钮
-    /// 能变全靠业务刷新时重算每一行。
+    /// 录入请求晚于清单到：到之前行上有按钮但按不动（扫码前取消要有开着的录入请求），到了之后变成可按。
     /// </summary>
+    /// <remarks>
+    /// 清单本身没变，但它变绿靠的是日志重读那一路：录入请求到达时业务服务发操作员事件，夹具与 <c>App.xaml.cs</c> 一样在事件后
+    /// 重读日志（<c>UpdateJournaledOperations</c>），清单随之整张重建。业务刷新时重算每一行（<c>RefreshWorklistRowCancellationCore</c>）
+    /// 在这里是冗余的，变异 M7 关掉它这条仍绿（审查第一阶段 L4）。
+    /// </remarks>
     [Fact]
     public async Task ARowCancellationBecomesPressableWhenTheEntryRequestArrivesAfterTheWorklist()
     {
@@ -302,6 +306,54 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(await harness.Business.BindWorklistRowCancellationPress("硬按 A。", DemandA).SendAsync(token));
         Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
         Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 审查第一阶段 L1：待送点上已经发出的扫码前取消，那一条已离开清单，只剩共用入口能收尾。它和清单每行的「取消」一样彻底取消，
+    /// 所以按钮叫「取消」、确认框与失败提示用按行那一套（用户已批准的文案），不说「撤销本次开仓、放回待派」。
+    /// </summary>
+    [Fact]
+    public async Task AtTheStagingStopTheSharedEntryLeftForARowGoneIsWordedAsTheRowsCancellation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = await NewJournalSeededAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    "5b0c3e7a-2f41-4d8e-9a6b-1c2d3e4f5a6b",
+                    null,
+                    "operator-000",
+                    "SESSION",
+                    DateTimeOffset.UtcNow,
+                    "那条需求后来离开了本站。")
+            },
+            token);
+        await using Harness harness = await StartStagingLoadStopAsync(
+            NewIoWithCargo(),
+            WireToGateStagingPickupStop.StagingToWire,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.SublotEntryExpectedSublots = SublotsAAndB;
+            },
+            journalPath);
+        await harness.WaitUntilAsync(
+            () =>
+            {
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+                return harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown && harness.ViewModel.CanPressLoadCancellation);
+            },
+            "the shared entry over the cancellation whose row is gone",
+            token);
+
+        Assert.Equal(WireToGateLoadCancellationText.RowCaption, harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
+        LoadCancellationConfirmation press = harness.OnUi(() => harness.ViewModel.BeginLoadCancellation());
+        Assert.True(press.EndsTheDemandAtStagingPickupStop);
+        Assert.Equal(WireToGateLoadCancellationText.RowConfirmationText(WireToGateLoadCancellationText.RowSubjectGone), press.Text);
+        Assert.Equal(WireToGateLoadCancellationText.RowFailureText, press.FailureText);
+        Assert.DoesNotContain("放回待派", press.Text, StringComparison.Ordinal);
+        Assert.Empty(harness.UiErrors);
     }
 
     /// <summary>验收 3（回归）：机台取货，同样两条需求，清单上没有行内「取消」，共用入口照旧要先选。</summary>
