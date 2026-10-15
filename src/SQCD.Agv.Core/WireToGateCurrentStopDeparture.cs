@@ -366,8 +366,13 @@ public static class WireToGateStagingPickupStop
 /// empty worklist ending <c>COMPLETED</c> (<c>RefreshDeadlineOfALoadedStopAsync</c>): every committed load is done, and the last
 /// one was a load, so at least one basket went on board here. A stop whose last item ended otherwise -- cancelled,
 /// compensated, released, expired -- says so in <c>stopEndedReason</c>, and a stop with nothing loaded is not "loaded and
-/// done" (CP-0014 section 5, item 7). Such a stop shows no 「出发」 even when an earlier item was loaded; the server judges
-/// that case and the station departure wait ends it as before.
+/// done" (CP-0014 section 5, item 7).
+/// </para>
+/// <para>
+/// <b>Or a basket loaded here</b> (<paramref name="basketLoadedHere"/> of <see cref="OffersDeparture"/>, read from
+/// <see cref="WireToGateRecoveryState.HasLoadOnBoardAt"/>): the stop's last item may end otherwise -- A loaded, B cancelled
+/// before any sublot -- and the stop is still loaded and done. The ending worklist carries <c>LOAD_CANCELLED</c> and no
+/// operation session, so only the vehicle's own record of where A went on board can tell.
 /// </para>
 /// <para>
 /// <b>Only while the vehicle stands there:</b> the current leg is the pickup leg at the worklist's station, <c>ARRIVED</c>. Once
@@ -382,13 +387,17 @@ public static class WireToGateMachinePickupStop
     /// <summary>The <c>stopEndedReason</c> of a stop whose last item was loaded.</summary>
     public const string LoadsCompleted = "COMPLETED";
 
-    public static bool OffersDeparture(WireToGateJourneySnapshot journey, IReadOnlyCollection<string> knownStagingStationIds)
+    /// <param name="basketLoadedHere">A load made at the worklist's station is still on board and not handed off.</param>
+    public static bool OffersDeparture(
+        WireToGateJourneySnapshot journey,
+        IReadOnlyCollection<string> knownStagingStationIds,
+        bool basketLoadedHere)
     {
         ArgumentNullException.ThrowIfNull(journey);
         ArgumentNullException.ThrowIfNull(knownStagingStationIds);
         if (journey.IsNonBusinessStop
             || journey.CurrentStopWorklist is not { Items.Count: 0 } worklist
-            || !string.Equals(worklist.StopEndedReason, LoadsCompleted, StringComparison.Ordinal)
+            || !basketLoadedHere && !string.Equals(worklist.StopEndedReason, LoadsCompleted, StringComparison.Ordinal)
             || journey.CurrentLeg is not { } leg
             || !string.Equals(leg.LegType, "TO_PICKUP", StringComparison.Ordinal)
             || !string.Equals(leg.State, "ARRIVED", StringComparison.Ordinal)

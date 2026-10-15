@@ -200,7 +200,10 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         IReadOnlyCollection<string> stagingStations = state.StagingPickupStationIds ?? [];
         bool atMachine = !WireToGateStagingPickupStop.Is(journey, stagingStations);
-        if (atMachine && !WireToGateMachinePickupStop.OffersDeparture(journey, stagingStations))
+        if (atMachine && !WireToGateMachinePickupStop.OffersDeparture(
+                journey,
+                stagingStations,
+                basketLoadedHere: journey.CurrentStopWorklist is { } current && state.HasLoadOnBoardAt(current.StationId)))
         {
             return WireToGateCurrentStopDepartureView.Hidden;
         }

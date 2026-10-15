@@ -262,6 +262,84 @@ public sealed class WireToGateLoadedDemandsTests
         Assert.Empty(next.LoadsOnBoard!);
     }
 
+    // ---- 8005-agv-onboard-hmi#352: which station a load on board was made at ----
+
+    /// <summary>
+    /// A load is stamped with the station of the worklist that carries its operation session: the stop it was made at. That is
+    /// what lets a machine pickup whose last item was cancelled still know a basket went on board there.
+    /// </summary>
+    [Fact]
+    public void ALoadIsStampedWithTheStationOfTheWorklistOfItsOperationSession()
+    {
+        WireToGateRecoveryState next = TwoOnBoard().WithLoadsOnBoardFor(
+            Journey("TRANSPORT", [DemandA, DemandB]) with { CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession) });
+
+        Assert.All(next.LoadsOnBoard!, load => Assert.Equal("ST-WB-01", load.StationId));
+        Assert.True(next.HasLoadOnBoardAt("ST-WB-01"));
+        Assert.False(next.HasLoadOnBoardAt("ST-WB-02"));
+    }
+
+    /// <summary>Another operation session, or a worklist with none -- every ended stop's -- stamps nothing.</summary>
+    [Theory]
+    [InlineData("55555555-0000-4555-8555-000000000002")]
+    [InlineData(null)]
+    public void AWorklistOfAnotherOrNoOperationSessionStampsNothing(string? session)
+    {
+        WireToGateRecoveryState next = TwoOnBoard().WithLoadsOnBoardFor(
+            Journey("TRANSPORT", [DemandA, DemandB]) with { CurrentStopWorklist = WorklistAt("ST-WB-01", session) });
+
+        Assert.All(next.LoadsOnBoard!, load => Assert.Null(load.StationId));
+        Assert.False(next.HasLoadOnBoardAt("ST-WB-01"));
+    }
+
+    /// <summary>The stamp is written once: the same session seen later at another station does not move it.</summary>
+    [Fact]
+    public void AStampIsNotMovedAndNeedsNoPlan()
+    {
+        WireToGateRecoveryState stamped = TwoOnBoard().WithLoadsOnBoardFor(
+            WireToGateJourneySnapshot.Empty with { CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession) });
+        WireToGateRecoveryState again = stamped.WithLoadsOnBoardFor(
+            WireToGateJourneySnapshot.Empty with { CurrentStopWorklist = WorklistAt("ST-WB-02", LoadSession) });
+
+        Assert.All(stamped.LoadsOnBoard!, load => Assert.Equal("ST-WB-01", load.StationId));
+        Assert.Same(stamped, again);
+    }
+
+    /// <summary>A load handed off, awaiting the server, is no basket the stop can be said to have loaded.</summary>
+    [Fact]
+    public void AHandedOffLoadDoesNotCountAsLoadedAtItsStation()
+    {
+        WireToGateRecoveryState stamped = WireToGateRecoveryState.Empty
+            .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
+            .WithLoadsOnBoardFor(WireToGateJourneySnapshot.Empty with { CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession) });
+
+        Assert.True(stamped.HasLoadOnBoardAt("ST-WB-01"));
+        Assert.False(stamped.WithLoadHandedOff(DemandA).HasLoadOnBoardAt("ST-WB-01"));
+    }
+
+    [Fact]
+    public async Task TheStampIsKeptByTheJournal()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        (SqliteWireToGateJournal journal, _) = await CreateJournalAsync(token);
+        await using (journal)
+        {
+            await journal.UpdateRecoveryStateAsync(
+                state => state
+                    .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
+                    .WithLoadsOnBoardFor(
+                        WireToGateJourneySnapshot.Empty with { CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession) }),
+                token);
+
+            Assert.True((await journal.ReadRecoveryStateAsync(token)).HasLoadOnBoardAt("ST-WB-01"));
+        }
+    }
+
+    private const string LoadSession = "55555555-0000-4555-8555-000000000001";
+
+    private static WireToGateCurrentStopWorklist WorklistAt(string stationId, string? operationSessionId) =>
+        new(stationId, 3, operationSessionId, null, [], new string('0', 64), "COMPLETED");
+
     private static WireToGateRecoveryState TwoOnBoard() =>
         WireToGateRecoveryState.Empty
             .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))

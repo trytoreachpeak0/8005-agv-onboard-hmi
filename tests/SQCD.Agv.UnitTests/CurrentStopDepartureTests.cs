@@ -199,7 +199,7 @@ public sealed class CurrentStopDepartureTests
     public void AMachinePickupWhoseLoadsAreDoneOffersDepartureWhateverItsLoadingPhase(string state, string? closedReason)
     {
         Assert.True(WireToGateMachinePickupStop.OffersDeparture(
-            MachineAt(LoadsDone(), new WireToGateLoadingPhase(state, null, closedReason)), [Staging]));
+            MachineAt(LoadsDone(), new WireToGateLoadingPhase(state, null, closedReason)), [Staging], basketLoadedHere: false));
     }
 
     /// <summary>Loads still committed to the stop: nothing is offered before every one of them is done.</summary>
@@ -208,7 +208,8 @@ public sealed class CurrentStopDepartureTests
     {
         Assert.False(WireToGateMachinePickupStop.OffersDeparture(
             MachineAt(Worklist(Machine, Item("WIRE_TO_GATE")), new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", null, null)),
-            [Staging]));
+            [Staging],
+            basketLoadedHere: false));
     }
 
     /// <summary>
@@ -225,7 +226,30 @@ public sealed class CurrentStopDepartureTests
     public void AMachinePickupThatEndedWithoutItsLastLoadOffersNoDeparture(string stopEndedReason)
     {
         Assert.False(WireToGateMachinePickupStop.OffersDeparture(
-            MachineAt(LoadsDone() with { StopEndedReason = stopEndedReason }), [Staging]));
+            MachineAt(LoadsDone() with { StopEndedReason = stopEndedReason }), [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>
+    /// 8005-agv-onboard-hmi#352, C11's follow-up: a basket loaded at this stop and still on board offers 「出发」 even when the
+    /// stop's last item ended otherwise -- A loaded, B cancelled before any sublot. Without one, the same stop offers nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("LOAD_CANCELLED")]
+    [InlineData("LOAD_COMPENSATED")]
+    public void ABasketLoadedHereOffersDepartureWhateverEndedTheLastItem(string stopEndedReason)
+    {
+        WireToGateJourneySnapshot journey = MachineAt(LoadsDone() with { StopEndedReason = stopEndedReason, OperationSessionId = null });
+
+        Assert.True(WireToGateMachinePickupStop.OffersDeparture(journey, [Staging], basketLoadedHere: true));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(journey, [Staging], basketLoadedHere: false));
+    }
+
+    /// <summary>A basket loaded here does not offer it while loads are still committed to the stop.</summary>
+    [Fact]
+    public void ABasketLoadedHereDoesNotOfferItBeforeTheStopsLoadsAreDone()
+    {
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(
+            MachineAt(Worklist(Machine, Item("WIRE_TO_GATE"))), [Staging], basketLoadedHere: true));
     }
 
     /// <summary>
@@ -241,13 +265,14 @@ public sealed class CurrentStopDepartureTests
     {
         Assert.False(WireToGateMachinePickupStop.OffersDeparture(
             MachineAt(LoadsDone(), legs: [Leg(1, legType, legStation, state), Leg(2, "TO_DROPOFF", "WB-09", "PLANNED")]),
-            [Staging]));
+            [Staging],
+            basketLoadedHere: true));
     }
 
     [Fact]
     public void WithNoPlanThereIsNoStopToDepartFrom()
     {
-        Assert.False(WireToGateMachinePickupStop.OffersDeparture(Journey(LoadsDone()), [Staging]));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(Journey(LoadsDone()), [Staging], basketLoadedHere: false));
     }
 
     /// <summary>The staging station keeps its own rule (CP-0012), whether the server names it or the vehicle remembers it.</summary>
@@ -258,9 +283,9 @@ public sealed class CurrentStopDepartureTests
             LoadsDone() with { StationId = Staging },
             legs: [Leg(1, "TO_PICKUP", Staging, "ARRIVED"), Leg(2, "TO_DROPOFF", "WB-09", "PLANNED")]);
 
-        Assert.False(WireToGateMachinePickupStop.OffersDeparture(atStaging, [Staging]));
-        Assert.False(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_STAGING"), []));
-        Assert.True(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_BONDING"), [Staging]));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(atStaging, [Staging], basketLoadedHere: false));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_STAGING"), [], basketLoadedHere: false));
+        Assert.True(WireToGateMachinePickupStop.OffersDeparture(WithFunctionAtCurrentLeg(atStaging, "WIRE_BONDING"), [Staging], basketLoadedHere: false));
     }
 
     [Fact]
@@ -272,7 +297,7 @@ public sealed class CurrentStopDepartureTests
             VehicleBusinessState = journey.VehicleBusinessState! with { ActivePurpose = "IDLE_RETURN" }
         };
 
-        Assert.False(WireToGateMachinePickupStop.OffersDeparture(idle, [Staging]));
+        Assert.False(WireToGateMachinePickupStop.OffersDeparture(idle, [Staging], basketLoadedHere: false));
     }
 
     /// <summary>
