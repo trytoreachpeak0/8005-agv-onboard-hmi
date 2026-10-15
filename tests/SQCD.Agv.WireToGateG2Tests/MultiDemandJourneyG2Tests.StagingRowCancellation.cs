@@ -217,6 +217,51 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(harness.UiErrors);
     }
 
+    /// <summary>
+    /// 录入请求晚于清单到：到之前行上有按钮但按不动（扫码前取消要有开着的录入请求），到了之后变成可按。清单本身没变，按钮
+    /// 能变全靠业务刷新时重算每一行。
+    /// </summary>
+    [Fact]
+    public async Task ARowCancellationBecomesPressableWhenTheEntryRequestArrivesAfterTheWorklist()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartStagingLoadStopAsync(
+            NewIoWithCargo(),
+            WireToGateStagingPickupStop.StagingToWire,
+            token,
+            server => server.RespondToLoadCancellationRequests = true);
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown
+                && harness.ViewModel.WorklistItems.Count == 2
+                && harness.ViewModel.WorklistItems.All(row => row.OffersCancellation)),
+            "both rows with their 「取消」",
+            token);
+        Assert.All(
+            harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()),
+            row => Assert.False(row.CanPressCancellation));
+
+        await harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = 1,
+                expectedSublots = SublotsAAndB,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
+
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.All(row => row.CanPressCancellation)),
+            "both rows pressable once the entry request is open",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    private static readonly string[] SublotsAAndB = ["SUBLOT-A", "SUBLOT-B"];
+
     /// <summary>验收 3（回归）：机台取货，同样两条需求，清单上没有行内「取消」，共用入口照旧要先选。</summary>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
