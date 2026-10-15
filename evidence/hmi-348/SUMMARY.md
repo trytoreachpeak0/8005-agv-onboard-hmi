@@ -19,7 +19,5 @@
 | `07-review-tests-green.txt` | 审查第二阶段要求补的两条用例（`b4d6a46`）在 head 上 | 2/0；连同扫码前取消全类、本票其余 G2 用例与 XAML 覆盖测试 39/0 |
 | `08-review-tests-mutations.txt` | 两轮变异：R1 例外条件额外要求「已发出那条需求仍在清单里」；R2 删掉 `LoadCancellationCaption` 的变更通知 | 各红 1，分别是对应的新用例 |
 | `09-format-verify-review-tests.txt` | 两个改动测试文件 `dotnet format --verify-no-changes` | exit 0 |
-
 | `10-review-l1-notices.txt` | 审查 L1：待送点上叫操作员再按的三处提示改用「撤销本次开仓」（机台不变） | `dotnet format` exit 0；恢复标记架构测试 9/0。文案经用户确认（「文案可以」，C11 转达） |
-
-真装置：车载端界面改了，要跑 CI 真装置 `real-onboard-compensate-then-reconnect`，按调度顺序在推送、独立审查通过之后申请，结果补在这里。
+| `11-ci-real-rig-38721655537.txt` | CI 真装置 `real-onboard-compensate-then-reconnect` ×1（control-server `e2320398`＝`fp/v2-impl`，onboard `ef13809a`，simulator `fb5f7c59`） | `PASS`，83 秒 |
