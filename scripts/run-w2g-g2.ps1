@@ -60,9 +60,9 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 83c8f1f5（protocol#13 CP-0012 的出发请求，加上 protocol#15
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 3fb214e5（protocol#13 CP-0012 的出发请求，加上 protocol#15
 # CP-0013 改写的「待送点缺电先送货再充电」，取代第一版候选 c6b1ff73 里旅程内插充电停靠的写法；再加上 protocol#17
-# CP-0014 放开的机台取货装完后出发与待送点持货倒计时），由 8005-agv-onboard-hmi#349 绑定、#352 换到这一提交。protocol-v4.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是
+# CP-0014 放开的机台取货装完后出发与待送点持货倒计时，protocol#19 改写的待送点有待装时为 LOADING），由 8005-agv-onboard-hmi#349 绑定、#352 换到这一提交。protocol-v4.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是
 # SUPERSEDING_CANDIDATE，本身份上产出的证据是 UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
@@ -74,10 +74,10 @@ $expected = [ordered]@{
     ReleaseVersion = '4.0.0'
     Repository = '8005-agv-protocol'
     Tag = 'protocol-v4.0.0'
-    Commit = '83c8f1f52e4a0bb088c186ec9a791bab2e21fb27'
-    ManifestSha256 = 'b85f339ea95db83bdb4ebb31f5c8bbba3276871fcd3c2ff125ff5d9090067b39'
+    Commit = '3fb214e57d861a909d872511940d26133eb32dca'
+    ManifestSha256 = 'beca46a7fe98003ce1f21efb88f2c1406f3040883d0b372a51505a843e306f3a'
     SchemaBundleSha256 = 'dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628'
-    VectorsSha256 = 'caae2bb7366598b769bddcaa317b799b756eae1aa33f6d71e3ad917bf78b86e8'
+    VectorsSha256 = '24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7'
     ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 

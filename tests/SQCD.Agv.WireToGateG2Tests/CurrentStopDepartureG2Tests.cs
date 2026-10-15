@@ -481,6 +481,10 @@ public sealed class CurrentStopDepartureG2Tests
     /// pickup stop with a basket on board and an appended demand not yet scanned, the server sends <c>LOADING</c> with the
     /// cargo-holding deadline running. The countdown is shown from it, and when the next
     /// snapshot moves the deadline -- a demand appended -- the countdown takes the new one; nothing is computed locally.
+    /// The vector's end state since protocol#19 (<c>3fb214e5</c>) is
+    /// <c>STAGING_LOADING_WITH_CARGO_HOLDING_DEADLINE_MOVED_TO_APPEND</c>: the phase stays <c>LOADING</c> throughout.
+    /// <c>DISPLAY_CARGO_HOLDING_COUNTDOWN_FROM_DEADLINE_NOT_FROM_STATE</c>: the same <c>LOADING</c> with no deadline -- nothing
+    /// loaded yet -- shows no countdown; the deadline, not the phase, puts it on screen.
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED")]
@@ -491,6 +495,13 @@ public sealed class CurrentStopDepartureG2Tests
         await using Harness harness = await StartAtStagingAsync(token);
         await WaitForPressableAsync(harness, token);
 
+        // LOADING with no deadline: nothing loaded yet, no countdown -- the phase alone does not put one on screen.
+        Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
+        Assert.Null(harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.CargoHoldingDeadlineAt);
+        Assert.False(harness.OnUi(() => harness.ViewModel.HasCargoHoldingCountdown));
+        Assert.Equal(string.Empty, harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownText));
+
+        // The first basket closes safely: the same LOADING, now with the deadline.
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             State(2, Payloads.LoadingPhase("LOADING", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(5))));
@@ -515,6 +526,7 @@ public sealed class CurrentStopDepartureG2Tests
             token);
 
         Assert.True(harness.OnUi(() => harness.ViewModel.HasCargoHoldingCountdown));
+        Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
         Assert.Empty(harness.Server.CurrentStopDepartureRequests);
         Assert.Empty(harness.UiErrors);
     }
