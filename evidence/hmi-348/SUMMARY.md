@@ -16,5 +16,8 @@
 | `05-format-verify.txt` | 改动文件 `dotnet format --verify-no-changes` | exit 0 |
 | `06-full-g2-*` | `scripts/run-w2g-g2.ps1` 全量（G1 + 单元 + G2 + 线上报文 schema 核对） | `PASS`：单元 1212/0，G2 969/0，schema 核对 25262 行 0 违规（已知违规 4 行，与 hmi#349 相同） |
 | `06-full-g2-first-attempt-g1-env.txt` | 全量第一次的 G1 日志摘录 | 环境红，不是车载端红：pnpm v11 不认 `npm_config_store_dir`，把 `.pnpm-store` 建进协议克隆，`g1-validate` 报 `EISDIR`。删掉并加设 `pnpm_config_store_dir` 后重跑即上一行 |
+| `07-review-tests-green.txt` | 审查第二阶段要求补的两条用例（`b4d6a46`）在 head 上 | 2/0；连同扫码前取消全类、本票其余 G2 用例与 XAML 覆盖测试 39/0 |
+| `08-review-tests-mutations.txt` | 两轮变异：R1 例外条件额外要求「已发出那条需求仍在清单里」；R2 删掉 `LoadCancellationCaption` 的变更通知 | 各红 1，分别是对应的新用例 |
+| `09-format-verify-review-tests.txt` | 两个改动测试文件 `dotnet format --verify-no-changes` | exit 0 |
 
 真装置：车载端界面改了，要跑 CI 真装置 `real-onboard-compensate-then-reconnect`，按调度顺序在推送、独立审查通过之后申请，结果补在这里。

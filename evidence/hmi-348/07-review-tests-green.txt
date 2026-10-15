@@ -1,0 +1,5 @@
+commit=b4d6a46 (review phase 2 tests, green on head)
+two new tests:
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 341 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+related classes (LoadCancellationBeforeSublotG2Tests, this ticket's G2, XAML coverage):
+Passed!  - Failed:     0, Passed:    39, Skipped:     0, Total:    39, Duration: 17 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
