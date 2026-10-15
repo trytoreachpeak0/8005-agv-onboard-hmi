@@ -1,0 +1,2 @@
+dotnet format --verify-no-changes at 4a8d5df
+exit=0

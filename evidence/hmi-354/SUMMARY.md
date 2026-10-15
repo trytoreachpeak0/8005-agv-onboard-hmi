@@ -31,3 +31,13 @@
 | `14-review-full-g2-*` | `run-w2g-g2.ps1` 全量 | `PASS`：单元 1261/0，G2 997/0 |
 
 CI 真装置 08 跑在审查之前的 `457dcac2` 上；返工在 `MainWindow.xaml` 里只改了注释；改动的是横幅什么时候出现（恢复向量不出、读数未知时收起），是否需要重跑由调度定。
+
+## 并入 hmi#353 之后
+
+`git merge origin/w2g/fp-v2-impl`（`7bcd5b7b`，含 hmi#353），没有冲突，合并提交 `4a8d5df`。15～17 都在 `4a8d5df` 上。
+
+| 文件 | 内容 | 结论 |
+| --- | --- | --- |
+| `15-merge-format-verify.txt` | `dotnet format --verify-no-changes` | exit 0 |
+| `16-merge-targeted.txt` | 相关 G2 定向：本票测试类、`WorklistScrollingLayoutTests`、`MultiDemandJourneyG2Tests` 整类、`HmiScreenState*` | 227/0 |
+| `17-merge-full-g2-*` | `run-w2g-g2.ps1` 全量 | `PASS`：单元 1261/0，G2 1011/0 |
