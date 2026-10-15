@@ -26,4 +26,4 @@
 
 **第一轮变异作废**：第一次跑 M1～M7 时，过滤条件是按文件名写的，没有选中本票用例，所以「全部存活」不作数。改成按用例名过滤后重跑，上表是重跑的结果。
 
-真装置：车载端界面改了，要跑 CI 真装置 `real-onboard-compensate-then-reconnect`，按调度顺序在推送、独立审查之后申请，结果补在这里。
+真装置：CI 真装置 `real-onboard-compensate-then-reconnect` 一轮 PASS（78 秒），run `38747836094`（control-server `l2.yml`，`rig=real`，`cs-desktop`），车载端 `1ee36ea`、服务端 `fp/v2-impl` `6988d0a4`、模拟器 `fb5f7c59`；摘录见 `11-ci-real-rig-38747836094.txt`。
