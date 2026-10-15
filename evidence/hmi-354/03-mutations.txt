@@ -1,0 +1,56 @@
+mutations at e3e48b3
+M1 ignore lock reading [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.OnlyTheTargetDoorsThatReadUnlockedAreNamed [79 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoPromptWhileTheTargetDoorReadsLocked [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.ClosingTheDoorTakesThePromptAway [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoPromptForADoorOutsideTheOperationOrPastTheWaitingStages [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [3 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptLayoutTests.WithEveryDoorLockedTheBannerTakesNoRoom [132 ms]
+  Failed!  - Failed:     6, Passed:     5, Skipped:     0, Total:    11, Duration: 671 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M2 any stage [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoPromptForADoorOutsideTheOperationOrPastTheWaitingStages [1 ms]
+  Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 716 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M3 any unlocked locker, not only targets [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.OnlyTheTargetDoorsThatReadUnlockedAreNamed [82 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoPromptForADoorOutsideTheOperationOrPastTheWaitingStages [< 1 ms]
+  Failed!  - Failed:     2, Passed:     9, Skipped:     0, Total:    11, Duration: 678 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M4 escalate strictly after the delay [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [2 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AfterTwoMinutesThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks [1 ms]
+  Failed!  - Failed:     2, Passed:     9, Skipped:     0, Total:    11, Duration: 660 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M5 clock never restarts [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.DoorOpenPrompt.cs(100,34): error CS8602: Dereference of a possibly null reference. [F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf_5kzvos5e_wpftmp.csproj]
+  F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.DoorOpenPrompt.cs(107,72): error CS8602: Dereference of a possibly null reference. [F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf_5kzvos5e_wpftmp.csproj]
+M6 clock restarts every refresh [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.DoorOpenPrompt.cs(107,72): error CS8602: Dereference of a possibly null reference. [F:\8005-wt\hmi354-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf_1ca44oso_wpftmp.csproj]
+M7 load and unload words swapped [src/SQCD.Agv.Wpf/WireToGateDoorOpenPromptText.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.OnlyTheTargetDoorsThatReadUnlockedAreNamed [83 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptLayoutTests.AnOpenDoorPutsTheBannerUnderTheStatusBarAboveTheScanBoxOnOneLine [82 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AnUnloadDoorLeftOpenShowsWhichDoorAndWhatToDo [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.ALoadSaysPutTheBasketInAndNamesEveryOpenDoor [< 1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AfterTwoMinutesThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks [1 ms]
+  Failed!  - Failed:     5, Passed:     6, Skipped:     0, Total:    11, Duration: 570 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M8 IO snapshot path not refreshed [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.ClosingTheDoorTakesThePromptAway [2 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [5 ms]
+  Failed!  - Failed:     2, Passed:     9, Skipped:     0, Total:    11, Duration: 786 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M9 no blink [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AfterTwoMinutesThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks [3 ms]
+  Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 697 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M10 banner always visible in XAML [src/SQCD.Agv.Wpf/MainWindow.xaml]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptLayoutTests.WithEveryDoorLockedTheBannerTakesNoRoom [131 ms]
+  Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 694 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M11 banner under the scan box (row 2) [src/SQCD.Agv.Wpf/MainWindow.xaml]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptLayoutTests.AnOpenDoorPutsTheBannerUnderTheStatusBarAboveTheScanBoxOnOneLine [512 ms]
+  Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 662 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+NOTE: M5 and M6 above were killed by compile errors (CS8602), not by a test -- void. Rerun with runtime conditions that compile:
+  M5: if (!Equals(attempt) && _doorOpenSince == default)   M6: if (!Equals(attempt) || openSlots.Length > 0)
+mutations at e3e48b3
+M5 clock never restarts [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [10 ms]
+  Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 650 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M6 clock restarts every refresh [src/SQCD.Agv.Wpf/ViewModels/MainViewModel.DoorOpenPrompt.cs]: KILLED
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [2 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AfterTwoMinutesThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks [< 1 ms]
+  Failed!  - Failed:     2, Passed:     9, Skipped:     0, Total:    11, Duration: 656 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

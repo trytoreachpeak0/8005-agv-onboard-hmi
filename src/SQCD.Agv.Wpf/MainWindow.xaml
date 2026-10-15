@@ -17,6 +17,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="110" />
         </Grid.RowDefinitions>
@@ -123,7 +124,51 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Margin="0,8,0,0" Padding="10" Background="White" CornerRadius="8">
+        <!--
+            开锁后门没关的横幅（8005-agv-onboard-hmi#354）：普通装卸（不含恢复向量，审查 M1）的目标仓、门锁读数没锁上、阶段是开锁或等操作员时出现，
+            门一锁上就消失；没有时整行 Collapsed，Auto 行高为 0，平时布局不变。放在顶栏正下方、通栏大字，是因为 10-15
+            生产两次门开着没人关，原来的提示只有提示区 14 号字一行和仓位卡片 12 号字一行，现场没人注意到。
+            前 2 分钟黄底；超过 2 分钟（用户 10-16 定）红底、写明车在等关门与已开多久，并逐秒闪烁（Dimmed 只把红底调浅；浅相位白字对比度约 3:1，审查 L4 记为剩余风险）。
+            UIA 按 AutomationId DoorOpenPrompt 找它。不带 ItemStatus：档位只给人看，判据在视图模型测试里。
+        -->
+        <Border Grid.Row="1"
+                Margin="0,8,0,0"
+                Padding="14,10"
+                CornerRadius="8"
+                BorderThickness="3"
+                AutomationProperties.AutomationId="DoorOpenPrompt"
+                Visibility="{Binding HasDoorOpenPrompt, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="#FFF3C4" />
+                    <Setter Property="BorderBrush" Value="#E5A800" />
+                    <Setter Property="TextElement.Foreground" Value="#3D2E00" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding DoorOpenPromptTier}" Value="Overdue">
+                            <Setter Property="Background" Value="#C62828" />
+                            <Setter Property="BorderBrush" Value="#8E0000" />
+                            <Setter Property="TextElement.Foreground" Value="White" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding DoorOpenPromptDimmed}" Value="True">
+                            <Setter Property="Background" Value="#E57373" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel>
+                <TextBlock FontSize="28"
+                           FontWeight="Bold"
+                           Text="{Binding DoorOpenPromptHeadline}"
+                           TextWrapping="Wrap" />
+                <TextBlock Margin="0,4,0,0"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="{Binding DoorOpenPromptDetail}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" Background="White" CornerRadius="8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -151,7 +196,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderThickness="1">
+        <Border Grid.Row="3" Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderThickness="1">
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Background" Value="#EAF2FF" />
@@ -780,7 +825,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="3" Margin="0,6">
+        <Grid Grid.Row="4" Margin="0,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300" />
                 <ColumnDefinition Width="*" />
@@ -1064,7 +1109,7 @@
             </ScrollViewer>
         </Grid>
 
-        <Border Grid.Row="4" Padding="8" Background="#17212E" CornerRadius="8">
+        <Border Grid.Row="5" Padding="8" Background="#17212E" CornerRadius="8">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

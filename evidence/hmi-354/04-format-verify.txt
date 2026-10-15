@@ -1,0 +1,2 @@
+dotnet format --verify-no-changes at e3e48b3 (working-tree CRLF in new files normalized to LF; git content unchanged)
+exit=0

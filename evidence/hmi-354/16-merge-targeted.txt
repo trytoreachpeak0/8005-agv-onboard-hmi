@@ -1,0 +1,2 @@
+related G2 targeted at 4a8d5df
+Passed!  - Failed:     0, Passed:   227, Skipped:     0, Total:   227, Duration: 2 m 55 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

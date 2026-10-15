@@ -1766,13 +1766,14 @@ public sealed partial class MainViewModel : ViewModelBase
         : null;
 
     /// <summary>
-    /// 窗口关闭时停掉倒计时定时器（离站与持货两个），之后的快照也不再启动它们。
+    /// 窗口关闭时停掉倒计时定时器（离站与持货两个）与开门横幅的定时器（onboard-hmi#354），之后的快照也不再启动它们。
     /// </summary>
     internal void StopStationDepartureCountdown() => RunOnUiThread(() =>
     {
         _stationDepartureCountdownStopped = true;
         _stationDepartureCountdownTimer?.Stop();
         _cargoHoldingTimer?.Stop();
+        _doorOpenPromptTimer?.Stop();
     });
 
     /// <summary>
@@ -2399,6 +2400,7 @@ public sealed partial class MainViewModel : ViewModelBase
             locker.Update(state, snapshot.ActiveOperation, _wireToGateOperation);
         }
         RefreshSlotGroupsCore();
+        RefreshDoorOpenPromptCore();
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
@@ -2683,6 +2685,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 _wireToGateOperation);
         }
         RefreshSlotGroupsCore();
+        RefreshDoorOpenPromptCore();
         // 待送点摘要读的是仓位读数，读数一变就重算（8005-agv-onboard-hmi#349）。
         RefreshCurrentStopDepartureCore();
     }

@@ -1,0 +1,30 @@
+red at 4da1f31
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.OnlyTheTargetDoorsThatReadUnlockedAreNamed [158 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "2号仓门开着：请取出篮子，然后关好仓门"
+Actual:   ""
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AfterSixtySecondsThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks [7 ms]
+   Assert.Equal() Failure: Values differ
+Expected: Waiting
+Actual:   None
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AnUnloadDoorLeftOpenShowsWhichDoorAndWhatToDo [1 ms]
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.ClosingTheDoorTakesThePromptAway [< 1 ms]
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoPromptForADoorOutsideTheOperationOrPastTheWaitingStages [1 ms]
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.ALoadSaysPutTheBasketInAndNamesEveryOpenDoor [3 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "3、4号仓门开着：请放入篮子，然后关好仓门"
+Actual:   ""
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.TheClockStartsWhenTheDoorIsFirstSeenOpenAndRestartsOnlyWhenItShutsOrTheAttemptChanges [1 ms]
+   Assert.Equal() Failure: Values differ
+Expected: Overdue
+Actual:   None
+Failed!  - Failed:     7, Passed:     2, Skipped:     0, Total:     9, Duration: 244 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

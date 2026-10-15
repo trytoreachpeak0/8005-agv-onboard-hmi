@@ -1,0 +1,6 @@
+run-w2g-g2.ps1 full at 4a7a32d, protocol 3fb214e5, evidence dir F:/8005-scratch/g2-hmi354/protocol-v4.0.0/20261015T173541904Z-4a7a32de856f (not committed)
+Passed!  - Failed:     0, Passed:  1261, Skipped:     0, Total:  1261, Duration: 24 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   997, Skipped:     0, Total:   997, Duration: 3 m 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+G2 evidence: F:\8005-scratch\g2-hmi354\protocol-v4.0.0\20261015T173541904Z-4a7a32de856f
+Status: PASS
+exit=0

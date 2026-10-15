@@ -1,0 +1,4 @@
+none: rows 0=77 1=0 2=66 3=58 4=329 5=110 | tier=None headline='' detail=''
+overdue-bright: rows 0=77 1=99 2=66 3=58 4=230 5=110 | tier=Overdue headline='3、4号仓门开着：请取出篮子，然后关好仓门' detail='车在等关门：3、4号仓门已开 2 分 14 秒。门不关好，车不会继续。'
+overdue: rows 0=77 1=99 2=66 3=58 4=230 5=110 | tier=Overdue headline='3、4号仓门开着：请取出篮子，然后关好仓门' detail='车在等关门：3、4号仓门已开 2 分 15 秒。门不关好，车不会继续。'
+waiting: rows 0=77 1=99 2=66 3=58 4=230 5=110 | tier=Waiting headline='3、4号仓门开着：请取出篮子，然后关好仓门' detail='门关好、车确认仓空后，才算这一仓卸完。'

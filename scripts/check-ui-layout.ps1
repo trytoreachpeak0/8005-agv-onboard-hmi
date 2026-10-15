@@ -45,6 +45,9 @@ $checks = [ordered]@{
     visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')
     # 期待动作超时（REQ-0358，onboard-hmi#109）：提示区单独一行，UIA 按 AutomationId 找它。
     visibleExpectedActionOverdue = ($xaml -match 'AutomationProperties\.AutomationId="ExpectedActionOverdue"') -and ($xaml -match 'Text="\{Binding ExpectedActionOverdueText\}"') -and ($xaml -match 'Binding HasExpectedActionOverdue, Converter')
+    # 开锁后门没关的横幅（onboard-hmi#354）：顶栏正下方通栏一行（外层 Grid.Row="1"），显隐、档位配色与闪烁都绑在同一个
+    # Border 上；超时档转红、闪烁调浅红底。只查都在文件里不够：横幅挪回提示区小字，正是本票要改掉的样子。
+    visibleDoorOpenPrompt = ($xaml -match '<Border Grid\.Row="1"[^>]*AutomationProperties\.AutomationId="DoorOpenPrompt"[^>]*Visibility="\{Binding HasDoorOpenPrompt, Converter') -and ($xaml -match 'Binding DoorOpenPromptTier\}" Value="Overdue"') -and ($xaml -match 'Binding DoorOpenPromptDimmed\}" Value="True"') -and ($xaml -match 'FontSize="28"[^>]*Text="\{Binding DoorOpenPromptHeadline\}"') -and ($xaml -match 'Text="\{Binding DoorOpenPromptDetail\}"')
     # 异常处置会话的原因输入只跟着管理员恢复入口出现（CP-0005 第五节）。
     recoveryReasonInput = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryReason"') -and ($xaml -match 'Text="\{Binding RecoveryReason, UpdateSourceTrigger=PropertyChanged\}"') -and ($xaml -match 'Binding HasRecoveryReasonInput, Converter') -and ($xaml -match 'MaxLength="500"') -and ($xaml -match 'IsEnabled="\{Binding IsRecoveryReasonEditable\}"') -and ($xaml -match 'Binding HasRecoveryReasonCarriedOver, Converter') -and ($xaml -match 'Text="会话已开，原因沿用开会话时填写的"')
     # 一站多条需求与多停靠计划（批次7-13，onboard-hmi#134）：清单列表与计划腿列表，UIA 按 AutomationId 找它们，ItemStatus 给原始值。
