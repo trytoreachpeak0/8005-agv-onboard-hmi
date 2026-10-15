@@ -78,7 +78,7 @@ internal static class HmiScreenStateBuilder
             notice is not null && noticeUntil is { } until ? new HmiOperatorNoticeState(notice, until) : null,
             [.. HmiScreenBindings.RawCodes.Select(binding => RawCode(viewModel, binding))],
             [.. Copy(viewModel.JourneyPlanLegs).Select(row => new HmiJourneyPlanLegState(row.ItemStatus, row.StationId))],
-            [.. Copy(viewModel.WorklistItems).Select(row => new HmiWorklistRowState(row.DemandId, row.SideCode))],
+            [.. Copy(viewModel.WorklistItems).Select(row => new HmiWorklistRowState(row.DemandId, row.SideCode, false, false))],
             [.. Copy(viewModel.RecoveryDemandChoices).Select(row => row.DemandId)],
             viewModel.SelectedRecoveryDemandChoice?.DemandId,
             [.. Copy(viewModel.Lockers).Select(locker => new HmiLockerState(

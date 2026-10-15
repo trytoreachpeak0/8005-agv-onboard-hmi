@@ -115,7 +115,7 @@ public sealed record HmiRawCodeState(
 public sealed record HmiJourneyPlanLegState(string ItemStatus, string StationId);
 
 /// <summary>A worklist row without its sublot.</summary>
-public sealed record HmiWorklistRowState(string DemandId, string SideCode);
+public sealed record HmiWorklistRowState(string DemandId, string SideCode, bool CancellationShown, bool CancellationEnabled);
 
 /// <summary>A slot card.</summary>
 public sealed record HmiLockerState(int PhysicalNumber, bool IsKnown, bool IsLocked, bool HasCargo, bool IsTarget);

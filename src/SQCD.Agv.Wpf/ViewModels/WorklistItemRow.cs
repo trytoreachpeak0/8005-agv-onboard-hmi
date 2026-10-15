@@ -15,7 +15,9 @@ public sealed record WorklistItemRow(
     string TaskTypeText,
     int ExpectedBasketCount,
     string SideText,
-    string SideCode)
+    string SideCode,
+    bool OffersCancellation = false,
+    bool CanPressCancellation = false)
 {
     public string ExpectedBasketCountText => $"{ExpectedBasketCount} 篮";
 }

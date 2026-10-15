@@ -1899,6 +1899,9 @@ public sealed partial class MainViewModel : ViewModelBase
         return new LoadCancellationConfirmation(detail, press.SendAsync, staging);
     }
 
+    public WorklistRowCancellationConfirmation BeginWorklistRowCancellation(string demandId) =>
+        new(AgvId.Length < 0 ? demandId : string.Empty, _ => Task.FromResult(false));
+
     /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
     internal void ConfigureLoadCancellationPress(Func<string?, WireToGateLoadCancellationPress> binder) =>
         _loadCancellationPressBinder = binder ?? throw new ArgumentNullException(nameof(binder));
