@@ -1,7 +1,8 @@
 namespace SQCD.Agv.Core;
 
 /// <summary>
-/// One press of 「出发」 at a staging pickup stop (protocol 4.0.0 candidate, CP-0012, 8005-agv-onboard-hmi#349), as the
+/// One press of 「出发」 at a staging pickup stop (protocol 4.0.0 candidate, CP-0012, 8005-agv-onboard-hmi#349) or at a machine
+/// pickup stop whose loads are done (CP-0014, 8005-agv-onboard-hmi#352), as the
 /// journal holds it from before the request is sent until long after its result came back.
 /// </summary>
 /// <remarks>
@@ -81,7 +82,10 @@ public enum WireToGateCurrentStopDepartureUnavailability
 {
     None,
 
-    /// <summary>Not a staging pickup stop: the entry is not shown at all. Machine pickups keep their screen.</summary>
+    /// <summary>
+    /// Neither a staging pickup stop nor a machine pickup stop whose loads are done: the entry is not shown at all. The name
+    /// predates 8005-agv-onboard-hmi#352 and is kept.
+    /// </summary>
     NotAtStagingPickupStop,
 
     /// <summary>A severe safety fault is latched on this vehicle (review L3: not a link problem, and not shown as one).</summary>
@@ -212,12 +216,22 @@ public sealed record WireToGateCurrentStopDeparturePrompt(
     long WorklistRevision,
     string? OperationSessionId,
     int UnloadedItemCount,
-    string OperatorId);
+    string OperatorId)
+{
+    /// <summary>
+    /// At a machine pickup stop, the appended pickup stops the press puts back to be dispatched; 0 at the staging stop. Part of
+    /// the prompt, so a stop appended under the confirmation makes it a different prompt and the press is not sent.
+    /// </summary>
+    public int PickupStopsAfter { get; init; }
+}
 
 /// <summary>
 /// The 「出发」 entry as the business service offers it.
 /// </summary>
-/// <param name="Shown">Whether the entry is on screen at all: only at a staging pickup stop.</param>
+/// <param name="Shown">
+/// Whether the entry is on screen at all: at a staging pickup stop, and at a machine pickup stop once its loads are done
+/// (<see cref="AtMachinePickupStop"/>).
+/// </param>
 /// <param name="Prompt">What a press now would send; <c>null</c> when it cannot be pressed.</param>
 /// <param name="Last">
 /// The latest press on file at this stop: pending while its result is <c>null</c>, otherwise the result to show. <c>null</c>
@@ -229,6 +243,9 @@ public sealed record WireToGateCurrentStopDepartureView(
     WireToGateCurrentStopDepartureUnavailability Unavailability,
     WireToGateCurrentStopDeparture? Last)
 {
+    /// <summary>Shown at a machine pickup stop (8005-agv-onboard-hmi#352) rather than at the staging pickup stop.</summary>
+    public bool AtMachinePickupStop { get; init; }
+
     public static WireToGateCurrentStopDepartureView Hidden { get; } =
         new(false, null, WireToGateCurrentStopDepartureUnavailability.NotAtStagingPickupStop, null);
 }
@@ -330,5 +347,73 @@ public static class WireToGateStagingPickupStop
             .Where(leg => string.Equals(leg.StationId, stationId, StringComparison.Ordinal))
             .Select(leg => leg.PublicStationFunction)
             .FirstOrDefault(function => function is not null);
+    }
+}
+
+/// <summary>
+/// The one judgement of "this machine pickup stop's loads are done and 「出发」 may be offered" on this end (CP-0014, REQ-0354;
+/// protocol wire notes "<c>CurrentStopDepartureRequested</c> and <c>CurrentStopDepartureResult</c>"; 8005-agv-onboard-hmi#352).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Not the loading phase.</b> The ticket's two waits look different there: the cargo-holding wait reads
+/// <c>CARGO_HOLDING_WAIT</c>, the station departure wait alone reads <c>VEHICLE_FULL</c>, <c>CLOSED</c> -- or, on a journey that
+/// does not hold cargo because every zone forbids en-route appends, still <c>LOADING</c>, since the server does not announce
+/// that step (control-server <c>LoadingPhaseMachine.Announces</c>). So the phase decides nothing here.
+/// </para>
+/// <para>
+/// <b>The worklist does.</b> It lists what the stop still has to load. Once the last load settles, the control server sends an
+/// empty worklist ending <c>COMPLETED</c> (<c>RefreshDeadlineOfALoadedStopAsync</c>): every committed load is done, and the last
+/// one was a load, so at least one basket went on board here. A stop whose last item ended otherwise -- cancelled,
+/// compensated, released, expired -- says so in <c>stopEndedReason</c>, and a stop with nothing loaded is not "loaded and
+/// done" (CP-0014 section 5, item 7). Such a stop shows no 「出发」 even when an earlier item was loaded; the server judges
+/// that case and the station departure wait ends it as before.
+/// </para>
+/// <para>
+/// <b>Only while the vehicle stands there:</b> the current leg is the pickup leg at the worklist's station, <c>ARRIVED</c>. Once
+/// the vehicle leaves, the plan moves past it.
+/// </para>
+/// <para>
+/// <b>Never the staging station</b> (<see cref="WireToGateStagingPickupStop"/>): it keeps its own rule, CP-0012.
+/// </para>
+/// </remarks>
+public static class WireToGateMachinePickupStop
+{
+    /// <summary>The <c>stopEndedReason</c> of a stop whose last item was loaded.</summary>
+    public const string LoadsCompleted = "COMPLETED";
+
+    public static bool OffersDeparture(WireToGateJourneySnapshot journey, IReadOnlyCollection<string> knownStagingStationIds)
+    {
+        ArgumentNullException.ThrowIfNull(journey);
+        ArgumentNullException.ThrowIfNull(knownStagingStationIds);
+        if (journey.IsNonBusinessStop
+            || journey.CurrentStopWorklist is not { Items.Count: 0 } worklist
+            || !string.Equals(worklist.StopEndedReason, LoadsCompleted, StringComparison.Ordinal)
+            || journey.CurrentLeg is not { } leg
+            || !string.Equals(leg.LegType, "TO_PICKUP", StringComparison.Ordinal)
+            || !string.Equals(leg.State, "ARRIVED", StringComparison.Ordinal)
+            || !string.Equals(leg.StationId, worklist.StationId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return WireToGateStagingPickupStop.StationFunctionOf(journey, worklist.StationId) is { } function
+            ? !string.Equals(function, WireToGateStagingPickupStop.WireStaging, StringComparison.Ordinal)
+            : !knownStagingStationIds.Contains(worklist.StationId, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The pickup stops after the one the vehicle stands at that are not done: the appended stops a press puts back to be
+    /// dispatched (CP-0014, UC-002: the confirmation names how many).
+    /// </summary>
+    public static int PickupStopsAfterCurrent(WireToGateJourneySnapshot journey)
+    {
+        ArgumentNullException.ThrowIfNull(journey);
+        return journey.CurrentLeg is { } current
+            ? journey.UpcomingStopPlan!.Legs.Count(leg =>
+                leg.Sequence > current.Sequence
+                && string.Equals(leg.LegType, "TO_PICKUP", StringComparison.Ordinal)
+                && !string.Equals(leg.State, "COMPLETED", StringComparison.Ordinal))
+            : 0;
     }
 }

@@ -4,7 +4,8 @@ using SQCD.Agv.Core;
 namespace SQCD.Agv.Wpf.ViewModels;
 
 /// <summary>
-/// 待送点「出发」入口与待送点摘要（协议 4.0.0 候选，CP-0012，<c>8005-agv-onboard-hmi#349</c>）。
+/// 「出发」入口与待送点摘要（协议 4.0.0 候选：待送点 CP-0012、<c>8005-agv-onboard-hmi#349</c>；本站已装完的机台取货
+/// CP-0014、<c>8005-agv-onboard-hmi#352</c>，那里只有按钮与确认框，没有待送点摘要）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -85,23 +86,37 @@ public sealed partial class MainViewModel
 
         (int loaded, int frontEmpty, int rearEmpty, int unknown) = ReadSlotOccupancy();
         int unloadedItems = view.Prompt?.UnloadedItemCount ?? WorklistItems.Count;
+        bool staging = !view.AtMachinePickupStop;
         string notice = view.Prompt is null
             ? WireToGateCurrentStopDepartureText.UnavailableText(view.Unavailability)
             : string.Empty;
         string status = WireToGateCurrentStopDepartureText.StatusText(view.Last);
+        string confirmation = view.Prompt switch
+        {
+            null => string.Empty,
+            { } prompt when !staging => WireToGateCurrentStopDepartureText.MachineConfirmationText(prompt.PickupStopsAfter),
+            _ => WireToGateCurrentStopDepartureText.ConfirmationText(loaded, unloadedItems)
+        };
         CurrentStopDeparture = new CurrentStopDepartureDisplay(
             true,
             view.Prompt is not null,
             view.Prompt,
-            view.Prompt is null ? string.Empty : WireToGateCurrentStopDepartureText.ConfirmationText(loaded, unloadedItems),
+            confirmation,
             notice.Length > 0,
             notice,
             status.Length > 0,
             status,
             WireToGateCurrentStopDepartureText.Status(view.Last),
-            WireToGateCurrentStopDepartureText.SummaryText(loaded, frontEmpty, rearEmpty, unknown, unloadedItems),
+            staging
+                ? WireToGateCurrentStopDepartureText.SummaryText(loaded, frontEmpty, rearEmpty, unknown, unloadedItems)
+                : string.Empty,
             notice.Length > 0 ? view.Unavailability.ToString() : string.Empty,
-            WireToGateCurrentStopDepartureText.SummaryCode(loaded, frontEmpty, rearEmpty, unknown, unloadedItems));
+            staging
+                ? WireToGateCurrentStopDepartureText.SummaryCode(loaded, frontEmpty, rearEmpty, unknown, unloadedItems)
+                : string.Empty)
+        {
+            AtStagingPickupStop = staging
+        };
     }
 
     /// <summary>

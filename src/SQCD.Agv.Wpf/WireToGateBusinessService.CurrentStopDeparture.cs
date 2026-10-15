@@ -7,7 +7,8 @@ using SQCD.Agv.Infrastructure;
 namespace SQCD.Agv.Wpf;
 
 /// <summary>
-/// The operator's 「出发」 at a staging pickup stop (protocol 4.0.0 candidate, CP-0012, 8005-agv-onboard-hmi#349): journal the
+/// The operator's 「出发」 at a staging pickup stop (protocol 4.0.0 candidate, CP-0012, 8005-agv-onboard-hmi#349), and at a machine
+/// pickup stop once its loads are done (CP-0014, 8005-agv-onboard-hmi#352): journal the
 /// press, send <c>CurrentStopDepartureRequested</c>, and when <c>CurrentStopDepartureResult</c> comes back journal it and
 /// acknowledge it. The departure itself travels in the server's snapshots.
 /// </summary>
@@ -26,8 +27,9 @@ namespace SQCD.Agv.Wpf;
 /// (<c>REUSE_PENDING_DEPARTURE_REQUEST_ID</c>), and a new press is not offered while one waits for its result.
 /// </para>
 /// <para>
-/// <b>Offered only at a staging pickup stop</b> (<c>OFFER_DEPART_ONLY_AT_STAGING_PICKUP_STOP</c>,
-/// <see cref="WireToGateStagingPickupStop"/>), and not while a slot operation, an entry or a correction or cancellation is
+/// <b>Offered at a staging pickup stop</b> (<see cref="WireToGateStagingPickupStop"/>) <b>and at a machine pickup stop once its
+/// loads are done</b> (<c>OFFER_DEPART_AT_MACHINE_PICKUP_STOP_ONCE_COMMITTED_LOADS_COMPLETE</c>,
+/// <see cref="WireToGateMachinePickupStop"/>), and not while a slot operation, an entry or a correction or cancellation is
 /// open (<c>NEVER_OFFER_DEPART_DURING_SLOT_OPERATION_OR_CORRECTION</c>). The server checks all of it again and refuses in its
 /// own order; this end's checks only spare the operator a refusal they could have seen coming.
 /// </para>
@@ -136,6 +138,7 @@ public sealed partial class WireToGateBusinessService
                 $"操作员按出发：departureRequestId={departure.DepartureRequestId}，messageId={departure.MessageId}，"
                 + $"station={departure.StationId}，worklistRevision={departure.WorklistRevision}，"
                 + $"operationSession={departure.OperationSessionId ?? "null"}，unloadedItems={shown.UnloadedItemCount}，"
+                + $"pickupStopsAfter={shown.PickupStopsAfter}，"
                 + $"operator={departure.OperatorId}。");
             switch (await SendCurrentStopDepartureOnceAsync(departure, cancellationToken).ConfigureAwait(false))
             {
@@ -195,7 +198,9 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateJourneySnapshot journey = _session.CurrentJourney;
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-        if (!WireToGateStagingPickupStop.Is(journey, state.StagingPickupStationIds ?? []))
+        IReadOnlyCollection<string> stagingStations = state.StagingPickupStationIds ?? [];
+        bool atMachine = !WireToGateStagingPickupStop.Is(journey, stagingStations);
+        if (atMachine && !WireToGateMachinePickupStop.OffersDeparture(journey, stagingStations))
         {
             return WireToGateCurrentStopDepartureView.Hidden;
         }
@@ -214,7 +219,7 @@ public sealed partial class WireToGateBusinessService
         if (unavailability != WireToGateCurrentStopDepartureUnavailability.None
             || Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable) is not { } operatorId)
         {
-            return new(true, null, unavailability, last);
+            return new(true, null, unavailability, last) { AtMachinePickupStop = atMachine };
         }
 
         return new(
@@ -224,9 +229,15 @@ public sealed partial class WireToGateBusinessService
                 worklist.Revision,
                 worklist.OperationSessionId,
                 worklist.Items.Count,
-                operatorId.Trim()),
+                operatorId.Trim())
+            {
+                PickupStopsAfter = atMachine ? WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey) : 0
+            },
             WireToGateCurrentStopDepartureUnavailability.None,
-            last);
+            last)
+        {
+            AtMachinePickupStop = atMachine
+        };
     }
 
     /// <summary>

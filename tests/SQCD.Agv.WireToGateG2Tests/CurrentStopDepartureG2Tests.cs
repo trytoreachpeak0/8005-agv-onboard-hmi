@@ -3,6 +3,7 @@ using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 using Harness = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness;
@@ -12,7 +13,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
 /// The onboard half of the staging pickup stop's 「出发」 and of its charging-required departure (protocol 4.0.0 candidate,
-/// CP-0012 and CP-0013, <c>8005-agv-onboard-hmi#349</c>), driven from the fake control server through the real session service, business service
+/// CP-0012 and CP-0013, <c>8005-agv-onboard-hmi#349</c>), and of the machine pickup stop's 「出发」 once its loads are done
+/// (CP-0014, <c>8005-agv-onboard-hmi#352</c>), driven from the fake control server through the real session service, business service
 /// and <see cref="MainViewModel"/>, wired as <c>App.xaml.cs</c> wires them.
 /// </summary>
 /// <remarks>
@@ -20,8 +22,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// The six vectors the 4.0.0 candidate added each have one named test here: five on <c>FP-IS-02</c> -- accepted, the three
 /// refusals, the duplicate request -- and the charging-required departure with cargo on <c>FP-IS-13</c>. Their slice traits
 /// are the projection of their vector traits (<c>IntegrationSliceTraitArchitectureTests</c>). The tests without a vector trait are the ticket's
-/// own acceptance points the vectors do not speak to: the machine pickup that must not change, the cargo-holding wait with an
-/// empty worklist, the entry being processed.
+/// own acceptance points the vectors do not speak to: the cargo-holding wait with an empty worklist, the entry being processed.
+/// The three machine pickup vectors of commit <c>83c8f1f5</c> each have one named test too (#352).
 /// </para>
 /// <para>
 /// The control server is a double here (<see cref="FakeControlServer"/>'s departure half): until
@@ -80,6 +82,9 @@ public sealed class CurrentStopDepartureG2Tests
 
         Assert.Contains("已装 1 篮将出发送货；未装的 2 条退回待派", shown.ConfirmationText, StringComparison.Ordinal);
         Assert.Contains("待装 2 条", shown.SummaryText, StringComparison.Ordinal);
+        // 8005-agv-onboard-hmi#352, the regression: the staging stop keeps its summary and its own wording.
+        Assert.True(shown.HasSummary);
+        Assert.Equal(WireToGateLoadCancellationText.StagingCaption, harness.ViewModel.LoadCancellationCaption);
         HmiButtonStateAssert.ShownAndEnabled(harness, "OnCurrentStopDepartureClick");
 
         Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
@@ -310,11 +315,14 @@ public sealed class CurrentStopDepartureG2Tests
     }
 
     /// <summary>
-    /// Acceptance 4, the regression: a machine pickup -- the same stop shape with <c>WIRE_TO_GATE</c> items -- shows no
-    /// 「出发」 and no staging summary, while its own entries are offered as before.
+    /// <c>CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE</c> (8005-agv-onboard-hmi#352, CP-0014): a machine pickup offers
+    /// no 「出发」 while loads are still committed to it, and none when its stop ended with nothing loaded at its last item --
+    /// here a cancellation before any sublot. Its own entries are offered as before, under the machine's wording.
     /// </summary>
     [Fact]
-    public async Task AMachinePickupShowsNoDeparture()
+    [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task AMachinePickupOffersNoDepartureBeforeItsLoadsAreDone()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartAtStagingAsync(token, workType: "WIRE_TO_GATE");
@@ -327,19 +335,145 @@ public sealed class CurrentStopDepartureG2Tests
         Assert.Equal(CurrentStopDepartureDisplay.Empty, display);
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
         Assert.True(harness.ViewModel.CanRequestLoadCancellation);
+        Assert.Equal(WireToGateLoadCancellationText.MachineCaption, harness.ViewModel.LoadCancellationCaption);
         Assert.False(harness.ScreenState().Buttons.Single(button => button.Key == "OnCurrentStopDepartureClick").Visible);
 
-        // Its cargo-holding wait -- an empty worklist and a holding phase -- is not a staging stop either.
+        // The stop ends with its last item cancelled, nothing loaded: still nothing to depart from.
+        harness.Server.SublotEntryExpectedSublots = null;
         await harness.Server.SendJourneySnapshotAsync(
-            "VehicleBusinessStateSnapshot", State(2, Payloads.LoadingPhase("CARGO_HOLDING_WAIT")));
-        await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Worklist(2, null, "COMPLETED"));
+            "CurrentStopWorklistSnapshot", Worklist(2, null, "LOAD_CANCELLED"));
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
-            "the empty worklist of the holding wait",
+            "the empty worklist of the cancelled stop",
             token);
 
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
         Assert.Equal(CurrentStopDepartureDisplay.Empty, harness.OnUi(() => harness.ViewModel.CurrentStopDeparture));
+        Assert.Empty(harness.Server.CurrentStopDepartureRequests);
+    }
+
+    /// <summary>
+    /// <c>CV-CURRENT-STOP-DEPARTURE-MACHINE-CARGO-HOLDING</c> (8005-agv-onboard-hmi#352, CP-0014): the machine pickup's
+    /// cargo-holding wait -- its loads done, at least one basket loaded -- offers 「出发」 through the departure path of #349,
+    /// with the machine's confirmation and no staging summary; the request echoes the worklist on screen, and the departure is
+    /// shown from the server's snapshots. Once the plan moves past the stop the entry goes.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-MACHINE-CARGO-HOLDING")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task TheMachineCargoHoldingWaitOffersDepartureAndShowsItFromTheSnapshots()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtMachineLoadsDoneAsync(
+            Payloads.LoadingPhase("CARGO_HOLDING_WAIT", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(5)),
+            token,
+            server =>
+            {
+                server.RespondToCurrentStopDepartures = true;
+                server.SnapshotsAfterAcceptedDeparture =
+                [
+                    ("VehicleBusinessStateSnapshot", State(2, Payloads.LoadingPhase("CLOSED", closedReason: "OPERATOR_DEPARTED"))),
+                    ("UpcomingStopPlanSnapshot", Payloads.Plan(2, MachineLegs("COMPLETED", "ACTIVE")))
+                ];
+            });
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.Equal(WireToGateCurrentStopDepartureText.MachineConfirmationText(0), shown.ConfirmationText);
+        Assert.False(shown.HasSummary);
+        Assert.Equal(WireToGateLoadCancellationText.MachineCaption, harness.ViewModel.LoadCancellationCaption);
+        HmiButtonStateAssert.ShownAndEnabled(harness, "OnCurrentStopDepartureClick");
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.LoadingClosedReasonCode == "OPERATOR_DEPARTED"
+                && ResultAcknowledgements(harness.Server).Length == 1
+                && !harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown),
+            "the departure to be shown and the entry to go once the plan moves on",
+            token);
+
+        JsonElement request = Assert.Single(harness.Server.CurrentStopDepartureRequests);
+        Assert.Equal(MachineStation, request.GetProperty("stationId").GetString());
+        Assert.Equal(1, request.GetProperty("worklistRevision").GetInt64());
+        Assert.Equal(OperationSession, request.GetProperty("operationSessionId").GetString());
+        AssertAcknowledgesTheSentResult(harness.Server, Assert.Single(ResultAcknowledgements(harness.Server)));
+        Assert.Equal(LoadingPhaseText.OperatorDepartedText, harness.ViewModel.LoadingClosedReasonText);
+        // NEVER_DEPART_LOCALLY: nothing opened, nothing moved by the vehicle itself.
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// <c>CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT</c> (8005-agv-onboard-hmi#352, CP-0014): a journey that does not hold
+    /// cargo -- every zone forbids en-route appends -- still reads <c>LOADING</c> once its loads are done, because the server
+    /// does not announce that step; only the station departure wait remains, and 「出发」 is offered all the same. The
+    /// confirmation names the appended pickup the press puts back. Accepted, the loading phase stays as it was.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task TheStationDepartureWaitAloneOffersDepartureWhileTheScreenStillReadsLoading()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtMachineLoadsDoneAsync(
+            Payloads.LoadingPhase("LOADING"),
+            token,
+            server => server.RespondToCurrentStopDepartures = true,
+            legs:
+            [
+                Payloads.Leg(1, "TO_PICKUP", "BUSINESS", DemandA, MachineStation, "ARRIVED"),
+                Payloads.Leg(2, "TO_PICKUP", "BUSINESS", DemandB, "WB-08", "PLANNED"),
+                Payloads.Leg(3, "TO_DROPOFF", "BUSINESS", DemandA, "GATE-01", "PLANNED"),
+                Payloads.Leg(4, "TO_DROPOFF", "BUSINESS", DemandB, "GATE-02", "PLANNED")
+            ]);
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
+        Assert.Equal(WireToGateCurrentStopDepartureText.MachineConfirmationText(1), shown.ConfirmationText);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == "ACCEPTED"
+                && ResultAcknowledgements(harness.Server).Length == 1,
+            "the acceptance to be shown",
+            token);
+
+        CurrentStopDepartureDisplay accepted = harness.OnUi(() => harness.ViewModel.CurrentStopDeparture);
+        Assert.False(accepted.CanPress);
+        Assert.Equal(WireToGateCurrentStopDepartureText.AcceptedText, accepted.StatusText);
+        Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Ticket item 4: the server's refusal at a machine pickup -- its state moved on under the press -- is shown as at the staging
+    /// stop, and the press is offered again.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalAtAMachinePickupIsShownAndThePressOfferedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtMachineLoadsDoneAsync(
+            Payloads.LoadingPhase("CARGO_HOLDING_WAIT"),
+            token,
+            server =>
+            {
+                server.RespondToCurrentStopDepartures = true;
+                server.RejectCurrentStopDeparturesWith = "ACTION_NOT_ALLOWED_IN_STATE";
+            });
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == "ACTION_NOT_ALLOWED_IN_STATE",
+            "the refusal to be shown",
+            token);
+
+        CurrentStopDepartureDisplay refused = harness.OnUi(() => harness.ViewModel.CurrentStopDeparture);
+        Assert.Equal(WireToGateCurrentStopDepartureText.RejectionText("ACTION_NOT_ALLOWED_IN_STATE"), refused.StatusText);
+        Assert.True(refused.CanPress);
+        Assert.Empty(harness.UiErrors);
     }
 
     /// <summary>
@@ -768,6 +902,48 @@ public sealed class CurrentStopDepartureG2Tests
             token,
             journalPath: journalPath,
             io: io);
+
+    private const string MachineStation = "WB-07";
+
+    private static object[] MachineLegs(string pickupState, string dropoffState) =>
+    [
+        Payloads.Leg(1, "TO_PICKUP", "BUSINESS", DemandA, MachineStation, pickupState),
+        Payloads.Leg(2, "TO_DROPOFF", "BUSINESS", DemandA, "GATE-01", dropoffState)
+    ];
+
+    /// <summary>
+    /// A machine pickup whose committed loads are done: the empty worklist ending <c>COMPLETED</c> the control server sends once
+    /// the last load settles (<c>RefreshDeadlineOfALoadedStopAsync</c>), with its operation session and station departure
+    /// deadline, at the pickup leg the vehicle stands at.
+    /// </summary>
+    private static Task<Harness> StartAtMachineLoadsDoneAsync(
+        object loadingPhase,
+        CancellationToken token,
+        Action<FakeControlServer>? configure = null,
+        object[]? legs = null) =>
+        Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
+                server.SublotEntryExpectedSublots = null;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = State(1, loadingPhase),
+                    ["CurrentStopWorklistSnapshot"] = new
+                    {
+                        stationId = MachineStation,
+                        worklistRevision = 1,
+                        operationSessionId = OperationSession,
+                        stationDepartureDeadlineAt = DateTimeOffset.UtcNow.AddMinutes(5),
+                        stopEndedReason = "COMPLETED",
+                        items = Array.Empty<object>()
+                    },
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, legs ?? MachineLegs("ARRIVED", "PLANNED"))
+                };
+                configure?.Invoke(server);
+            },
+            token);
 
     private static async Task<CurrentStopDepartureDisplay> WaitForPressableAsync(
         Harness harness,

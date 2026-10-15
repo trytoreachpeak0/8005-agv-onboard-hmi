@@ -1318,7 +1318,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 待送点的认法不另写一份：「出发」入口出现（<see cref="CurrentStopDepartureDisplay.IsShown"/>）就是待送点取货停靠，两者出自
     /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。
     /// </remarks>
-    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.IsShown);
+    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.AtStagingPickupStop);
 
     public bool CanRequestLoadCancellation
     {

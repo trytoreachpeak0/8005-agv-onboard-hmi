@@ -3,7 +3,8 @@ using SQCD.Agv.Core;
 namespace SQCD.Agv.Application;
 
 /// <summary>
-/// 待送点「出发」的文案，唯一的一处（协议 4.0.0 候选，CP-0012，<c>8005-agv-onboard-hmi#349</c>）：确认框、按不了的原因、
+/// 「出发」的文案，唯一的一处（协议 4.0.0 候选，待送点 CP-0012、<c>8005-agv-onboard-hmi#349</c>，机台取货 CP-0014、
+/// <c>8005-agv-onboard-hmi#352</c>）：确认框、按不了的原因、
 /// 待处理、受理与拒绝，以及待送点摘要那一行。
 /// </summary>
 /// <remarks>
@@ -41,7 +42,7 @@ public static class WireToGateCurrentStopDepartureText
             ["STATION_MISMATCH"] = "出发请求未被受理：车辆已不在按下「出发」时的那一站。请核对车辆位置与屏上清单。" + ContactMaintainer,
             ["WORKLIST_REVISION_STALE"] = "出发请求未被受理：按下时屏上的任务清单已经更新。请核对最新清单，仍需出发时重新按「出发」。",
             ["ACTION_NOT_ALLOWED_IN_STATE"] =
-                "出发请求未被受理：当前状态不允许出发（本站不是待送点、仓门操作进行中，或有纠错未完成）。"
+                "出发请求未被受理：当前状态不允许出发（本站还没装完、车辆已在离站、仓门操作进行中，或有纠错、取消未完成）。"
                 + "请等当前操作结束后再按「出发」。" + ContactMaintainer
         };
 
@@ -95,6 +96,20 @@ public static class WireToGateCurrentStopDepartureText
             : "本站一篮未装，车将留在待送点";
         string unloaded = unloadedItemCount > 0 ? $"；未装的 {unloadedItemCount} 条退回待派" : string.Empty;
         return $"{loaded}{unloaded}。\n\n退回待派的任务不会被取消，之后会重新派车。确认现在出发？";
+    }
+
+    /// <summary>
+    /// 机台取货停靠的确认框正文（CP-0014，<c>8005-agv-onboard-hmi#352</c>）：本站已装完、按了立即离站、不再等「离站剩余」走完，
+    /// 出发后不能再在本站纠错；后面有没装货的取货站点时说出个数，它们退回待派。机台上没有待送点摘要，篮数不在这里重复。
+    /// </summary>
+    /// <param name="pickupStopsAfter">后面还没装货的取货站点数，读自计划。</param>
+    public static string MachineConfirmationText(int pickupStopsAfter)
+    {
+        string released = pickupStopsAfter > 0
+            ? $"；后面还没装货的 {pickupStopsAfter} 个取货站点退回待派，不会取消，之后会重新派车"
+            : string.Empty;
+        return $"本站已装完。现在出发，车辆会立即离站送货，不再等「离站剩余」的时间走完{released}。\n\n"
+            + "出发后不能再在本站纠错。确认现在出发？";
     }
 
     /// <summary>
