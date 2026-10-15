@@ -124,10 +124,10 @@ public sealed class DoorOpenPromptViewModelTests
     }
 
     /// <summary>
-    /// 60 秒前不升级，60 秒整起转红并写明车在等关门、门开了多久；秒数随时钟走，红底逐秒闪烁。
+    /// 2 分钟前不升级，2 分钟整起转红（用户 10-16 定的时长）并写明车在等关门、门开了多久；秒数随时钟走，红底逐秒闪烁。
     /// </summary>
     [Fact]
-    public async Task AfterSixtySecondsThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks()
+    public async Task AfterTwoMinutesThePromptTurnsRedSaysTheVehicleIsWaitingAndBlinks()
     {
         FakeIoModuleClient io = new();
         ManualClock clock = new(Now);
@@ -136,7 +136,7 @@ public sealed class DoorOpenPromptViewModelTests
         OpenDoors(io, 3);
         viewModel.ApplyWireToGateOperatorEvent(Operation(OperationType.Unload, WireToGateHmiOperationStage.WaitingOperator, 3));
 
-        clock.Advance(TimeSpan.FromSeconds(59.75));
+        clock.Advance(TimeSpan.FromSeconds(119.75));
         viewModel.RefreshDoorOpenPrompt();
         Assert.Equal(DoorOpenPromptTier.Waiting, viewModel.DoorOpenPromptTier);
         Assert.False(viewModel.DoorOpenPromptDimmed);
@@ -145,14 +145,14 @@ public sealed class DoorOpenPromptViewModelTests
         viewModel.RefreshDoorOpenPrompt();
         Assert.Equal(DoorOpenPromptTier.Overdue, viewModel.DoorOpenPromptTier);
         Assert.Equal("3号仓门开着：请取出篮子，然后关好仓门", viewModel.DoorOpenPromptHeadline);
-        Assert.Equal("车在等关门：3号仓门已开 1 分 00 秒。门不关好，车不会继续。", viewModel.DoorOpenPromptDetail);
+        Assert.Equal("车在等关门：3号仓门已开 2 分 00 秒。门不关好，车不会继续。", viewModel.DoorOpenPromptDetail);
         bool firstPhase = viewModel.DoorOpenPromptDimmed;
 
         clock.Advance(TimeSpan.FromSeconds(1));
         viewModel.RefreshDoorOpenPrompt();
         Assert.NotEqual(firstPhase, viewModel.DoorOpenPromptDimmed);
 
-        clock.Advance(TimeSpan.FromSeconds(74));
+        clock.Advance(TimeSpan.FromSeconds(14));
         viewModel.RefreshDoorOpenPrompt();
         Assert.Equal("车在等关门：3号仓门已开 2 分 15 秒。门不关好，车不会继续。", viewModel.DoorOpenPromptDetail);
     }
@@ -170,10 +170,10 @@ public sealed class DoorOpenPromptViewModelTests
         OpenDoors(io, 3);
         viewModel.ApplyWireToGateOperatorEvent(Operation(OperationType.Unload, WireToGateHmiOperationStage.WaitingOperator, 3));
 
-        clock.Advance(TimeSpan.FromSeconds(40));
+        clock.Advance(TimeSpan.FromSeconds(80));
         viewModel.ApplyWireToGateOperatorEvent(Operation(OperationType.Unload, WireToGateHmiOperationStage.WaitingOperator, 3));
         io.PublishSnapshot();
-        clock.Advance(TimeSpan.FromSeconds(20));
+        clock.Advance(TimeSpan.FromSeconds(40));
         viewModel.RefreshDoorOpenPrompt();
         Assert.Equal(DoorOpenPromptTier.Overdue, viewModel.DoorOpenPromptTier);
 
@@ -181,7 +181,7 @@ public sealed class DoorOpenPromptViewModelTests
             Operation(OperationType.Unload, WireToGateHmiOperationStage.WaitingOperator, 3, attemptId: "ATTEMPT-2"));
         Assert.Equal(DoorOpenPromptTier.Waiting, viewModel.DoorOpenPromptTier);
 
-        clock.Advance(TimeSpan.FromSeconds(60));
+        clock.Advance(TimeSpan.FromSeconds(120));
         viewModel.RefreshDoorOpenPrompt();
         Assert.Equal(DoorOpenPromptTier.Overdue, viewModel.DoorOpenPromptTier);
         io.CloseDoor(2, cargo: false);

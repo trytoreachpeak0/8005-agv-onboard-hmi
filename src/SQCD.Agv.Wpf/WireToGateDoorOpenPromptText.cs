@@ -13,14 +13,15 @@ namespace SQCD.Agv.Wpf;
 /// louder until the six-minute expected-action alarm, and that one tells the operator somebody else will come.
 /// </para>
 /// <para>
-/// Draft wording pending the user's confirmation through the coordinator. No ticket number and no word for the
-/// dispatch side appear in it: the operator has neither.
+/// The wording and the two-minute escalation are the user's of 2026-10-16 (through the coordinator); the delay is a
+/// constant on purpose, not a setting. No ticket number and no word for the dispatch side appear in it: the operator
+/// has neither. No sound either -- the user ruled it out.
 /// </para>
 /// </remarks>
 public static class WireToGateDoorOpenPromptText
 {
     /// <summary>How long a door may stand open before the banner turns red and says the vehicle is waiting.</summary>
-    public static readonly TimeSpan EscalationDelay = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan EscalationDelay = TimeSpan.FromSeconds(120);
 
     public static string Headline(OperationType operationType, IReadOnlyList<int> openSlots) =>
         $"{Doors(openSlots)}开着：{(operationType == OperationType.Load ? "请放入篮子" : "请取出篮子")}，然后关好仓门";
