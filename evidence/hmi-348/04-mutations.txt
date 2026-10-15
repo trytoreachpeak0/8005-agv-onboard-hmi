@@ -1,0 +1,30 @@
+mutation=M1-no-staging-check file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopTheCancellationBeforeAnySublotIsNotOnTheScreen [82 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AStagingPickupOffersNoCancellationBeforeAnySublot [101 ms]
+Failed!  - Failed:     2, Passed:    11, Skipped:     0, Total:    13, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+mutation=M2-no-sent-exception file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.ACancellationAlreadySentStillSettlesWhenTheStopTurnsOutToBeTheStagingStop [7 s]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+mutation=M3-press-never-staging file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopALoadInFlightCanBeUndoneAndTheScreenSaysItGoesBackToBeDispatched [128 ms]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+mutation=M4-caption-always-machine file=src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopALoadInFlightCanBeUndoneAndTheScreenSaysItGoesBackToBeDispatched [143 ms]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+mutation=M5-caption-always-staging file=src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupTheCancellationBeforeAnySublotIsUnchanged(workType: "DIE_TO_WIRE_STAGING") [335 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupTheCancellationBeforeAnySublotIsUnchanged(workType: "WIRE_TO_GATE") [81 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupALoadInFlightKeepsItsCaptionAndConfirmation(workType: "DIE_TO_OVEN", taskTypeText: "装片→烘箱") [168 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupALoadInFlightKeepsItsCaptionAndConfirmation(workType: "WIRE_TO_GATE", taskTypeText: "焊线→质检关卡") [133 ms]
+Failed!  - Failed:     4, Passed:     9, Skipped:     0, Total:    13, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored, tree clean
