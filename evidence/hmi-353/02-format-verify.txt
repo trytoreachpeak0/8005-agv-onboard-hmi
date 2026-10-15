@@ -1,0 +1,2 @@
+dotnet format SQCD_8005AGV.sln --verify-no-changes --include <本票改动的 .cs 文件> (commit c6c349e)
+exit=0

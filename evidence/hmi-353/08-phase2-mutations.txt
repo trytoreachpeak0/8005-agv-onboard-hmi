@@ -1,0 +1,7 @@
+第二阶段变异（审查第一阶段之后，head d68bdf7 / 277d047），做法同 04：每轮只改一个文件、只还原那一个文件、假条件取运行期的值。过滤：本票 G2 用例 11 个（16 条）+ 待送点相关 3 条 + 滚动 2 条。
+P1 machine rows offered a cancellation too (no IsShown in the view model): red 1 ['AtAMachinePickupNoRowHasItsOwnCancellation(workType:'] | ['Failed!  - Failed:     2, Passed:    14, Skipped:     0, Total:    16, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)']
+P2 business row subject not limited to the staging stop（d68bdf7）: red 0，存活 → 277d047 在机台用例里补 CanRequestWorklistRowCancellation 为 false 的断言
+P3 loads on board not excluded (review M2 red): red 1 ['AfterARestartARowAlreadyOnBoardOffersNoCancellation'] | ['Failed!  - Failed:     1, Passed:    15, Skipped:     0, Total:    16, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)']
+P4 shared entry left for a gone row worded as the staging undo (review L1 red): red 1 ['AtTheStagingStopTheSharedEntryLeftForARowGoneIsWordedAsTheRowsCancellation'] | ['Failed!  - Failed:     1, Passed:    15, Skipped:     0, Total:    16, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)']
+P2 重跑（277d047）business row subject not limited to the staging stop: red 1 ['AtAMachinePickupNoRowHasItsOwnCancellation(workType:'] | ['Failed!  - Failed:     2, Passed:    14, Skipped:     0, Total:    16, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)']
+注：P1 与 P2 重跑那两行的「red 1」是按用例名去重后的计数，那个用例是按两种任务类型各跑一遍的 Theory，实际红 2 条（见同行 Failed: 2）。

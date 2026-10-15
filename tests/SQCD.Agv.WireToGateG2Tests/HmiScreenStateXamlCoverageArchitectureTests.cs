@@ -47,10 +47,35 @@ public sealed class HmiScreenStateXamlCoverageArchitectureTests
     [Fact]
     public void EveryButtonInTheWindowIsInTheSnapshotWithItsBindings()
     {
-        HmiScreenBindings.ButtonBinding[] fromXaml = [.. Window().Descendants(Presentation + "Button").Select(ButtonFromXaml)];
+        HmiScreenBindings.ButtonBinding[] fromXaml = [.. Window().Descendants(Presentation + "Button")
+            .Where(button => !InWorklistRow(button))
+            .Select(ButtonFromXaml)];
 
         Assert.Equal(fromXaml, HmiScreenBindings.Buttons);
     }
+
+    /// <summary>
+    /// The buttons in the worklist's row template are reported per row, their paths read off <see cref="WorklistItemRow"/>
+    /// (8005-agv-onboard-hmi#353): a new one, or a changed binding, turns this red.
+    /// </summary>
+    [Fact]
+    public void EveryButtonInAWorklistRowIsInTheRowStateWithItsBindings()
+    {
+        HmiScreenBindings.ButtonBinding[] fromXaml = [.. Window().Descendants(Presentation + "Button")
+            .Where(InWorklistRow)
+            .Select(ButtonFromXaml)];
+
+        Assert.Equal(fromXaml, HmiScreenBindings.WorklistRowButtons);
+        foreach (HmiScreenBindings.ButtonBinding button in HmiScreenBindings.WorklistRowButtons)
+        {
+            AssertPath(button.Visibility, typeof(bool), typeof(WorklistItemRow));
+            AssertPath(button.IsEnabled, typeof(bool), typeof(WorklistItemRow));
+        }
+    }
+
+    private static bool InWorklistRow(XElement button) =>
+        button.Ancestors(Presentation + "ListBox")
+            .Any(list => (string?)list.Attribute("AutomationProperties.AutomationId") == "WorklistItems");
 
     [Fact]
     public void EveryEditableInputBoxIsInTheSnapshotWithItsBindings()
@@ -134,14 +159,14 @@ public sealed class HmiScreenStateXamlCoverageArchitectureTests
         }
     }
 
-    private static void AssertPath(string? path, Type expected)
+    private static void AssertPath(string? path, Type expected, Type? source = null)
     {
         if (path is null)
         {
             return;
         }
 
-        Type type = typeof(MainViewModel);
+        Type type = source ?? typeof(MainViewModel);
         foreach (string name in path.Split('.'))
         {
             PropertyInfo? property = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);

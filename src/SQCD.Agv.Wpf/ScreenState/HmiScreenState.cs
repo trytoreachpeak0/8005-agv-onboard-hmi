@@ -114,8 +114,12 @@ public sealed record HmiRawCodeState(
 /// <summary>A journey plan row: its <c>ItemStatus</c> (sequence|purpose|state) and station.</summary>
 public sealed record HmiJourneyPlanLegState(string ItemStatus, string StationId);
 
-/// <summary>A worklist row without its sublot.</summary>
-public sealed record HmiWorklistRowState(string DemandId, string SideCode);
+/// <summary>
+/// A worklist row without its sublot. <see cref="CancellationShown"/> and <see cref="CancellationEnabled"/> are its own
+/// 「取消」 at the staging pickup stop (8005-agv-onboard-hmi#353): the button's <c>Visibility</c> and <c>IsEnabled</c> bindings,
+/// read off the row.
+/// </summary>
+public sealed record HmiWorklistRowState(string DemandId, string SideCode, bool CancellationShown, bool CancellationEnabled);
 
 /// <summary>A slot card.</summary>
 public sealed record HmiLockerState(int PhysicalNumber, bool IsKnown, bool IsLocked, bool HasCargo, bool IsTarget);

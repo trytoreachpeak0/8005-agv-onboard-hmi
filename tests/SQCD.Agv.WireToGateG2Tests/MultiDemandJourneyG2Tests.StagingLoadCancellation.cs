@@ -194,7 +194,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         FakeIoModuleClient io,
         string workType,
         CancellationToken token,
-        Action<FakeControlServer>? alsoConfigure = null)
+        Action<FakeControlServer>? alsoConfigure = null,
+        string? journalPath = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -212,6 +213,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 alsoConfigure?.Invoke(server);
             },
             token,
+            journalPath,
             io: io);
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null

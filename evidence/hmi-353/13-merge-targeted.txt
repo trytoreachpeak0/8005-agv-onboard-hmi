@@ -1,0 +1,2 @@
+合入 hmi#352 之后（merge a2b0c06）定向：MultiDemandJourneyG2Tests、CurrentStopDepartureG2Tests、LoadCancellationBeforeSublotG2Tests、HmiScreenState*、WorklistScrollingLayoutTests
+Passed!  - Failed:     0, Passed:   258, Skipped:     0, Total:   258, Duration: 2 m 50 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

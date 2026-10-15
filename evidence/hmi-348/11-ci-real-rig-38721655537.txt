@@ -1,0 +1,6 @@
+CI real rig run 38721655537 (8005-agv-control-server l2.yml, rig=real, cs-desktop), conclusion=success
+control-server e2320398a7f644baf961a9abdaf3ef5c5e6b4f9a, onboard ef13809ae4bd627962ab2b67fca3c7fa13cd693d, simulator fb5f7c593742bf98bc3957b8729a38aad5321f28
+| Run | Result | Seconds | Committed at start (GiB) |
+| --- | --- | --- | --- |
+| real-onboard-compensate-then-reconnect-01 | PASS | 83 | 7.27 |
+##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 83s

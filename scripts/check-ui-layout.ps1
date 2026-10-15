@@ -64,6 +64,10 @@ $checks = [ordered]@{
     # CanPressLoadCancellation，按钮在没选中时就整个消失了——那正是批次7-13 立这条检查要防的退化，
     # 而视图模型的判据看不见 XAML 绑定，这里是它唯一的守卫。
     loadCancellationSelectionHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationSelection"') -and ($xaml -match 'Text="\{Binding LoadCancellationSelectionHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationSelectionHint, Converter') -and ($xaml -match 'IsEnabled="\{Binding CanPressLoadCancellation\}"[^>]*Visibility="\{Binding CanRequestLoadCancellation, Converter[^>]*Content="{Binding LoadCancellationCaption}"')
+    # 待送点清单每行的「取消」（CP-0014 修订项二，8005-agv-onboard-hmi#353）：显隐绑「这一行有没有」、可按绑「按得动吗」，两个
+    # 不同的绑定，理由同上——一行的取消在等答复时别的行留在原位、只是按不动。清单自己不带滚动区、左栏整栏可用手指拖：
+    # 清单带着滚动区时手指拖动和滚轮都被它吞掉，待送点的清单就只能拖那根细滚动条（本票查明的「显示不全」之一）。
+    worklistRowCancellation = ($xaml -match '<Button[^>]*AutomationProperties\.AutomationId="WorklistItemCancellation"[^>]*IsEnabled="\{Binding CanPressCancellation\}"[^>]*Visibility="\{Binding OffersCancellation, Converter[^>]*Click="OnWorklistRowCancellationClick"[^>]*Content="取消"') -and ($xaml -match '<ListBox\.Template>\s*<ControlTemplate TargetType="ListBox">\s*<ItemsPresenter />') -and ($xaml -match 'VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly"')
     # 「暂不可用」那句已被替换，不该再留在界面上：留着会和新提示同时出现，说两件互相矛盾的事。
     noLoadCancellationUnavailableHint = ($xaml -notmatch 'LoadCancellationUnavailable') -and ($xaml -notmatch '扫码前取消暂不可用')
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
