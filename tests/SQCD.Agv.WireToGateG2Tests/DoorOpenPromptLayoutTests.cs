@@ -82,6 +82,89 @@ public sealed class DoorOpenPromptLayoutTests
         Assert.True(lockersHeight >= 180, $"the slot area shrank to {lockersHeight}");
     }
 
+    /// <summary>
+    /// The crowded case (review M3): the banner red, and the prompt area carrying the load cancellation entry, the
+    /// expected-action-overdue line and the station departure countdown at once. At this window's client size and at the
+    /// one <c>WorklistScrollingLayoutTests</c> assumes (review L8), the slot area keeps some height, nothing in the prompt
+    /// area is cut off below its border, and the operator record keeps its 110.
+    /// </summary>
+    [Theory]
+    [InlineData(1004, 660)]
+    [InlineData(989, 640)]
+    public async Task InTheCrowdedCaseNothingInThePromptAreaIsCutOff(int width, int height)
+    {
+        FakeIoModuleClient io = new();
+        ManualClock clock = new(Now);
+        OnboardController controller = Controller(io);
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: Now));
+        viewModel.UpdateWireToGateJourney(new WireToGateJourneySnapshot(
+            null,
+            new WireToGateCurrentStopWorklist(
+                "ST-01",
+                1,
+                null,
+                Now + TimeSpan.FromMinutes(5),
+                [new WireToGateWorklistItem("11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "DROP", 1)],
+                new string('a', 64)),
+            null,
+            Now));
+        viewModel.UpdateOnboardAlarms([new AlarmEntry(
+            OnboardAlarmCodes.SlotExpectedActionOverdue,
+            OnboardAlarmEvaluator.Warning,
+            Now,
+            AlarmScope.CurrentVehicle,
+            "取出货物并关好3号仓门",
+            SlotOperationAttemptId: "ATTEMPT-1",
+            PhysicalSlotNumber: 3)]);
+        io.OpenDoor(2);
+        io.OpenDoor(3);
+        io.PublishSnapshot();
+        viewModel.ApplyWireToGateOperatorEvent(Operation(3, 4));
+        clock.Advance(TimeSpan.FromSeconds(134));
+        viewModel.RefreshDoorOpenPrompt();
+        await controller.DisposeAsync();
+        Assert.Equal(DoorOpenPromptTier.Overdue, viewModel.DoorOpenPromptTier);
+        Assert.True(viewModel.CanRequestLoadCancellation);
+        Assert.True(viewModel.HasExpectedActionOverdue);
+        Assert.True(viewModel.HasStationDepartureCountdown);
+
+        (double slotArea, double log, string[] cut) = OnStaThread(() =>
+        {
+            FrameworkElement root = Lay(viewModel, width, height);
+            Grid outer = (Grid)root;
+            Border prompt = Find<Border>(root, border => Grid.GetRow(border) == 3 && ReferenceEquals(VisualTreeHelper.GetParent(border), outer))!;
+            double promptBottom = prompt.TranslatePoint(new Point(0, 0), root).Y + prompt.ActualHeight;
+            FrameworkElement[] mustShow =
+            [
+                Find<Button>(root, button => button.Content as string == viewModel.LoadCancellationCaption)!,
+                Find<TextBlock>(root, block => AutomationProperties.GetAutomationId(block) == "ExpectedActionOverdue")!,
+                Find<TextBlock>(root, block => AutomationProperties.GetAutomationId(block) == "StationDepartureCountdown")!,
+            ];
+            string[] cutOff = [.. mustShow
+                .Where(element => element.ActualHeight <= 0
+                    || element.TranslatePoint(new Point(0, 0), root).Y + element.ActualHeight > promptBottom + 0.5)
+                .Select(element => $"{element.GetType().Name} {AutomationProperties.GetAutomationId(element)} h={element.ActualHeight:0}")];
+            return (outer.RowDefinitions[4].ActualHeight, outer.RowDefinitions[5].ActualHeight, cutOff);
+        });
+
+        Assert.Empty(cut);
+        Assert.True(slotArea > 0, $"the slot area is gone at {width}x{height}");
+        Assert.Equal(110, log);
+    }
+
     private static Border Banner(FrameworkElement root) =>
         Find<Border>(root, border => AutomationProperties.GetAutomationId(border) == "DoorOpenPrompt")!;
 
@@ -90,15 +173,17 @@ public sealed class DoorOpenPromptLayoutTests
             "ATTEMPT-1", OperationType.Unload, slots, WireToGateHmiOperationStage.WaitingOperator, "进度", Now));
 
     /// <summary>The window's content laid out at the onboard screen's client size (1024×768, maximized, title bar and taskbar).</summary>
-    private static FrameworkElement Lay(MainViewModel viewModel)
+    private static FrameworkElement Lay(MainViewModel viewModel) => Lay(viewModel, 1004, 660);
+
+    private static FrameworkElement Lay(MainViewModel viewModel, double width, double height)
     {
         Window window = (Window)XamlReader.Parse(LoadableMainWindowXaml());
         FrameworkElement root = (FrameworkElement)window.Content;
         window.Content = null;
         root.Resources.MergedDictionaries.Add(window.Resources);
         root.DataContext = viewModel;
-        root.Measure(new Size(1004, 660));
-        root.Arrange(new Rect(0, 0, 1004, 660));
+        root.Measure(new Size(width, height));
+        root.Arrange(new Rect(0, 0, width, height));
         root.UpdateLayout();
         return root;
     }
@@ -175,7 +260,10 @@ public sealed class DoorOpenPromptLayoutTests
             ?? throw new DirectoryNotFoundException("No SQCD_8005AGV.sln above " + AppContext.BaseDirectory);
     }
 
-    private static async Task<MainViewModel> ViewModel(OnboardController controller)
+    private static async Task<MainViewModel> ViewModel(OnboardController controller) =>
+        await ViewModel(controller, new SystemClock());
+
+    private static async Task<MainViewModel> ViewModel(OnboardController controller, IClock clock)
     {
         MainViewModel viewModel = new(
             controller,
@@ -183,6 +271,7 @@ public sealed class DoorOpenPromptLayoutTests
             "agv02",
             OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
         {
+            Clock = clock,
             StationDepartureCountdownDispatcher = null
         };
         await viewModel.InitializeAsync();
@@ -202,6 +291,15 @@ public sealed class DoorOpenPromptLayoutTests
             TimeSpan.FromSeconds(1),
             128,
             2));
+
+    private sealed class ManualClock(DateTimeOffset now) : IClock
+    {
+        private long _ticks = now.UtcTicks;
+
+        public DateTimeOffset Now => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+    }
 
     private sealed class NoRuleGateway : IRuleGateway
     {

@@ -1,0 +1,17 @@
+review M1/M2 red at 4ccf215 (product exclusion and per-slot clock not yet in)
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.AnUnreadableReadingHidesTheBannerButTheClockRunsOn [85 ms]
+   Assert.Equal() Failure: Values differ
+Expected: Overdue
+Actual:   Waiting
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoBannerOverARecoveryVectorsOpenDoor(projectedAs: Load) [2 ms]
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Failed SQCD.Agv.WireToGateG2Tests.DoorOpenPromptViewModelTests.NoBannerOverARecoveryVectorsOpenDoor(projectedAs: Unload) [< 1 ms]
+   Assert.False() Failure
+Expected: False
+Actual:   True
+Failed!  - Failed:     3, Passed:    11, Skipped:     0, Total:    14, Duration: 821 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ACompensationsOpenDoorPutsUpNoBannerWhereTheOrdinaryLoadsDid [823 ms]
+   the banner went up over the compensation: 1号仓门开着：请取出篮子，然后关好仓门
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 849 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
