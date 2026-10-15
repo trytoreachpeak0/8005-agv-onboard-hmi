@@ -15,5 +15,4 @@
 | `05-architecture.txt` | 两个测试项目的 `ArchitectureTests` | 单元 203/0，G2 项目 12/0 |
 | `06-full-g2-*` | `scripts/run-w2g-g2.ps1` 全量（G1、单元、G2） | `PASS`：单元 1261/0，G2 991/0 |
 | `07-check-ui-layout.json` | `scripts/check-ui-layout.ps1`（新增 `visibleDoorOpenPrompt`） | `PASS` |
-
-真装置 `real-onboard-compensate-then-reconnect`：待 CI 真装置跑完补上。
+| `08-ci-real-rig-38773775218.txt` | CI 真装置 `real-onboard-compensate-then-reconnect` ×1（`l2.yml`，`rig=real`；cs `ef992e98`、onboard `457dcac2`、sim `fb5f7c59`） | `PASS`，104 秒 |

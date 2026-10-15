@@ -1,0 +1,5 @@
+CI real rig: run 38773775218 (l2.yml, rig=real), cs ef992e98dd723bc59ec1870a43cb8ac69e93bed2, onboard 457dcac2e80d68cb178707b687f0540ebcb9ffb6, sim fb5f7c593742bf98bc3957b8729a38aad5321f28
+conclusion: success
+##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 104s
+L2 real-onboard-compensate-then-reconnect -> PASS (evidence: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-38773775218-1\real-onboard-compensate-then-reconnect-01)
+| real-onboard-compensate-then-reconnect-01 | PASS | 104 | 2.89 |
