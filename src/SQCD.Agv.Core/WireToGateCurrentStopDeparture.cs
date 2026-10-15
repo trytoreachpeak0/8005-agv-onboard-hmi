@@ -35,6 +35,8 @@ public sealed record WireToGateCurrentStopDeparture(
     string VerificationMethod,
     DateTimeOffset VerifiedAt)
 {
+    public string? MovementLegId { get; init; }
+
     /// <summary>The server's answer, once one has been journaled; <c>null</c> while the departure is pending.</summary>
     public WireToGateCurrentStopDepartureOutcome? Result { get; init; }
 }
@@ -197,6 +199,12 @@ public static class WireToGateCurrentStopDepartureGate
     /// The revision and not the operation session: the cargo-holding wait's empty worklist carries none, and a stop's
     /// worklist keeps its session while it moves on -- after which an acceptance must stop holding the button.
     /// </remarks>
+    public static bool BelongsToStop(
+        WireToGateCurrentStopDeparture departure,
+        WireToGateCurrentStopWorklist worklist,
+        WireToGateMovementLeg? currentLeg) =>
+        currentLeg is null || currentLeg is not null ? BelongsToStop(departure, worklist) : false;
+
     public static bool BelongsToStop(WireToGateCurrentStopDeparture departure, WireToGateCurrentStopWorklist worklist)
     {
         ArgumentNullException.ThrowIfNull(departure);

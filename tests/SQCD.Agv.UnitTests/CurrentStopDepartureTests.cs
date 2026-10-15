@@ -309,6 +309,7 @@ public sealed class CurrentStopDepartureTests
     {
         WireToGateJourneySnapshot journey = MachineAt(
             LoadsDone(),
+            new WireToGateLoadingPhase("LOADING", DateTimeOffset.UnixEpoch.AddMinutes(5), null),
             legs:
             [
                 Leg(1, "TO_PICKUP", Machine, "ARRIVED"),
@@ -318,7 +319,40 @@ public sealed class CurrentStopDepartureTests
             ]);
 
         Assert.Equal(2, WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey));
-        Assert.Equal(0, WireToGateMachinePickupStop.PickupStopsAfterCurrent(MachineAt(LoadsDone())));
+        Assert.Equal(0, WireToGateMachinePickupStop.PickupStopsAfterCurrent(MachineAt(
+            LoadsDone(), new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", DateTimeOffset.UnixEpoch.AddMinutes(5), null))));
+    }
+
+    /// <summary>
+    /// Review M1: a press puts the stops after this one back only while the loading phase is still open with the cargo-holding
+    /// deadline running (CP-0014 note 3: it counts as that deadline expiring now). Once the phase has ended -- full, closed,
+    /// or a journey that does not hold cargo and so has no deadline -- a press only ends the station departure wait, and the
+    /// vehicle goes on to those stops: nothing is put back, and the confirmation names none.
+    /// </summary>
+    [Theory]
+    [InlineData("LOADING", true, null, 1)]
+    [InlineData("CARGO_HOLDING_WAIT", true, null, 1)]
+    [InlineData("LOADING", false, null, 0)]
+    [InlineData("CARGO_HOLDING_WAIT", false, null, 0)]
+    [InlineData("VEHICLE_FULL", true, null, 0)]
+    [InlineData("CLOSED", true, "CARGO_HOLDING_TIMEOUT", 0)]
+    public void OnlyARunningCargoHoldingDeadlinePutsTheStopsAfterThisOneBack(
+        string state,
+        bool deadline,
+        string? closedReason,
+        int expected)
+    {
+        WireToGateJourneySnapshot journey = MachineAt(
+            LoadsDone(),
+            new WireToGateLoadingPhase(state, deadline ? DateTimeOffset.UnixEpoch.AddMinutes(5) : null, closedReason),
+            legs:
+            [
+                Leg(1, "TO_PICKUP", Machine, "ARRIVED"),
+                Leg(2, "TO_PICKUP", "ST-WB-02", "PLANNED"),
+                Leg(3, "TO_DROPOFF", "WB-09", "PLANNED")
+            ]);
+
+        Assert.Equal(expected, WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey));
     }
 
     // ---- review M3: every branch of the entry's judgement, one fact at a time from "everything clear" ----
@@ -433,8 +467,42 @@ public sealed class CurrentStopDepartureTests
         };
         WireToGateCurrentStopWorklist worklist = Worklist(stationId) with { Revision = revision };
 
-        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, worklist));
-        Assert.False(WireToGateCurrentStopDepartureGate.BelongsToStop(settled with { Result = null }, worklist));
+        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, worklist, currentLeg: null));
+        Assert.False(WireToGateCurrentStopDepartureGate.BelongsToStop(settled with { Result = null }, worklist, currentLeg: null));
+    }
+
+    /// <summary>
+    /// Review M2: a press at a machine pickup stop belongs to the stop's pickup leg for as long as the vehicle stands at it
+    /// (<c>ARRIVED</c>), whatever worklist revisions come after -- the server may send another empty worklist before the
+    /// plan moves (a refreshed deadline, or one ending <c>OPERATOR_DEPARTED</c>). Once the leg is left, or another leg is the
+    /// current one, it no longer does.
+    /// </summary>
+    [Theory]
+    [InlineData("leg-1", "ARRIVED", true)]
+    [InlineData("leg-1", "ACTIVE", false)]
+    [InlineData("leg-1", "COMPLETED", false)]
+    [InlineData("leg-2", "ARRIVED", false)]
+    public void AMachinePressBelongsToItsPickupLegWhileTheVehicleStandsThere(string legId, string state, bool expected)
+    {
+        WireToGateCurrentStopDeparture settled = new WireToGateCurrentStopDeparture(
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            Machine,
+            2,
+            null,
+            "operator-1",
+            "SESSION",
+            DateTimeOffset.UnixEpoch) with
+        {
+            MovementLegId = "leg-1",
+            Result = new("00000000-0000-4000-8000-000000000003", new string('a', 64), "ACCEPTED", null, 2, DateTimeOffset.UnixEpoch)
+        };
+        WireToGateCurrentStopWorklist newer = LoadsDone() with { Revision = 5 };
+
+        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, newer, Leg(1, "TO_PICKUP", Machine, state) with
+        {
+            MovementLegId = legId
+        }));
     }
 
     /// <summary>

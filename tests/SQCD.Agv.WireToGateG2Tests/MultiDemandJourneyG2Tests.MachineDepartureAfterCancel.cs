@@ -22,10 +22,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTakeOverStopAsync(io, _ => { }, token);
 
         await LoadAndRecordAsync(harness, io, DemandA, AttemptA, slot: 1, token);
+        // Review L1: stamped with this stop as it is recorded, from the journey on screen -- no snapshot has arrived since.
+        string pickupLeg = harness.Session.CurrentJourney.CurrentLeg!.MovementLegId;
+        Assert.True(ReadJournal(harness, token).HasLoadOnBoardAtStop(pickupLeg));
         await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Payloads.Worklist(2, Payloads.ItemB));
         await harness.WaitUntilAsync(
-            () => ReadJournal(harness, token).HasLoadOnBoardAt("ST-01"),
-            "A's load to be stamped with this station",
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the worklist with B alone",
             token);
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
 

@@ -250,6 +250,8 @@ public sealed record WireToGateLoadOnBoard(WireToGateRecoveryOperationContext Lo
     /// </summary>
     public string? StationId { get; init; }
 
+    public string? StopLegId { get; init; }
+
     /// <summary>The demand this load is for. Not serialized: it is <see cref="Load"/>'s.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string DemandId => Load.DemandId;
@@ -345,6 +347,12 @@ public sealed record WireToGateRecoveryState(
     /// <summary>
     /// Whether a load made at <paramref name="stationId"/> is still on board and not handed off (8005-agv-onboard-hmi#352).
     /// </summary>
+    public bool HasLoadOnBoardAtStop(string movementLegId) =>
+        LoadsOnBoard?.Any(item => string.Equals(item.StopLegId, movementLegId, StringComparison.Ordinal)) == true;
+
+    public WireToGateRecoveryState WithLoadStopsStampedFrom(WireToGateJourneySnapshot journey) =>
+        journey is null ? this : this;
+
     public bool HasLoadOnBoardAt(string stationId) =>
         LoadsOnBoard?.Any(item =>
             !item.HandedOffAwaitingServer && string.Equals(item.StationId, stationId, StringComparison.Ordinal)) == true;

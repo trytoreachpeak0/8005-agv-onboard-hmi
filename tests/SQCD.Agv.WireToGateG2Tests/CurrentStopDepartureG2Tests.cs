@@ -406,8 +406,9 @@ public sealed class CurrentStopDepartureG2Tests
     /// <summary>
     /// <c>CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT</c> (8005-agv-onboard-hmi#352, CP-0014): a journey that does not hold
     /// cargo -- every zone forbids en-route appends -- still reads <c>LOADING</c> once its loads are done, because the server
-    /// does not announce that step; only the station departure wait remains, and 「出发」 is offered all the same. The
-    /// confirmation names the appended pickup the press puts back. Accepted, the loading phase stays as it was.
+    /// does not announce that step; only the station departure wait remains, and 「出发」 is offered all the same. Its loading
+    /// phase has in truth ended, so a press only ends the station departure wait and the vehicle goes on to the pickup after
+    /// this one: the confirmation puts nothing back (review M1). Accepted, the loading phase stays as it was.
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT")]
@@ -429,7 +430,8 @@ public sealed class CurrentStopDepartureG2Tests
         CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
 
         Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
-        Assert.Equal(WireToGateCurrentStopDepartureText.MachineConfirmationText(1), shown.ConfirmationText);
+        Assert.Equal(WireToGateCurrentStopDepartureText.MachineConfirmationText(0), shown.ConfirmationText);
+        Assert.Equal(0, shown.Prompt!.PickupStopsAfter);
 
         Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
         await harness.WaitUntilAsync(
@@ -443,6 +445,53 @@ public sealed class CurrentStopDepartureG2Tests
         Assert.Equal(WireToGateCurrentStopDepartureText.AcceptedText, accepted.StatusText);
         Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
         Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Review M2's probe: once a press at a machine pickup is accepted, the server may send a newer empty worklist before the
+    /// plan moves past the stop -- a refreshed station deadline (<c>COMPLETED</c>, with the operation session) or the one
+    /// ending <c>OPERATOR_DEPARTED</c>. While the pickup leg is still <c>ARRIVED</c> the acceptance holds the button shut:
+    /// a second press would only draw a refusal.
+    /// </summary>
+    [Theory]
+    [InlineData("COMPLETED", true)]
+    [InlineData("OPERATOR_DEPARTED", false)]
+    public async Task AnAcceptanceAtAMachinePickupHoldsTheButtonUntilThePlanMovesOn(string stopEndedReason, bool withSession)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtMachineLoadsDoneAsync(
+            Payloads.LoadingPhase("CARGO_HOLDING_WAIT", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(5)),
+            token,
+            server => server.RespondToCurrentStopDepartures = true);
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == "ACCEPTED",
+            "the acceptance to be shown",
+            token);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            new
+            {
+                stationId = MachineStation,
+                worklistRevision = 2,
+                operationSessionId = withSession ? OperationSession : null,
+                stationDepartureDeadlineAt = DateTimeOffset.UtcNow.AddMinutes(4),
+                stopEndedReason,
+                items = Array.Empty<object>()
+            });
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the newer empty worklist",
+            token);
+
+        Assert.Equal("ARRIVED", harness.Session.CurrentJourney.CurrentLeg?.State);
+        Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.CanPress));
+        Assert.Null(harness.Business.CurrentStopDeparture.Prompt);
+        Assert.Single(harness.Server.CurrentStopDepartureRequests);
         Assert.Empty(harness.UiErrors);
     }
 
