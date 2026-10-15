@@ -30,4 +30,4 @@
 | `13-review-architecture.txt` | 两个测试项目的 `ArchitectureTests` | 单元 203/0，G2 项目 12/0 |
 | `14-review-full-g2-*` | `run-w2g-g2.ps1` 全量 | `PASS`：单元 1261/0，G2 997/0 |
 
-CI 真装置 08 跑在审查之前的 `457dcac2` 上；返工没有改 XAML 结构以外的界面元素，是否需要重跑由调度定。
+CI 真装置 08 跑在审查之前的 `457dcac2` 上；返工在 `MainWindow.xaml` 里只改了注释；改动的是横幅什么时候出现（恢复向量不出、读数未知时收起），是否需要重跑由调度定。
