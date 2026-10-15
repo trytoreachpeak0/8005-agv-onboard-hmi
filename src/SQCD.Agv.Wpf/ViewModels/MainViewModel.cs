@@ -489,7 +489,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 offersCancellation,
                 CanPressWorklistRowCancellation(item.DemandId, offersCancellation))
             {
-                AtStagingPickupStop = CurrentStopDeparture.IsShown
+                AtStagingPickupStop = CurrentStopDeparture.AtStagingPickupStop
             });
         }
 
@@ -946,7 +946,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private void SyncCargoHoldingTimerCore()
     {
-        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT", CargoHoldingDeadlineAt: not null }
+        // LOADING with a deadline counts down too (8005-agv-onboard-hmi#352): the same line as LoadingPhaseText.Describe.
+        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT" or "LOADING", CargoHoldingDeadlineAt: not null }
             && !_stationDepartureCountdownStopped;
         if (!ticking)
         {
@@ -1323,12 +1324,13 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 「取消装货」按钮上的字：待送点取货停靠上叫「撤销本次开仓」，机台取货照旧（8005-agv-onboard-hmi#348）。
     /// </summary>
     /// <remarks>
-    /// 待送点的认法不另写一份：「出发」入口出现（<see cref="CurrentStopDepartureDisplay.IsShown"/>）就是待送点取货停靠，两者出自
-    /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。待送点上共用入口给的是扫码前取消时（只剩那一行
+    /// 待送点的认法不另写一份：用「出发」那一份显示的 <see cref="CurrentStopDepartureDisplay.AtStagingPickupStop"/>，两者出自
+    /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。「出发」入口出现本身不够：机台取货装完后它也出现
+    /// （8005-agv-onboard-hmi#352）。待送点上共用入口给的是扫码前取消时（只剩那一行
     /// 已离开清单的收尾），叫「取消」，与清单每行一样（8005-agv-onboard-hmi#353 审查 L1）。
     /// </remarks>
     public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(
-        CurrentStopDeparture.IsShown,
+        CurrentStopDeparture.AtStagingPickupStop,
         CanRequestLoadCancellation && _sharedEntryOffersCancellationBeforeAnySublot?.Invoke() == true);
 
     public bool CanRequestLoadCancellation

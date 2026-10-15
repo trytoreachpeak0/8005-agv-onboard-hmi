@@ -30,7 +30,9 @@ public static class WireToGateStopEndedReasonText
             ["CARGO_HANDED_OFF"] = "本站因货物交接结束",
             ["DEMAND_RELEASED"] = "本站因任务释放结束",
             ["TRIP_TERMINATED"] = "本站因行程终止结束",
-            // 协议 4.0.0 新增（CP-0012，8005-agv-onboard-hmi#349）：只出现在待送点。没装的任务退回待派，不是取消。
+            // 协议 4.0.0 新增（CP-0012，8005-agv-onboard-hmi#349）：没装的任务退回待派，不是取消。待送点出发时会收到；CP-0014 起
+            // 机台取货也会收到，但只在持货期限还在走时按出发、追加停靠被放回的那一支（8005-agv-onboard-hmi#352 审查 L4，
+            // control-server#725 确认只剩站点离站等待时不发这张空清单），所以这句在机台上同样属实。
             ["OPERATOR_DEPARTED"] = "已按出发，未装的任务退回待派",
             ["CHARGING_REQUIRED"] = "电量低，先送车上的货再充电，未装的任务退回待派"
         };

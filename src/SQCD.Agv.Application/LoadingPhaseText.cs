@@ -42,6 +42,16 @@ public static class LoadingPhaseText
 
     public const string CargoHoldingExpiredText = "已到期，等待服务端";
 
+    /// <summary>
+    /// <c>LOADING</c> 带持货期限时那一句的开头（待送点由用户 10-15 定，机台由 C11 同日定为同一句，<c>8005-agv-onboard-hmi#352</c>）：
+    /// 还有任务没装、期限在走，到点带已装的货走，没装的放回待派。
+    /// </summary>
+    public const string TasksToScanText = "还有任务待扫码";
+
+    private const string Leaving = "离站";
+
+    private const string TasksToScanLeaving = "带已装的货离站";
+
     public const string VehicleFullText = "已装满，装完已承诺的任务后离站";
 
     private static readonly IReadOnlyDictionary<string, string> ClosedReasonTexts =
@@ -76,8 +86,17 @@ public static class LoadingPhaseText
         ArgumentNullException.ThrowIfNull(zone);
         return phase?.State switch
         {
+            // 8005-agv-onboard-hmi#352（C11 定）：期限给了、装货阶段还开着，就倒计时。待送点有追加进来、还没扫的需求时服务端发的
+            // 是 LOADING，期限照样在走，到期没扫的会被放回；屏上没有倒计时，客户就看不到。装满与结束不在此列：机台的期限进入
+            // CLOSED 之后照旧下发（program#94 语义表：不清空），那时这一行说的是结束原因。
+            "LOADING" when phase.CargoHoldingDeadlineAt is not null => CargoHolding(
+                LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt),
+                now,
+                zone,
+                TasksToScanText,
+                TasksToScanLeaving),
             "CARGO_HOLDING_WAIT" => CargoHolding(
-                LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone),
+                LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone, CargoHoldingText, Leaving),
             "VEHICLE_FULL" => new LoadingPhaseView(LoadingPhaseLine.VehicleFull, VehicleFullText, "VEHICLE_FULL"),
             // 入站校验保证 CLOSED 必带原因；这里仍不假设，空原因显示空串而不是编一个。
             "CLOSED" => new LoadingPhaseView(
@@ -98,11 +117,16 @@ public static class LoadingPhaseText
     public static DateTimeOffset? LatestDeparture(DateTimeOffset? holding, DateTimeOffset? station) =>
         holding is { } h && station is { } s && s > h ? s : holding;
 
-    private static LoadingPhaseView CargoHolding(DateTimeOffset? deadlineAt, DateTimeOffset now, TimeZoneInfo zone)
+    private static LoadingPhaseView CargoHolding(
+        DateTimeOffset? deadlineAt,
+        DateTimeOffset now,
+        TimeZoneInfo zone,
+        string lead,
+        string leaving)
     {
         if (deadlineAt is not { } deadline)
         {
-            return new LoadingPhaseView(LoadingPhaseLine.CargoHolding, CargoHoldingText, "NO_DEADLINE");
+            return new LoadingPhaseView(LoadingPhaseLine.CargoHolding, lead, "NO_DEADLINE");
         }
 
         TimeSpan remaining = deadline - now;
@@ -115,7 +139,7 @@ public static class LoadingPhaseText
         string latest = TimeZoneInfo.ConvertTime(deadline, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
         return new LoadingPhaseView(
             LoadingPhaseLine.CargoHolding,
-            $"{CargoHoldingText}，最迟 {latest} 离站（剩 {FormatRemaining(display)}）",
+            $"{lead}，最迟 {latest} {leaving}（剩 {FormatRemaining(display)}）",
             "ACTIVE");
     }
 

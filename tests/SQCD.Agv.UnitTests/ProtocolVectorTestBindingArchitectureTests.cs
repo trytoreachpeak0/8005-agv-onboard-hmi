@@ -209,12 +209,10 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// them, beside the clearing executor's own tests. The set is empty again.
     /// </para>
     /// <para>
-    /// <b>The 4.0.0 candidate's commit <c>83c8f1f5</c> (CP-0014, protocol#17) refilled it with five</b>, all frozen onto
-    /// <c>FP-IS-02</c>: the departure request at a machine pickup stop (three) and the staging pickup stop's cargo-holding
-    /// countdown (two). 8005-agv-onboard-hmi#353 moved this end to <c>3fb214e5</c> only so that both integration branches
-    /// carry one protocol identity; it builds neither behaviour, and at the coordinator's word it does not take them on.
-    /// 8005-agv-onboard-hmi#352 builds both and binds all five in <c>CurrentStopDepartureG2Tests</c>; it empties the set
-    /// again when it lands.
+    /// <b>The 4.0.0 candidate's commit <c>83c8f1f5</c> (CP-0014, protocol#17) refilled it with two</b>, both frozen onto
+    /// <c>FP-IS-02</c>: the staging pickup stop's cargo-holding countdown, which starts once a basket is loaded and moves
+    /// when a demand is appended. 8005-agv-onboard-hmi#352 moved this end to that commit and, at the coordinator's word, took
+    /// both on: <c>CurrentStopDepartureG2Tests</c> binds them. The set is empty again.
     /// </para>
     /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
@@ -229,11 +227,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-CURRENT-STOP-DEPARTURE-MACHINE-CARGO-HOLDING"] = "FP-IS-02, 8005-agv-onboard-hmi#352",
-            ["CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE"] = "FP-IS-02, 8005-agv-onboard-hmi#352",
-            ["CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT"] = "FP-IS-02, 8005-agv-onboard-hmi#352",
-            ["CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED"] = "FP-IS-02, 8005-agv-onboard-hmi#352",
-            ["CV-STAGING-CARGO-HOLDING-TIMEOUT"] = "FP-IS-02, 8005-agv-onboard-hmi#352"
         };
 
     private sealed record VectorBinding(string VectorId, string TestName);

@@ -242,6 +242,22 @@ public sealed record WireToGateLoadOnBoard(WireToGateRecoveryOperationContext Lo
     /// </summary>
     public bool HandedOffAwaitingServer { get; init; }
 
+    /// <summary>
+    /// The station of the stop the load was made at, written with <see cref="StopLegId"/>; kept for the log and the reader of
+    /// the journal. The judgement is on the stop, not the station (8005-agv-onboard-hmi#352 review M3).
+    /// </summary>
+    public string? StationId { get; init; }
+
+    /// <summary>
+    /// The stop the load was made at: the <c>movementLegId</c> of the pickup leg the vehicle stood at when a worklist carrying
+    /// the load's operation session was on screen (<see cref="WireToGateRecoveryState.WithLoadStopsStampedFrom"/>); <c>null</c>
+    /// until then. Written once. It is what tells a machine pickup whose last item was cancelled that a basket still went on
+    /// board at that stop (8005-agv-onboard-hmi#352): the empty worklist that ends such a stop carries no operation session and
+    /// says nothing about earlier loads. A stop, not a station: the same station visited again is another leg, and loaded
+    /// nothing until it loads (CP-0014 section 5, item 7; review M3).
+    /// </summary>
+    public string? StopLegId { get; init; }
+
     /// <summary>The demand this load is for. Not serialized: it is <see cref="Load"/>'s.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string DemandId => Load.DemandId;
@@ -334,6 +350,45 @@ public sealed record WireToGateRecoveryState(
         LoadsOnBoard
         ?? (LastCompletedLoadOperationContext is { } last ? [new WireToGateLoadOnBoard(last)] : []);
 
+    /// <summary>
+    /// Whether a load made at the stop whose pickup leg is <paramref name="movementLegId"/> is still on board and not handed off
+    /// (8005-agv-onboard-hmi#352).
+    /// </summary>
+    public bool HasLoadOnBoardAtStop(string movementLegId) =>
+        LoadsOnBoard?.Any(item =>
+            !item.HandedOffAwaitingServer && string.Equals(item.StopLegId, movementLegId, StringComparison.Ordinal)) == true;
+
+    /// <summary>
+    /// The state with every load not yet stamped, whose operation session the worklist on screen carries, stamped with the stop
+    /// the vehicle stands at: the current leg, when it is the pickup leg at that worklist's station (8005-agv-onboard-hmi#352).
+    /// Every worklist of a stop carries its operation session until the stop ends, so the first one seen after the load names
+    /// the stop. Changes nothing else: it is applied both when a load is recorded (review L1) and on every journey snapshot.
+    /// </summary>
+    public WireToGateRecoveryState WithLoadStopsStampedFrom(WireToGateJourneySnapshot journey)
+    {
+        ArgumentNullException.ThrowIfNull(journey);
+        if (LoadsOnBoard is not { Count: > 0 } loads
+            || journey.CurrentStopWorklist is not { OperationSessionId: { } session } worklist
+            || journey.CurrentLeg is not { LegType: "TO_PICKUP" } leg
+            || !string.Equals(leg.StationId, worklist.StationId, StringComparison.Ordinal)
+            || !loads.Any(item => item.StopLegId is null
+                && string.Equals(item.Load.OperationSessionId, session, StringComparison.Ordinal)))
+        {
+            return this;
+        }
+
+        return this with
+        {
+            LoadsOnBoard =
+            [
+                .. loads.Select(item => item.StopLegId is null
+                    && string.Equals(item.Load.OperationSessionId, session, StringComparison.Ordinal)
+                        ? item with { StationId = worklist.StationId, StopLegId = leg.MovementLegId }
+                        : item)
+            ]
+        };
+    }
+
     /// <summary>The state with <paramref name="load"/> recorded as its demand's load on board.</summary>
     /// <remarks>
     /// A journal that predates the list starts it empty rather than from its last completed load: that load may belong to a
@@ -380,7 +435,9 @@ public sealed record WireToGateRecoveryState(
     /// <item>a plan whose legs name exactly one demand names the journey's anchor (control-server <c>JourneyPlanBuilder.Plan</c>
     /// puts the anchor on every leg), and loads not yet stamped with an anchor are stamped with it;</item>
     /// <item>a plan whose legs name demands drops the loads stamped with an anchor it does not name: they were made in another
-    /// journey, whose closure this vehicle missed.</item>
+    /// journey, whose closure this vehicle missed;</item>
+    /// <item>a worklist carrying a load's operation session stamps the load, if not yet stamped, with the stop the vehicle stands
+    /// at (<see cref="WithLoadStopsStampedFrom"/>, 8005-agv-onboard-hmi#352).</item>
     /// </list>
     /// The anchor is written once, when the server accepts the journey, and never changes in its life (control-server
     /// <c>WireToGateStore</c> is the only writer of <c>JourneyRuntimeRow.DemandId</c>). The same demand may anchor a later journey
@@ -413,15 +470,17 @@ public sealed record WireToGateRecoveryState(
                 : this;
         }
 
-        if (LoadsOnBoard is not { Count: > 0 } loads)
+        if (LoadsOnBoard is not { Count: > 0 })
         {
             return this;
         }
 
+        // The stop a load was made at (8005-agv-onboard-hmi#352). Written once, never moved.
+        IReadOnlyList<WireToGateLoadOnBoard> loads = WithLoadStopsStampedFrom(journey).LoadsOnBoard!;
         IReadOnlyList<string> planned = journey.UpcomingStopPlan?.DemandIds ?? [];
         if (planned.Count == 0)
         {
-            return this;
+            return loads.SequenceEqual(LoadsOnBoard) ? this : this with { LoadsOnBoard = loads };
         }
 
         string? anchor = planned.Count == 1 ? planned[0] : null;
@@ -434,7 +493,7 @@ public sealed record WireToGateRecoveryState(
                 .Where(item => item.JourneyAnchorDemandId is null
                     || planned.Contains(item.JourneyAnchorDemandId, StringComparer.Ordinal))
         ];
-        return kept.SequenceEqual(loads) ? this : this with { LoadsOnBoard = kept };
+        return kept.SequenceEqual(LoadsOnBoard) ? this : this with { LoadsOnBoard = kept };
     }
 
     /// <summary>

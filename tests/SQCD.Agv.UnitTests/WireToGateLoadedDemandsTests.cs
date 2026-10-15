@@ -262,6 +262,156 @@ public sealed class WireToGateLoadedDemandsTests
         Assert.Empty(next.LoadsOnBoard!);
     }
 
+    // ---- 8005-agv-onboard-hmi#352: which stop a load on board was made at ----
+
+    /// <summary>
+    /// A load is stamped with the stop the vehicle stands at when a worklist carries its operation session: the pickup leg's
+    /// <c>movementLegId</c>, and its station. That is what lets a machine pickup whose last item was cancelled still know a
+    /// basket went on board there (C11's follow-up ②), and the stop -- not the station -- is the unit (review M3).
+    /// </summary>
+    [Fact]
+    public void ALoadIsStampedWithTheStopOfTheWorklistOfItsOperationSession()
+    {
+        WireToGateRecoveryState next = TwoOnBoard().WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession));
+
+        Assert.All(next.LoadsOnBoard!, load => Assert.Equal(("ST-WB-01", "leg-1"), (load.StationId, load.StopLegId)));
+        Assert.True(next.HasLoadOnBoardAtStop("leg-1"));
+        Assert.False(next.HasLoadOnBoardAtStop("leg-2"));
+    }
+
+    /// <summary>Another operation session, or a worklist with none -- every ended stop's -- stamps nothing.</summary>
+    [Theory]
+    [InlineData("55555555-0000-4555-8555-000000000002")]
+    [InlineData(null)]
+    public void AWorklistOfAnotherOrNoOperationSessionStampsNothing(string? session)
+    {
+        WireToGateRecoveryState next = TwoOnBoard().WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", session));
+
+        Assert.All(next.LoadsOnBoard!, load => Assert.Null(load.StopLegId));
+        Assert.False(next.HasLoadOnBoardAtStop("leg-1"));
+    }
+
+    /// <summary>
+    /// No stop to name -- no plan, or the current leg is not the pickup at the worklist's station -- stamps nothing, so a later
+    /// worklist of the same session at the stop can still stamp it.
+    /// </summary>
+    [Fact]
+    public void WithoutThePickupLegAtTheWorklistsStationNothingIsStamped()
+    {
+        WireToGateRecoveryState noPlan = TwoOnBoard().WithLoadsOnBoardFor(
+            WireToGateJourneySnapshot.Empty with { CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession) });
+        WireToGateRecoveryState otherStation = TwoOnBoard().WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-02", LoadSession) with
+        {
+            CurrentStopWorklist = WorklistAt("ST-WB-01", LoadSession)
+        });
+
+        Assert.All(noPlan.LoadsOnBoard!, load => Assert.Null(load.StopLegId));
+        Assert.All(otherStation.LoadsOnBoard!, load => Assert.Null(load.StopLegId));
+    }
+
+    /// <summary>The stamp is written once: the same session seen later at another stop does not move it.</summary>
+    [Fact]
+    public void AStampIsNotMoved()
+    {
+        WireToGateRecoveryState stamped = TwoOnBoard().WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession));
+        WireToGateRecoveryState again = stamped.WithLoadsOnBoardFor(AtPickup("leg-2", "ST-WB-02", LoadSession));
+
+        Assert.Same(stamped, again);
+    }
+
+    /// <summary>
+    /// Review M3 (b): the same station visited again as a second stop -- its own leg -- where nothing was loaded and the last
+    /// item was cancelled. The basket of the first stop is no basket of this one.
+    /// </summary>
+    [Fact]
+    public void ASecondStopAtTheSameStationDoesNotInheritTheFirstStopsBasket()
+    {
+        WireToGateRecoveryState stamped = TwoOnBoard().WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession));
+
+        Assert.True(stamped.HasLoadOnBoardAtStop("leg-1"));
+        Assert.False(stamped.HasLoadOnBoardAtStop("leg-3"));
+    }
+
+    /// <summary>
+    /// Review M3 (a): an appended stop whose demands were all cancelled loaded nothing, whatever the stop before it loaded.
+    /// </summary>
+    [Fact]
+    public void AnAppendedStopWhoseDemandsWereAllCancelledHasNoBasket()
+    {
+        WireToGateRecoveryState stamped = TwoOnBoard()
+            .WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession))
+            .WithLoadsOnBoardFor(AtPickup("leg-2", "ST-WB-02", null));
+
+        Assert.False(stamped.HasLoadOnBoardAtStop("leg-2"));
+    }
+
+    /// <summary>A load handed off, awaiting the server, is no basket the stop can be said to have loaded.</summary>
+    [Fact]
+    public void AHandedOffLoadDoesNotCountAsLoadedAtItsStop()
+    {
+        WireToGateRecoveryState stamped = WireToGateRecoveryState.Empty
+            .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
+            .WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession));
+
+        Assert.True(stamped.HasLoadOnBoardAtStop("leg-1"));
+        Assert.False(stamped.WithLoadHandedOff(DemandA).HasLoadOnBoardAtStop("leg-1"));
+    }
+
+    /// <summary>
+    /// Review L1: the stamp is also taken from the journey on screen when the load is recorded, without waiting for the next
+    /// snapshot -- and taking it there changes nothing else: a business state without a transport does not empty the list.
+    /// </summary>
+    [Fact]
+    public void StampingFromTheJourneyOnScreenOnlyStamps()
+    {
+        WireToGateJourneySnapshot idleAtPickup = AtPickup("leg-1", "ST-WB-01", LoadSession) with
+        {
+            VehicleBusinessState = Journey("IDLE_RETURN", []).VehicleBusinessState
+        };
+
+        WireToGateRecoveryState stamped = TwoOnBoard().WithLoadStopsStampedFrom(idleAtPickup);
+
+        Assert.Equal(2, stamped.LoadsOnBoard!.Count);
+        Assert.True(stamped.HasLoadOnBoardAtStop("leg-1"));
+        Assert.Same(stamped, stamped.WithLoadStopsStampedFrom(idleAtPickup));
+    }
+
+    [Fact]
+    public async Task TheStampIsKeptByTheJournal()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        (SqliteWireToGateJournal journal, _) = await CreateJournalAsync(token);
+        await using (journal)
+        {
+            await journal.UpdateRecoveryStateAsync(
+                state => state
+                    .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
+                    .WithLoadsOnBoardFor(AtPickup("leg-1", "ST-WB-01", LoadSession)),
+                token);
+
+            Assert.True((await journal.ReadRecoveryStateAsync(token)).HasLoadOnBoardAtStop("leg-1"));
+        }
+    }
+
+    private const string LoadSession = "55555555-0000-4555-8555-000000000001";
+
+    private static WireToGateCurrentStopWorklist WorklistAt(string stationId, string? operationSessionId) =>
+        new(stationId, 3, operationSessionId, null, [], new string('0', 64), "COMPLETED");
+
+    /// <summary>The vehicle standing at the pickup leg <paramref name="legId"/> at <paramref name="stationId"/>.</summary>
+    private static WireToGateJourneySnapshot AtPickup(string legId, string stationId, string? operationSessionId) =>
+        WireToGateJourneySnapshot.Empty with
+        {
+            CurrentStopWorklist = WorklistAt(stationId, operationSessionId),
+            UpcomingStopPlan = new WireToGateUpcomingStopPlan(
+                2,
+                [
+                    new WireToGateMovementLeg(legId, "TO_PICKUP", "BUSINESS", DemandA, null, 1, stationId, "MAP-26", "ARRIVED"),
+                    new WireToGateMovementLeg("leg-9", "TO_DROPOFF", "BUSINESS", DemandA, null, 2, "WB-09", "MAP-26", "PLANNED")
+                ],
+                new string('0', 64))
+        };
+
     private static WireToGateRecoveryState TwoOnBoard() =>
         WireToGateRecoveryState.Empty
             .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))

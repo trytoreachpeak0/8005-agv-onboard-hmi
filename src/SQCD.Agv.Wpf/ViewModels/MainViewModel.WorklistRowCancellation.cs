@@ -7,8 +7,8 @@ namespace SQCD.Agv.Wpf.ViewModels;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 哪一行有按钮由屏上已有的两样决定：停靠是待送点取货停靠（「出发」入口出现，与 <see cref="LoadCancellationCaption"/> 同一个
-/// 认法），这一行还没装（侧仍是「待分配」，没有任何仓位命令或日志里的装货指向它）。按不按得动由业务服务说
+/// 哪一行有按钮由屏上已有的两样决定：停靠是待送点取货停靠（<see cref="CurrentStopDepartureDisplay.AtStagingPickupStop"/>，与
+/// <see cref="LoadCancellationCaption"/> 同一个认法；不是「出发」入口出现，机台取货装完后它也出现，8005-agv-onboard-hmi#352），这一行还没装（侧仍是「待分配」，没有任何仓位命令或日志里的装货指向它）。按不按得动由业务服务说
 /// （<c>WireToGateBusinessService.CanRequestWorklistRowCancellation</c>）：会话就绪、录入请求开着、没有仓位操作在跑，而且没有
 /// 别的一行的取消在等答复。
 /// </para>
@@ -63,7 +63,7 @@ public sealed partial class MainViewModel
     /// 「本站清单」后面的条数，只在待送点取货停靠上写（「（共 6 条）」）：那里一屏露不全，操作员要知道下面还有几条。
     /// </summary>
     public string WorklistCountText =>
-        CurrentStopDeparture.IsShown && WorklistItems.Count > 0 ? $"（共 {WorklistItems.Count} 条）" : string.Empty;
+        CurrentStopDeparture.AtStagingPickupStop && WorklistItems.Count > 0 ? $"（共 {WorklistItems.Count} 条）" : string.Empty;
 
     /// <summary>
     /// 这一行有没有「取消」：待送点取货停靠上、还没装的那几行。侧标是「待分配」还不够：重启后更早装好的那一条侧标也回到
@@ -71,7 +71,7 @@ public sealed partial class MainViewModel
     /// </summary>
     private bool OffersWorklistRowCancellation(string demandId, string sideCode) =>
         _worklistRowCancellationCanPress is not null
-        && CurrentStopDeparture.IsShown
+        && CurrentStopDeparture.AtStagingPickupStop
         && sideCode == WorklistItemSides.Unassigned.Code
         && !(_journaledOperations is { } journaled && WireToGateBusinessService.IsLoadedOnBoard(journaled, demandId));
 
@@ -84,7 +84,7 @@ public sealed partial class MainViewModel
         foreach (WorklistItemRow row in WorklistItems)
         {
             bool offered = OffersWorklistRowCancellation(row.DemandId, row.SideCode);
-            if (row.AtStagingPickupStop != CurrentStopDeparture.IsShown
+            if (row.AtStagingPickupStop != CurrentStopDeparture.AtStagingPickupStop
                 || row.OffersCancellation != offered
                 || row.CanPressCancellation != CanPressWorklistRowCancellation(row.DemandId, offered))
             {

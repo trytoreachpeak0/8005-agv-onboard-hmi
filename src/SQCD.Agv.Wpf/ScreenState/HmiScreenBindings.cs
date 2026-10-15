@@ -127,7 +127,7 @@ internal static class HmiScreenBindings
         new("UnableToChargeStatus", "UnableToCharge.Status", "UnableToCharge.HasStatus"),
         new("CargoHoldingCountdown", "CargoHoldingCountdownStatus", "HasCargoHoldingCountdown"),
         new("LoadingClosedReason", "LoadingClosedReasonCode", "HasLoadingClosedReason"),
-        new("StagingSummary", "CurrentStopDeparture.SummaryCode", "CurrentStopDeparture.IsShown"),
+        new("StagingSummary", "CurrentStopDeparture.SummaryCode", "CurrentStopDeparture.HasSummary"),
         new("CurrentStopDepartureNotice", "CurrentStopDeparture.NoticeCode", "CurrentStopDeparture.HasNotice"),
         new("CurrentStopDepartureStatus", "CurrentStopDeparture.Status", "CurrentStopDeparture.HasStatus"),
     ];

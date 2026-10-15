@@ -235,7 +235,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             IsReopenPermitted,
             _fatalFaultLatched,
             LogJournalOverwrite,
-            VectorResultKeyOnFileAsync);
+            VectorResultKeyOnFileAsync,
+            () => session.CurrentJourney);
         // Both executors ask the latch themselves, immediately before each pulse
         // (8005-agv-onboard-hmi#191): the checks on this side run when a press is made or a command
         // arrives, and a latch can come after either.
