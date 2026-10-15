@@ -76,7 +76,7 @@ public sealed class DoorOpenPromptLayoutTests
             });
 
         Assert.True(bannerHeight > 0);
-        Assert.True(bannerTop < scanTop, $"banner at {bannerTop} should sit above the scan box at {scanTop}");
+        Assert.True(bannerTop + bannerHeight <= scanTop, $"banner {bannerTop}+{bannerHeight} should end above the scan box at {scanTop}");
         Assert.True(headlineHeight < 1.5 * headlineLine, $"the headline wrapped: {headlineHeight} for a line of {headlineLine}");
         Assert.Equal(110, logHeight);
         Assert.True(lockersHeight >= 180, $"the slot area shrank to {lockersHeight}");
