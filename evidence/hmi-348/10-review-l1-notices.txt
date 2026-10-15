@@ -1,0 +1,4 @@
+commit=49fbc80 (review L1: press-again notices name the staging caption)
+dotnet format --verify-no-changes src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs: exit=0
+RecoveryMarkerPersistenceArchitectureTests:
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Total:     9
