@@ -377,6 +377,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()),
             row => Assert.False(row.OffersCancellation || row.CanPressCancellation));
         Assert.All(harness.ScreenState().WorklistRows, row => Assert.False(row.CancellationShown));
+        // The business half on its own, so the staging judgement there is pinned too (review phase 2, P2).
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandA));
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandB));
         Assert.True(harness.OnUi(() => harness.ViewModel.HasLoadCancellationSelectionHint));
         Assert.Equal("取消装货", harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
     }
