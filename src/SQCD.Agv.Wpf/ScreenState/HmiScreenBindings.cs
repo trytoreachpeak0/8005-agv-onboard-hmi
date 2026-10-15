@@ -86,6 +86,21 @@ internal static class HmiScreenBindings
         Command("ClearLogsCommand", "清空界面记录"),
     ];
 
+    /// <summary>
+    /// Every <c>Button</c> in the worklist's row template, in XAML order: one per row, reported on the row
+    /// (<see cref="HmiWorklistRowState"/>), with its <c>Visibility</c> and <c>IsEnabled</c> paths read off the row, not the view
+    /// model (8005-agv-onboard-hmi#353).
+    /// </summary>
+    internal static IReadOnlyList<ButtonBinding> WorklistRowButtons { get; } =
+    [
+        Click(
+            "OnWorklistRowCancellationClick",
+            "取消",
+            "OffersCancellation",
+            "CanPressCancellation",
+            "WorklistItemCancellation"),
+    ];
+
     /// <summary>Every editable <c>TextBox</c> in the window, in XAML order.</summary>
     internal static IReadOnlyList<InputBinding> Inputs { get; } =
     [

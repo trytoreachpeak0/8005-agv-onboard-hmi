@@ -78,11 +78,25 @@ public sealed partial class MultiDemandJourneyG2Tests
             harness.Server.ReceivedEnvelopes,
             envelope => envelope.WireLine.Contains(DemandA, StringComparison.Ordinal));
 
+        // What the control server sends once B is ended with A still to do: a worklist without B and a new entry request,
+        // together (8005-agv-control-server#723).
         await harness.Server.SendJourneySnapshotAsync(
             "CurrentStopWorklistSnapshot",
             Payloads.Worklist(
                 2,
                 Payloads.Item(DemandA, "TD-A", "SUBLOT-A", WireToGateStagingPickupStop.StagingToWire, "PICKUP", 2)));
+        await harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = 2,
+                expectedSublots = SublotAOnly,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
         await harness.WaitUntilAsync(
             () => harness.OnUi(() => harness.ViewModel.WorklistItems.Select(row => row.DemandId).SequenceEqual([DemandA])),
             "the worklist without B",

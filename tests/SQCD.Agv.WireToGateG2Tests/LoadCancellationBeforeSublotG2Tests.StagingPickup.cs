@@ -5,7 +5,9 @@ using Xunit;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// 待送点取货停靠不提供扫码前取消（CP-0012 修订项四，<c>REQ-0211</c>；<c>8005-agv-onboard-hmi#348</c>）。机台取货照旧。
+/// 待送点取货停靠上共用的扫码前取消入口不出现（CP-0012 修订项四，<c>REQ-0211</c>；<c>8005-agv-onboard-hmi#348</c>）；那里的扫码前
+/// 取消改由清单每行的「取消」发起（CP-0014 修订项二；<c>8005-agv-onboard-hmi#353</c>，见
+/// <c>MultiDemandJourneyG2Tests.StagingRowCancellation</c>）。机台取货照旧。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,7 +22,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 public sealed partial class LoadCancellationBeforeSublotG2Tests
 {
     /// <summary>
-    /// 验收 1：待送点取货停靠有开着的录入请求、没有任何仓位操作，扫码前取消不提供；硬按也什么都不发，扫码照常。
+    /// 验收 1：待送点取货停靠有开着的录入请求、没有任何仓位操作，共用的扫码前取消入口不提供；硬按也什么都不发，扫码照常。
     /// </summary>
     [Fact]
     public async Task AStagingPickupOffersNoCancellationBeforeAnySublot()
@@ -79,8 +81,9 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     }
 
     /// <summary>
-    /// 已经发出、授权没回来的一次扫码前取消，重启后停靠被认作待送点（比如旧版车载端按下、升级后再起来）：入口仍在，再按一次
-    /// 按首次内容补发并结清。只是不再提供新的一次，不把已经发出的那次困在日志里——它挂着时扫码与「出发」都按不了。
+    /// 已经发出、授权没回来的一次扫码前取消，重启后停靠被认作待送点（比如旧版车载端按下、升级后再起来）：那条需求还在清单里，
+    /// 补报的入口是它那一行的「取消」（<c>8005-agv-onboard-hmi#353</c>），共用入口不出现；再按一次按首次内容补发并结清，
+    /// 不把已经发出的那次困在日志里——它挂着时扫码与「出发」都按不了。
     /// </summary>
     /// <remarks>
     /// 护栏，实现之前就是绿的：它守的是实现不能连这一次也收掉。替身重启后发修订号 2 的待送点清单，同一修订号换了内容车会判冲突。
@@ -118,15 +121,19 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             // While it is out, neither a scan nor 「出发」 can be pressed: the entry is the only way to settle it.
             Assert.False(afterRestart.Business.CanSubmitSublot);
             Assert.Null(afterRestart.Business.CurrentStopDeparture.Prompt);
-            Assert.True(afterRestart.Business.CanRequestLoadCancellation);
+            Assert.False(afterRestart.Business.CanRequestLoadCancellation);
+            Assert.True(afterRestart.Business.CanRequestWorklistRowCancellation(DemandId));
 
-            Assert.True(await afterRestart.Business.RequestLoadCancellationAsync("重启之后再按一次。", token));
+            Assert.True(await afterRestart.Business
+                .BindWorklistRowCancellationPress("重启之后再按一次。", DemandId)
+                .SendAsync(token));
 
             AssertRetriedWithTheFirstPressContent(
                 [.. server.ReceivedEnvelopes, .. serverAfterRestart.ReceivedEnvelopes]);
             // Settled: nothing of it is left open. The entry request went with it, as it does at any stop.
             Assert.False(afterRestart.Business.IsLoadCancellationBeforeSublotOpen);
             Assert.False(afterRestart.Business.CanRequestLoadCancellation);
+            Assert.False(afterRestart.Business.CanRequestWorklistRowCancellation(DemandId));
             Assert.Equal(0, afterRestart.Io.UnlockCount);
         }
         finally

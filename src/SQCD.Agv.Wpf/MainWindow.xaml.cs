@@ -263,6 +263,34 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 待送点清单某一行的「取消」（CP-0014 修订项二，8005-agv-onboard-hmi#353）：按下这一刻取下按键，确认框复述这一行、说清
+    /// 这条需求就此结束不再派；确认后发出，业务服务核对对象没变才发。
+    /// </summary>
+    private async void OnWorklistRowCancellationClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null || (sender as FrameworkElement)?.DataContext is not WorklistItemRow row)
+        {
+            return;
+        }
+
+        WorklistRowCancellationConfirmation press = _viewModel.BeginWorklistRowCancellation(row.DemandId);
+        if (ModalDialogs.Show(
+                press.Text,
+                "取消这条需求",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await press.SendAsync(CancellationToken.None))
+        {
+            ShowRecoveryFailure(press.FailureText, "取消失败");
+        }
+    }
+
+    /// <summary>
     /// 待送点「出发」（8005-agv-onboard-hmi#349）：按下这一刻取下确认框依据的那一份，确认后原样交回，业务服务核对仍是当前
     /// 这一份才发。结果（受理、拒绝原因）显示在按钮下面那一行，这里不再另弹框。
     /// </summary>

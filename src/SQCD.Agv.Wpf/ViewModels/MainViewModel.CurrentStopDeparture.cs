@@ -80,6 +80,8 @@ public sealed partial class MainViewModel
         if (_currentStopDepartureView?.Invoke() is not { Shown: true } view)
         {
             CurrentStopDeparture = CurrentStopDepartureDisplay.Empty;
+            // 清单每行的「取消」跟着待送点走，也跟着同一次业务刷新重算（8005-agv-onboard-hmi#353）。
+            RefreshWorklistRowCancellationCore();
             return;
         }
 
@@ -102,6 +104,7 @@ public sealed partial class MainViewModel
             WireToGateCurrentStopDepartureText.SummaryText(loaded, frontEmpty, rearEmpty, unknown, unloadedItems),
             notice.Length > 0 ? view.Unavailability.ToString() : string.Empty,
             WireToGateCurrentStopDepartureText.SummaryCode(loaded, frontEmpty, rearEmpty, unknown, unloadedItems));
+        RefreshWorklistRowCancellationCore();
     }
 
     /// <summary>

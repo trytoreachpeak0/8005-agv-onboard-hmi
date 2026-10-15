@@ -57,4 +57,33 @@ public static class WireToGateLoadCancellationText
         atStagingPickupStop ? "将要撤销的是正在进行的这次开仓。" : "将要取消的是正在进行的这次装货。";
 
     public const string SubjectGone = "将要取消的任务已不在本站清单里。";
+
+    /// <summary>
+    /// The 「取消」 on each worklist row at the staging pickup stop (CP-0014 revision two, <c>REQ-0211</c>;
+    /// 8005-agv-onboard-hmi#353). Pressed and confirmed, the demand ends for good: the control server cancels it and never
+    /// dispatches it again, so the confirmation says so and says there is no undo.
+    /// </summary>
+    public const string RowCaption = "取消";
+
+    /// <summary>How a notice sends the operator back to a row's 「取消」.</summary>
+    public const string RowPressPhrase = "那一行的「取消」";
+
+    public static string RowSubject(string sublot, string taskTypeText, string basketCountText) =>
+        $"将要取消：子批 {sublot}，{taskTypeText}，{basketCountText}。";
+
+    /// <summary>The confirmation's sentence when the row is no longer on the screen when it is read.</summary>
+    public const string RowSubjectGone = "将要取消的这一条已不在本站清单里。";
+
+    /// <param name="detail">The sentence naming the row, <see cref="RowSubject"/>.</param>
+    public static string RowConfirmationText(string detail) =>
+        "请由授权人员确认：这一条料这次不运。\n\n"
+            + detail
+            + "\n\n确认后这条需求就此结束，系统不会再派车来运它，按错了也没有办法撤回；这批料需要人工或在 MES 上另行处理。"
+            + "本站其他子批不受影响，取消结束后可以继续扫码装货。不会打开任何仓门。是否继续？";
+
+    public const string RowFailureText = "取消未被接受，这条需求没有变化，仍在本站清单里。请检查授权和服务端状态后再试。";
+
+    /// <summary>The notice while a row's cancellation is out.</summary>
+    public static string RowRequested(string sublot) =>
+        $"已申请取消子批 {sublot}，等待服务端答复；取消结束前暂停扫码。";
 }

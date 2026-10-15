@@ -377,6 +377,7 @@ public sealed partial class WireToGateBusinessService
                 reason,
                 selectedDemandId,
                 pressedByOperator: true,
+                rowPress: false,
                 alreadyRead: null,
                 cancellationToken),
             cancellationToken);
@@ -421,16 +422,105 @@ public sealed partial class WireToGateBusinessService
     public WireToGateLoadCancellationPress BindLoadCancellationPress(string reason, string? selectedDemandId)
     {
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-        LoadCancellationTarget? pressed = LoadCancellationSubject(state, selectedDemandId);
+        LoadCancellationTarget? pressed = LoadCancellationSubject(state, selectedDemandId, rowPress: false);
         return new WireToGateLoadCancellationPress(
             pressed?.DemandId,
             pressed?.IsLoadInFlight ?? false,
             cancellationToken => RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
-                () => RequestBoundLoadCancellationAsync(reason, selectedDemandId, pressed?.Key, cancellationToken),
+                () => RequestBoundLoadCancellationAsync(
+                    reason,
+                    selectedDemandId,
+                    pressed?.Key,
+                    rowPress: false,
+                    cancellationToken),
                 cancellationToken),
             // The same judgement as 「出发」 and the caption: the confirmation says 「撤销本次开仓」 there (8005-agv-onboard-hmi#348).
             WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []));
+    }
+
+    /// <summary>
+    /// Whether the 「取消」 on the worklist row of <paramref name="demandId"/> can be pressed now: at the staging pickup stop,
+    /// a cancellation before any sublot for that demand, new or the one already out for it (CP-0014 revision two,
+    /// <c>REQ-0211</c>; 8005-agv-onboard-hmi#353).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same request the shared entry sends at a machine pickup, under the same cancellationId and resend rule; what
+    /// differs is that the operator names the demand by pressing its row instead of picking it first, and that the control
+    /// server ends the demand for good there too (<c>8005-agv-control-server#726</c>). The shared entry stays shut for it at
+    /// the staging pickup stop (<see cref="CanRequestLoadCancellationBeforeSublot"/>).
+    /// </para>
+    /// <para>
+    /// While one row's cancellation is out, only that row can be pressed: a resend takes its subject from the journal, so a
+    /// press on another row would resend the first one under the other row's name.
+    /// </para>
+    /// </remarks>
+    public bool CanRequestWorklistRowCancellation(string demandId) =>
+        WorklistRowCancellationSubject(Volatile.Read(ref _lastRecoveryState), demandId) is not null;
+
+    /// <summary>
+    /// The press on the 「取消」 of the worklist row of <paramref name="demandId"/>, taken when the operator presses it and held
+    /// to that subject until they confirm, as <see cref="BindLoadCancellationPress"/> is.
+    /// </summary>
+    /// <param name="reason">As for <see cref="RequestLoadCancellationAsync(string, string?, CancellationToken)"/>.</param>
+    public WireToGateLoadCancellationPress BindWorklistRowCancellationPress(string reason, string demandId)
+    {
+        LoadCancellationTarget? pressed = WorklistRowCancellationSubject(Volatile.Read(ref _lastRecoveryState), demandId);
+        return new WireToGateLoadCancellationPress(
+            pressed?.DemandId,
+            SubjectIsLoadInFlight: false,
+            cancellationToken => pressed is null
+                ? Task.FromResult(AnswerNothingToCancel($"按下时需求 {demandId} 那一行没有可取消的对象", rowPress: true))
+                : RunRecoveryRequestAsync(
+                    WireToGateRecoveryVectorTypes.LoadCancellation,
+                    () => RequestBoundLoadCancellationAsync(
+                        reason,
+                        demandId,
+                        pressed.Key,
+                        rowPress: true,
+                        cancellationToken),
+                    cancellationToken),
+            AtStagingPickupStop: true);
+    }
+
+    /// <summary>
+    /// What the 「取消」 on the row of <paramref name="demandId"/> would act on, or <c>null</c>: only at the staging pickup
+    /// stop, only a cancellation before any sublot, and only one about that demand.
+    /// </summary>
+    private LoadCancellationTarget? WorklistRowCancellationSubject(WireToGateRecoveryState state, string demandId)
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        if (!session.Connected
+            || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable))
+            || !WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []))
+        {
+            return null;
+        }
+
+        if (state.RecoveryVector is { } vector)
+        {
+            // Authorized and its result not yet acknowledged: pressing its row again reports it again.
+            return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+                && string.Equals(vector.DemandId, demandId, StringComparison.Ordinal)
+                && !IsAwaitingManualCheck(state)
+                && session.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired
+                    ? new LoadCancellationTarget($"vector:{vector.PrimaryId}", vector.DemandId, IsLoadInFlight: false)
+                    : null;
+        }
+
+        if (session.Readiness != WireToGateSessionReadiness.Ready
+            || state.UnsettledSlotOperationAttemptId is not null
+            || state.PendingLoadCancellation?.SlotOperationAttemptId is not null)
+        {
+            return null;
+        }
+
+        LoadCancellationBeforeSublotOutcome outcome = FindLoadCancellationBeforeSublot(state, demandId, rowPress: true);
+        return outcome is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
+            && string.Equals(target.DemandId, demandId, StringComparison.Ordinal)
+                ? new LoadCancellationTarget($"before-sublot:{target.CancellationId}", target.DemandId, IsLoadInFlight: false)
+                : null;
     }
 
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
@@ -640,7 +730,11 @@ public sealed partial class WireToGateBusinessService
     /// the journal by <see cref="FindLoadCancellationBeforeSublot"/> whatever is highlighted (review S2, M10).
     /// </para>
     /// </remarks>
-    private LoadCancellationTarget? LoadCancellationSubject(WireToGateRecoveryState state, string? selectedDemandId)
+    /// <param name="rowPress">As for <see cref="FindLoadCancellationBeforeSublot"/>.</param>
+    private LoadCancellationTarget? LoadCancellationSubject(
+        WireToGateRecoveryState state,
+        string? selectedDemandId,
+        bool rowPress)
     {
         if (state.RecoveryVector is { } vector)
         {
@@ -659,7 +753,7 @@ public sealed partial class WireToGateBusinessService
                 : null;
         }
 
-        LoadCancellationBeforeSublotOutcome beforeSublot = FindLoadCancellationBeforeSublot(state, selectedDemandId);
+        LoadCancellationBeforeSublotOutcome beforeSublot = FindLoadCancellationBeforeSublot(state, selectedDemandId, rowPress);
         return beforeSublot is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
             ? new LoadCancellationTarget($"before-sublot:{target.CancellationId}", target.DemandId, IsLoadInFlight: false)
             : null;
@@ -680,10 +774,15 @@ public sealed partial class WireToGateBusinessService
     /// entry -- the restart settlement's resend and the plain overloads -- which is why this narrows nothing else.
     /// </para>
     /// </remarks>
+    /// <param name="rowPress">
+    /// Whether it is a worklist row's 「取消」 (8005-agv-onboard-hmi#353): its subject is compared by the row's own rule,
+    /// <see cref="WorklistRowCancellationSubject"/>.
+    /// </param>
     private async Task<bool> RequestBoundLoadCancellationAsync(
         string reason,
         string? selectedDemandId,
         string? pressedSubject,
+        bool rowPress,
         CancellationToken cancellationToken)
     {
         if (pressedSubject is null)
@@ -692,13 +791,16 @@ public sealed partial class WireToGateBusinessService
                     reason,
                     selectedDemandId,
                     pressedByOperator: true,
+                    rowPress,
                     alreadyRead: null,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
-        string? confirmedSubject = LoadCancellationSubject(state, selectedDemandId)?.Key;
+        string? confirmedSubject = rowPress && selectedDemandId is not null
+            ? WorklistRowCancellationSubject(state, selectedDemandId)?.Key
+            : LoadCancellationSubject(state, selectedDemandId, rowPress: false)?.Key;
         if (!string.Equals(pressedSubject, confirmedSubject, StringComparison.Ordinal))
         {
             // Gone because the cancellation it named has concluded -- its result acknowledged while the dialog was open,
@@ -714,7 +816,9 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
             }
 
-            return AnswerNothingToCancel($"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}");
+            return AnswerNothingToCancel(
+                $"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}",
+                rowPress);
         }
 
         // The state just compared is the state acted on (review L2): read again, a change in between would be acted on
@@ -723,6 +827,7 @@ public sealed partial class WireToGateBusinessService
                 reason,
                 selectedDemandId,
                 pressedByOperator: true,
+                rowPress,
                 alreadyRead: state,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -742,7 +847,11 @@ public sealed partial class WireToGateBusinessService
     /// uses. <c>false</c> would have the window add a "not accepted, check the authorization" box on top of the notice,
     /// which misleads the same way the fault this replaces did.
     /// </returns>
-    private bool AnswerNothingToCancel(string why)
+    /// <param name="rowPress">
+    /// Whether it was a worklist row's 「取消」: the notice then sends the operator back to that row, not to the shared entry
+    /// (8005-agv-onboard-hmi#353).
+    /// </param>
+    private bool AnswerNothingToCancel(string why, bool rowPress)
     {
         _logger.Write(
             LogSeverity.Information,
@@ -751,7 +860,8 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorResponse(
             LoadCancellationNothingToCancelKind,
             "按下确认时，要取消的对象已经变了，这次取消没有执行，也没有开任何仓门。"
-            + $"如仍需取消，请重新按「{LoadCancellationCaptionHere()}」，按屏上当前显示为准。");
+            + $"如仍需取消，请重新按{(rowPress ? WireToGateLoadCancellationText.RowPressPhrase : $"「{LoadCancellationCaptionHere()}」")}，"
+            + "按屏上当前显示为准。");
         return true;
     }
 
@@ -788,19 +898,32 @@ public sealed partial class WireToGateBusinessService
         }
 
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        // At the staging pickup stop a cancellation before any sublot belongs to its worklist row (8005-agv-onboard-hmi#353):
+        // the shared entry is left only for one whose row is gone -- sent, and its demand has since left the worklist -- which
+        // has nowhere else to be settled or let go (8005-agv-onboard-hmi#348).
+        bool staging = WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []);
         if (state.RecoveryVector is { } vector)
         {
             return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
                 && !IsAwaitingManualCheck(state)
                 && session.Readiness is WireToGateSessionReadiness.Ready
-                    or WireToGateSessionReadiness.RecoveryRequired;
+                    or WireToGateSessionReadiness.RecoveryRequired
+                && !(staging && HasWorklistRow(vector.DemandId));
         }
 
+        LoadCancellationBeforeSublotAvailability availability = FindLoadCancellationBeforeSublot(state, null, rowPress: false)
+            .Availability;
         return session.Readiness == WireToGateSessionReadiness.Ready
             && state.PendingLoadCancellation?.SlotOperationAttemptId is null
-            && FindLoadCancellationBeforeSublot(state, null).Availability
-                is not LoadCancellationBeforeSublotAvailability.None;
+            && (staging
+                ? availability is LoadCancellationBeforeSublotAvailability.SentSelectionMissing
+                : availability is not LoadCancellationBeforeSublotAvailability.None);
     }
+
+    /// <summary>Whether this stop's worklist has a row for <paramref name="demandId"/>.</summary>
+    private bool HasWorklistRow(string demandId) =>
+        _session.CurrentJourney.CurrentStopWorklist?.Items.Any(
+            item => string.Equals(item.DemandId, demandId, StringComparison.Ordinal)) == true;
 
     /// <summary>
     /// Whether the entry is offered but waiting for the operator to pick a demand in the worklist:
@@ -816,7 +939,7 @@ public sealed partial class WireToGateBusinessService
         !(CanUseStationOperator()
             && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
         && CanRequestLoadCancellationBeforeSublot()
-        && FindLoadCancellationBeforeSublot(Volatile.Read(ref _lastRecoveryState), null).Availability
+        && FindLoadCancellationBeforeSublot(Volatile.Read(ref _lastRecoveryState), null, rowPress: false).Availability
             is LoadCancellationBeforeSublotAvailability.SelectionRequired;
 
     private sealed record LoadCancellationBeforeSublotTarget(string CancellationId, string DemandId);
@@ -892,9 +1015,14 @@ public sealed partial class WireToGateBusinessService
     /// The demand picked in the worklist, or <c>null</c> when nothing is picked -- which is also what
     /// the entry gates and a retry after a restart pass, neither having a pick to offer.
     /// </param>
+    /// <param name="rowPress">
+    /// Whether this is a worklist row's 「取消」 at the staging pickup stop (8005-agv-onboard-hmi#353), the one way a new
+    /// cancellation before any sublot is offered there. Anything else asking is read as the shared entry, which is not.
+    /// </param>
     private LoadCancellationBeforeSublotOutcome FindLoadCancellationBeforeSublot(
         WireToGateRecoveryState state,
-        string? selectedDemandId)
+        string? selectedDemandId,
+        bool rowPress)
     {
         // Not "same revision" (PR #200 second review, L2): after a same-stop revision advance the request in
         // hand is kept and entries against it are accepted (#199), and the server's cancellation matches the
@@ -911,12 +1039,13 @@ public sealed partial class WireToGateBusinessService
             return NoLoadCancellationBeforeSublot;
         }
 
-        // Nor at the staging pickup stop (CP-0012 revision four, REQ-0211; 8005-agv-onboard-hmi#348): there "not loading this
-        // one today" is the operator's 「出发」, which puts what was not loaded back to be dispatched, and the server refuses this
-        // cancellation (8005-agv-control-server#713). One already sent is the exception -- left by an earlier version, or by a
-        // stop recognized only later -- and is let through to be resent and settled: while it is out, sublot entry and 「出发」
-        // are both shut (CanSubmitSublot, LoadCancellationOpen), so shutting this entry too would leave it nowhere to go.
-        if (state.PendingLoadCancellation is not { SlotOperationAttemptId: null }
+        // Nor at the staging pickup stop through the shared entry: there each worklist row carries its own 「取消」 (CP-0014
+        // revision two, REQ-0211; 8005-agv-onboard-hmi#353), and the shared entry's "pick, then cancel" stays hidden
+        // (8005-agv-onboard-hmi#348). One already sent is the exception -- pressed on its row, left by an earlier version, or by
+        // a stop recognized only later -- and is let through to be resent and settled: while it is out, sublot entry and
+        // 「出发」 are both shut (CanSubmitSublot, LoadCancellationOpen), so shutting this too would leave it nowhere to go.
+        if (!rowPress
+            && state.PendingLoadCancellation is not { SlotOperationAttemptId: null }
             && !WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
                 _session.CurrentJourney,
                 state.StagingPickupStationIds ?? []))
@@ -1053,10 +1182,12 @@ public sealed partial class WireToGateBusinessService
     /// restart settlement's resend passes <c>false</c> (onboard-hmi#239 review M1). No default, on purpose: every caller
     /// has to say which it is.
     /// </param>
+    /// <param name="rowPress">As for <see cref="FindLoadCancellationBeforeSublot"/>.</param>
     private async Task<bool> RequestLoadCancellationCoreAsync(
         string reason,
         string? selectedDemandId,
         bool pressedByOperator,
+        bool rowPress,
         WireToGateRecoveryState? alreadyRead,
         CancellationToken cancellationToken)
     {
@@ -1097,6 +1228,7 @@ public sealed partial class WireToGateBusinessService
                     state,
                     reason,
                     selectedDemandId,
+                    rowPress,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -1260,9 +1392,15 @@ public sealed partial class WireToGateBusinessService
         {
             // Published before the send, which waits for the answer: sublot entry closes from here
             // (CanSubmitSublot), and the operator sees why while the request is out.
+            // At the staging pickup stop the press is one row's, so the notice names that row's sublot
+            // (8005-agv-onboard-hmi#353); elsewhere it reads as it always has.
             PublishOperatorResponse(
                 "RECOVERY_VECTOR_REQUESTED",
-                "已申请取消本站装货，等待服务端答复；取消结束前暂停扫码。 ");
+                WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? [])
+                    && _session.CurrentJourney.CurrentStopWorklist?.Items.FirstOrDefault(
+                        item => string.Equals(item.DemandId, demandId, StringComparison.Ordinal)) is { } row
+                    ? WireToGateLoadCancellationText.RowRequested(row.Sublot) + " "
+                    : "已申请取消本站装货，等待服务端答复；取消结束前暂停扫码。 ");
         }
 
         WireToGateOperatorContextPayload operatorContext = OperatorOf(pending);
@@ -1332,6 +1470,7 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state,
         string reason,
         string? selectedDemandId,
+        bool rowPress,
         CancellationToken cancellationToken)
     {
         if (state.PendingLoadCancellation?.SlotOperationAttemptId is not null)
@@ -1345,7 +1484,7 @@ public sealed partial class WireToGateBusinessService
         }
 
         LoadCancellationBeforeSublotOutcome outcome =
-            FindLoadCancellationBeforeSublot(state, selectedDemandId);
+            FindLoadCancellationBeforeSublot(state, selectedDemandId, rowPress);
         // Three of the four "no subject" cases are the operator's to resolve, not faults: they are
         // said in words and nothing is sent. Only "does not apply at all" stays an exception, which
         // is what a press on an entry that was never offered has always been.
@@ -1544,7 +1683,20 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorEvent(
             $"load-cancellation-before-sublot-restored:{vector.PrimaryId}",
             "RESULT_ACK_PENDING",
-            $"装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「{LoadCancellationCaptionHere()}」补报，不会打开仓门。 ");
+            $"装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次{BeforeSublotPressPhrase(vector.DemandId)}补报，不会打开仓门。 ");
+
+    /// <summary>
+    /// The entry a notice sends the operator to for a cancellation before any sublot about <paramref name="demandId"/>: its
+    /// worklist row's 「取消」 at the staging pickup stop while that row is on the screen (8005-agv-onboard-hmi#353), the
+    /// shared entry by its caption otherwise.
+    /// </summary>
+    private string BeforeSublotPressPhrase(string demandId) =>
+        WireToGateStagingPickupStop.Is(
+                _session.CurrentJourney,
+                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])
+            && HasWorklistRow(demandId)
+            ? WireToGateLoadCancellationText.RowPressPhrase
+            : $"「{LoadCancellationCaptionHere()}」";
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
@@ -1658,6 +1810,7 @@ public sealed partial class WireToGateBusinessService
                     pending.Reason,
                     null,
                     pressedByOperator: false,
+                    rowPress: false,
                     alreadyRead: null,
                     cancellationToken),
                 cancellationToken)

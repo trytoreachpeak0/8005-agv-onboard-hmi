@@ -822,8 +822,12 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 WireToGateRecoveryState journaled = await journal.ReadRecoveryStateAsync(cancellationToken);
                 if (seed is null && journaled.RecoveryVector is null)
                 {
+                    // At the staging pickup stop the entry is a worklist row's 「取消」, not the shared one
+                    // (8005-agv-onboard-hmi#353).
                     await WaitUntilAsync(
-                        () => business.CanRequestLoadCancellation,
+                        () => business.CanRequestLoadCancellation
+                            || session.CurrentJourney.CurrentStopWorklist?.Items.Any(
+                                item => business.CanRequestWorklistRowCancellation(item.DemandId)) == true,
                         "the cancellation entry to be offered",
                         cancellationToken);
                 }

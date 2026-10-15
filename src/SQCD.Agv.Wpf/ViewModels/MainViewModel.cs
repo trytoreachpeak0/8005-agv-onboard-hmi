@@ -476,6 +476,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 _commandSlotsByDemand,
                 _journaledOperations,
                 _slotGroupLayout);
+            // 待送点上还没装的行各有一个「取消」（8005-agv-onboard-hmi#353）。
+            bool offersCancellation = OffersWorklistRowCancellation(side.Code);
             WorklistItems.Add(new WorklistItemRow(
                 item.DemandId,
                 item.Sublot,
@@ -483,10 +485,16 @@ public sealed partial class MainViewModel : ViewModelBase
                 WireToGateStopFacts.ItemTaskTypeText(item),
                 item.ExpectedBasketCount,
                 side.Text,
-                side.Code));
+                side.Code,
+                offersCancellation,
+                CanPressWorklistRowCancellation(item.DemandId, offersCancellation))
+            {
+                AtStagingPickupStop = CurrentStopDeparture.IsShown
+            });
         }
 
         HasWorklistItems = WorklistItems.Count > 0;
+        OnPropertyChanged(nameof(WorklistCountText));
         SelectedWorklistItem = selectedDemandId is null
             ? null
             : WorklistItems.FirstOrDefault(row => row.DemandId == selectedDemandId);
@@ -1898,9 +1906,6 @@ public sealed partial class MainViewModel : ViewModelBase
                     : WireToGateLoadCancellationText.SubjectGone;
         return new LoadCancellationConfirmation(detail, press.SendAsync, staging);
     }
-
-    public WorklistRowCancellationConfirmation BeginWorklistRowCancellation(string demandId) =>
-        new(AgvId.Length < 0 ? demandId : string.Empty, _ => Task.FromResult(false));
 
     /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
     internal void ConfigureLoadCancellationPress(Func<string?, WireToGateLoadCancellationPress> binder) =>

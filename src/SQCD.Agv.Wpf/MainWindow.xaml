@@ -793,8 +793,13 @@
                 持货期限与提示区的离站期限是两个期限，各在各的那一行，不合成一个（REQ-0355）。
                 UIA 按 AutomationId 找它们，ItemStatus 给原始值，判据不必比中文全文。
             -->
+            <!--
+                左栏整栏一个滚动区，手指在栏里上下拖就能滚（PanningMode）。清单自己不再带滚动区（下面 ListBox.Template 只留
+                ItemsPresenter）：它带着时，手指拖动和滚轮都被它吞掉，而它自己又从来不用滚，结果只能去拖外层那根细滚动条
+                （8005-agv-onboard-hmi#353 查明的「待送点清单显示不全」之一）。
+            -->
             <Border Grid.Column="0" Margin="0,0,8,0" Padding="8" Background="White" CornerRadius="8">
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
                     <StackPanel>
                         <TextBlock Margin="0,0,0,6"
                                    FontSize="14"
@@ -864,10 +869,16 @@
                                    Text="{Binding CurrentStopDeparture.StatusText}"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding CurrentStopDeparture.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="本站清单" />
+                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155">
+                            <Run Text="本站清单" /><Run Text="{Binding WorklistCountText, Mode=OneWay}" />
+                        </TextBlock>
                         <!--
                             可选中（批次7-14）：扫码前取消要取消哪条需求由操作员在这里点，本票只用于取消，
                             不是从清单挑待装任务的入口（WORKLIST_SELECTION 归批次 11）。
+                            待送点取货停靠上（CP-0014 修订项二，8005-agv-onboard-hmi#353）：每行压成一行（子批、篮数、侧），
+                            还没装的行右边一个「取消」，按下确认后彻底取消这一条；那几行的侧都是「待分配」，字不显示、ItemStatus 照旧。
+                            1024×768 上一次露出约 4 行，其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
+                            每行第一个 TextBlock 只放子批：真装置 L2 按「行里第一个 TextBlock 是子批」读清单（L2MultiStopJourney）。
                         -->
                         <ListBox Margin="0,2,0,8"
                                  Background="Transparent"
@@ -876,21 +887,31 @@
                                  AutomationProperties.AutomationId="WorklistItems"
                                  ItemsSource="{Binding WorklistItems}"
                                  SelectedItem="{Binding SelectedWorklistItem, Mode=TwoWay}">
+                            <ListBox.Template>
+                                <ControlTemplate TargetType="ListBox">
+                                    <ItemsPresenter />
+                                </ControlTemplate>
+                            </ListBox.Template>
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:WorklistItemRow}">
-                                    <Border Margin="0,2" Padding="6,4" Background="#F4F7FB" CornerRadius="4">
+                                    <Border Margin="0,1" Padding="6,3" Background="#F4F7FB" CornerRadius="4">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                 <TextBlock FontSize="14"
                                                            FontWeight="Bold"
                                                            Text="{Binding Sublot}"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTip="{Binding Sublot}" />
-                                                <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis">
+                                                <TextBlock FontSize="12"
+                                                           Foreground="{StaticResource MutedBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Visibility="{Binding ShowsDetailLine, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Run Text="{Binding DirectionText, Mode=OneWay}" />
                                                     <Run Text="  " />
                                                     <Run Text="{Binding TaskTypeText, Mode=OneWay}" />
@@ -902,11 +923,27 @@
                                                        Margin="6,0,0,0"
                                                        VerticalAlignment="Center"
                                                        FontSize="13"
+                                                       Foreground="{StaticResource MutedBrush}"
+                                                       Text="{Binding ExpectedBasketCountText}"
+                                                       Visibility="{Binding AtStagingPickupStop, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <TextBlock Grid.Column="2"
+                                                       Margin="6,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="13"
                                                        FontWeight="SemiBold"
                                                        Foreground="{StaticResource PrimaryBrush}"
                                                        AutomationProperties.AutomationId="WorklistItemSide"
                                                        AutomationProperties.ItemStatus="{Binding SideCode}"
-                                                       Text="{Binding SideText}" />
+                                                       Text="{Binding ShownSideText}" />
+                                            <Button Grid.Column="3"
+                                                    Margin="6,0,0,0"
+                                                    Padding="12,2"
+                                                    FontSize="14"
+                                                    AutomationProperties.AutomationId="WorklistItemCancellation"
+                                                    IsEnabled="{Binding CanPressCancellation}"
+                                                    Visibility="{Binding OffersCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Click="OnWorklistRowCancellationClick"
+                                                    Content="取消" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
