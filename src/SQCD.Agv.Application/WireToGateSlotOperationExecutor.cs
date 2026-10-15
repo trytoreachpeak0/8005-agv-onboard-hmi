@@ -118,6 +118,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// </summary>
     private readonly Func<WireToGateRecoveryVectorContext, WireToGateRecoveryState, CancellationToken, Task<string?>>
         _vectorResultKeyOnFile;
+
+    /// <summary>The journey on screen, read when a result is recorded (8005-agv-onboard-hmi#352 review L1).</summary>
+    private readonly Func<WireToGateJourneySnapshot> _currentJourney;
+
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
     /// <summary>
@@ -153,7 +157,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         Func<bool>? fatalFaultLatched = null,
         Action<WireToGateJournalOverwrite>? journalOverwritten = null,
         Func<WireToGateRecoveryVectorContext, WireToGateRecoveryState, CancellationToken, Task<string?>>?
-            vectorResultKeyOnFile = null)
+            vectorResultKeyOnFile = null,
+        Func<WireToGateJourneySnapshot>? currentJourney = null)
     {
         _ioModule = ioModule;
         _journal = journal;
@@ -163,6 +168,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         _fatalFaultLatched = fatalFaultLatched ?? (() => false);
         _journalOverwritten = journalOverwritten ?? (_ => { });
         _vectorResultKeyOnFile = vectorResultKeyOnFile ?? ((_, _, _) => Task.FromResult<string?>(null));
+        _currentJourney = currentJourney ?? (() => WireToGateJourneySnapshot.Empty);
         ValidateOptions(options);
     }
 
@@ -641,6 +647,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // journaling its Prepared; with a separate read and write, that write could land in between and this one
         // would put the old state back over it, wiping the operation now at the doors (onboard-hmi#127).
         WireToGateResultRecording recording = WireToGateResultRecording.Settled;
+        // The stop a recorded load was made at is stamped from the journey on screen in the same write (8005-agv-onboard-hmi#352
+        // review L1), not only from the next journey snapshot: one that ended the stop without an operation session would
+        // otherwise leave the load unstamped.
+        WireToGateJourneySnapshot journey = _currentJourney();
         WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
             state =>
             {
@@ -654,11 +664,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     || string.Equals(state.TakenOverSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
                 {
                     recording = WireToGateResultRecording.TakenOverByRecoveryVector;
-                    return RecordedUnderRecoveryVector(state, slotOperationAttemptId);
+                    return RecordedUnderRecoveryVector(state, slotOperationAttemptId).WithLoadStopsStampedFrom(journey);
                 }
 
                 recording = WireToGateResultRecording.Settled;
-                return Recorded(state);
+                return Recorded(state).WithLoadStopsStampedFrom(journey);
             },
             cancellationToken).ConfigureAwait(false);
         if (written is null)

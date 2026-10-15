@@ -35,6 +35,11 @@ public sealed record WireToGateCurrentStopDeparture(
     string VerificationMethod,
     DateTimeOffset VerifiedAt)
 {
+    /// <summary>
+    /// At a machine pickup stop, the <c>movementLegId</c> of the pickup leg the vehicle stood at when it was pressed
+    /// (8005-agv-onboard-hmi#352 review M2): the press belongs to that stop while the vehicle still stands there. <c>null</c> at
+    /// the staging stop, and in a journal written before it existed. Kept in the journal only; it is not on the wire.
+    /// </summary>
     public string? MovementLegId { get; init; }
 
     /// <summary>The server's answer, once one has been journaled; <c>null</c> while the departure is pending.</summary>
@@ -196,22 +201,36 @@ public static class WireToGateCurrentStopDepartureGate
     /// trip back to the same station comes with a newer worklist, and shows nothing left over from this one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The revision and not the operation session: the cargo-holding wait's empty worklist carries none, and a stop's
     /// worklist keeps its session while it moves on -- after which an acceptance must stop holding the button.
+    /// </para>
+    /// <para>
+    /// <b>At a machine pickup stop the pickup leg as well</b> (8005-agv-onboard-hmi#352 review M2): after an acceptance there the
+    /// server may send a newer empty worklist before the plan moves -- a refreshed station deadline, or one ending
+    /// <c>OPERATOR_DEPARTED</c> -- and the revision rule alone would hand the button back for a press that can only be refused.
+    /// So a press with <see cref="WireToGateCurrentStopDeparture.MovementLegId"/> also belongs to the stop while that leg is
+    /// the current one and still <c>ARRIVED</c>.
+    /// </para>
     /// </remarks>
     public static bool BelongsToStop(
         WireToGateCurrentStopDeparture departure,
         WireToGateCurrentStopWorklist worklist,
-        WireToGateMovementLeg? currentLeg) =>
-        currentLeg is null || currentLeg is not null ? BelongsToStop(departure, worklist) : false;
-
-    public static bool BelongsToStop(WireToGateCurrentStopDeparture departure, WireToGateCurrentStopWorklist worklist)
+        WireToGateMovementLeg? currentLeg)
     {
         ArgumentNullException.ThrowIfNull(departure);
         ArgumentNullException.ThrowIfNull(worklist);
-        return departure.Result is { } result
-            && string.Equals(departure.StationId, worklist.StationId, StringComparison.Ordinal)
+        if (departure.Result is not { } result)
+        {
+            return false;
+        }
+
+        bool sameRevision = string.Equals(departure.StationId, worklist.StationId, StringComparison.Ordinal)
             && worklist.Revision <= result.CurrentWorklistRevision;
+        bool sameLeg = departure.MovementLegId is { } legId
+            && currentLeg is { State: "ARRIVED" } leg
+            && string.Equals(leg.MovementLegId, legId, StringComparison.Ordinal);
+        return sameRevision || sameLeg;
     }
 }
 
@@ -231,6 +250,12 @@ public sealed record WireToGateCurrentStopDeparturePrompt(
     /// the prompt, so a stop appended under the confirmation makes it a different prompt and the press is not sent.
     /// </summary>
     public int PickupStopsAfter { get; init; }
+
+    /// <summary>
+    /// At a machine pickup stop, the pickup leg the vehicle stands at, journaled with the press
+    /// (<see cref="WireToGateCurrentStopDeparture.MovementLegId"/>); <c>null</c> at the staging stop.
+    /// </summary>
+    public string? MovementLegId { get; init; }
 }
 
 /// <summary>
@@ -378,9 +403,10 @@ public static class WireToGateStagingPickupStop
 /// </para>
 /// <para>
 /// <b>Or a basket loaded here</b> (<paramref name="basketLoadedHere"/> of <see cref="OffersDeparture"/>, read from
-/// <see cref="WireToGateRecoveryState.HasLoadOnBoardAt"/>): the stop's last item may end otherwise -- A loaded, B cancelled
+/// <see cref="WireToGateRecoveryState.HasLoadOnBoardAtStop"/>): the stop's last item may end otherwise -- A loaded, B cancelled
 /// before any sublot -- and the stop is still loaded and done. The ending worklist carries <c>LOAD_CANCELLED</c> and no
-/// operation session, so only the vehicle's own record of where A went on board can tell.
+/// operation session, so only the vehicle's own record of the stop A went on board at can tell -- the stop, by its pickup leg,
+/// not the station (review M3).
 /// </para>
 /// <para>
 /// <b>Only while the vehicle stands there:</b> the current leg is the pickup leg at the worklist's station, <c>ARRIVED</c>. Once
@@ -423,9 +449,22 @@ public static class WireToGateMachinePickupStop
     /// The pickup stops after the one the vehicle stands at that are not done: the appended stops a press puts back to be
     /// dispatched (CP-0014, UC-002: the confirmation names how many).
     /// </summary>
+    /// <remarks>
+    /// Only while the cargo-holding deadline is running -- <c>LOADING</c> or <c>CARGO_HOLDING_WAIT</c> with
+    /// <c>cargoHoldingDeadlineAt</c> given (8005-agv-onboard-hmi#352 review M1). A press then counts as that deadline expiring
+    /// now and puts those stops back (CP-0014 note 3). Once the loading phase has ended -- full, closed, or a journey that does
+    /// not hold cargo and so has no deadline -- a press only ends the station departure wait and the vehicle goes on to them:
+    /// nothing is put back, and 0 keeps the confirmation from saying otherwise.
+    /// </remarks>
     public static int PickupStopsAfterCurrent(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
+        if (journey.VehicleBusinessState?.LoadingPhase is not
+            { State: "LOADING" or "CARGO_HOLDING_WAIT", CargoHoldingDeadlineAt: not null })
+        {
+            return 0;
+        }
+
         return journey.CurrentLeg is { } current
             ? journey.UpcomingStopPlan!.Legs.Count(leg =>
                 leg.Sequence > current.Sequence

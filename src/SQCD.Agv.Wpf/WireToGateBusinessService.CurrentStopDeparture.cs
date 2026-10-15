@@ -119,7 +119,10 @@ public sealed partial class WireToGateBusinessService
                 shown.OperationSessionId,
                 shown.OperatorId,
                 "SESSION",
-                _clock.Now.ToUniversalTime());
+                _clock.Now.ToUniversalTime())
+            {
+                MovementLegId = shown.MovementLegId
+            };
             WireToGateRecoveryState? written = await UpdateRecoveryStateCachedAsync(
                 state => state.CurrentStopDeparture is { Result: null }
                     ? null
@@ -203,7 +206,7 @@ public sealed partial class WireToGateBusinessService
         if (atMachine && !WireToGateMachinePickupStop.OffersDeparture(
                 journey,
                 stagingStations,
-                basketLoadedHere: journey.CurrentStopWorklist is { } current && state.HasLoadOnBoardAt(current.StationId)))
+                basketLoadedHere: journey.CurrentLeg is { } stop && state.HasLoadOnBoardAtStop(stop.MovementLegId)))
         {
             return WireToGateCurrentStopDepartureView.Hidden;
         }
@@ -211,7 +214,8 @@ public sealed partial class WireToGateBusinessService
         WireToGateCurrentStopWorklist worklist = journey.CurrentStopWorklist!;
         // A pending press is shown wherever the vehicle is; a settled one only at the stop it was for (review M2).
         WireToGateCurrentStopDeparture? last = state.CurrentStopDeparture is { } departure
-            && (departure.Result is null || WireToGateCurrentStopDepartureGate.BelongsToStop(departure, worklist))
+            && (departure.Result is null
+                || WireToGateCurrentStopDepartureGate.BelongsToStop(departure, worklist, journey.CurrentLeg))
                 ? departure
                 : null;
         WireToGateCurrentStopDepartureUnavailability unavailability = WireToGateCurrentStopDepartureGate.Judge(
@@ -234,7 +238,8 @@ public sealed partial class WireToGateBusinessService
                 worklist.Items.Count,
                 operatorId.Trim())
             {
-                PickupStopsAfter = atMachine ? WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey) : 0
+                PickupStopsAfter = atMachine ? WireToGateMachinePickupStop.PickupStopsAfterCurrent(journey) : 0,
+                MovementLegId = atMachine ? journey.CurrentLeg?.MovementLegId : null
             },
             WireToGateCurrentStopDepartureUnavailability.None,
             last)
