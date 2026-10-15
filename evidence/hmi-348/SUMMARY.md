@@ -22,4 +22,4 @@
 
 | `10-review-l1-notices.txt` | 审查 L1：待送点上叫操作员再按的三处提示改用「撤销本次开仓」（机台不变） | `dotnet format` exit 0；恢复标记架构测试 9/0。文案经用户确认（「文案可以」，C11 转达） |
 
-真装置：车载端界面改了，要跑 CI 真装置 `real-onboard-compensate-then-reconnect`，按调度顺序在推送、独立审查通过之后申请，结果补在这里。
+真装置：CI 真装置 `real-onboard-compensate-then-reconnect` 一轮 PASS（83 秒），run `38721655537`（control-server `l2.yml`，`rig=real`，`cs-desktop`），车载端 `ef13809`、服务端 `e2320398`、模拟器 `fb5f7c59`；摘录见 `11-ci-real-rig-38721655537.txt`。随 hmi#353 的 PR 补入库（原件在 v2 工作区 `field-prep/departure-rules-2026-10-14/`）。

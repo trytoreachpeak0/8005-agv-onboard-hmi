@@ -229,7 +229,15 @@ public partial class MainWindow : Window
         // 本站多条需求时确认框复述所选那一条，免得按下去才发现选错了行（批次7-14）。
         // 待送点取货停靠上标题与正文换成「撤销本次开仓」，机台取货一字不变（8005-agv-onboard-hmi#348）：正文在
         // WireToGateLoadCancellationText，标题必须是字面量（ModalDialogRegistrationArchitectureTests），所以分两个调用。
-        MessageBoxResult answer = press.AtStagingPickupStop
+        // 待送点上共用入口只剩那一行已离开清单的扫码前取消时，照清单每行「取消」的标题（8005-agv-onboard-hmi#353 审查 L1）。
+        MessageBoxResult answer = press.EndsTheDemandAtStagingPickupStop
+            ? ModalDialogs.Show(
+                press.Text,
+                "取消这条需求",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No)
+            : press.AtStagingPickupStop
             ? ModalDialogs.Show(
                 press.Text,
                 "撤销本次开仓",
@@ -252,13 +260,45 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (press.AtStagingPickupStop)
+        if (press.EndsTheDemandAtStagingPickupStop)
+        {
+            ShowRecoveryFailure(press.FailureText, "取消失败");
+        }
+        else if (press.AtStagingPickupStop)
         {
             ShowRecoveryFailure(press.FailureText, "撤销本次开仓失败");
         }
         else
         {
             ShowRecoveryFailure(press.FailureText, "取消装货失败");
+        }
+    }
+
+    /// <summary>
+    /// 待送点清单某一行的「取消」（CP-0014 修订项二，8005-agv-onboard-hmi#353）：按下这一刻取下按键，确认框复述这一行、说清
+    /// 这条需求就此结束不再派；确认后发出，业务服务核对对象没变才发。
+    /// </summary>
+    private async void OnWorklistRowCancellationClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null || (sender as FrameworkElement)?.DataContext is not WorklistItemRow row)
+        {
+            return;
+        }
+
+        WorklistRowCancellationConfirmation press = _viewModel.BeginWorklistRowCancellation(row.DemandId);
+        if (ModalDialogs.Show(
+                press.Text,
+                "取消这条需求",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await press.SendAsync(CancellationToken.None))
+        {
+            ShowRecoveryFailure(press.FailureText, "取消失败");
         }
     }
 
