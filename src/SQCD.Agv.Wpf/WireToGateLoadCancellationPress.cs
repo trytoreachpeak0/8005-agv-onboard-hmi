@@ -12,7 +12,12 @@ namespace SQCD.Agv.Wpf;
 /// before any sublot.
 /// </param>
 /// <param name="SendAsync">Sends the press, held to the subject above.</param>
+/// <param name="AtStagingPickupStop">
+/// Whether the stop was the staging pickup stop when the press was taken, which words the confirmation as 「撤销本次开仓」
+/// (8005-agv-onboard-hmi#348). Read from the same snapshot as the subject.
+/// </param>
 public sealed record WireToGateLoadCancellationPress(
     string? SubjectDemandId,
     bool SubjectIsLoadInFlight,
-    Func<CancellationToken, Task<bool>> SendAsync);
+    Func<CancellationToken, Task<bool>> SendAsync,
+    bool AtStagingPickupStop = false);

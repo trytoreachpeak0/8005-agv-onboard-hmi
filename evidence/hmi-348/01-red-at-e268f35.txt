@@ -1,0 +1,11 @@
+commit=e268f35 (red)
+  Failed SQCD.Agv.UnitTests.CurrentStopDepartureTests.TheStagingPickupStopOffersNoCancellationBeforeAnySublot [2 ms]
+Failed!  - Failed:     1, Passed:    51, Skipped:     0, Total:    52, Duration: 311 ms - SQCD.Agv.UnitTests.dll (net8.0)
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AStagingPickupOffersNoCancellationBeforeAnySublot [680 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopTheCancellationBeforeAnySublotIsNotOnTheScreen [683 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopALoadInFlightCanBeUndoneAndTheScreenSaysItGoesBackToBeDispatched [190 ms]
+Failed!  - Failed:     3, Passed:     6, Skipped:     0, Total:     9, Duration: 900 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopTheCancellationBeforeAnySublotIsNotOnTheScreen [93 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtTheStagingPickupStopALoadInFlightCanBeUndoneAndTheScreenSaysItGoesBackToBeDispatched [153 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AStagingPickupOffersNoCancellationBeforeAnySublot [80 ms]
+Failed!  - Failed:     3, Passed:    16, Skipped:     0, Total:    19, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

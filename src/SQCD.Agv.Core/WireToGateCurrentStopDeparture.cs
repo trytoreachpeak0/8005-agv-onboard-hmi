@@ -303,6 +303,21 @@ public static class WireToGateStagingPickupStop
     public const string WireStaging = "WIRE_STAGING";
 
     /// <summary>
+    /// Whether a new cancellation before any sublot may be offered at this stop: not at the staging pickup stop (CP-0012
+    /// revision four, <c>REQ-0211</c>; 8005-agv-onboard-hmi#348), as at any machine pickup.
+    /// </summary>
+    /// <remarks>
+    /// The same judgement as <see cref="Is"/>, so the stop that offers 「出发」 is exactly the stop that does not offer this:
+    /// there, "this one is not loaded today" is the operator's 「出发」, which puts what was not loaded back to be dispatched,
+    /// rather than a cancellation that ends the demand for good. A cancellation already sent is not this method's to judge:
+    /// the business service lets it settle wherever the vehicle is.
+    /// </remarks>
+    public static bool OffersLoadCancellationBeforeAnySublot(
+        WireToGateJourneySnapshot journey,
+        IReadOnlyCollection<string> knownStagingStationIds) =>
+        !Is(journey, knownStagingStationIds);
+
+    /// <summary>
     /// The <c>publicStationFunction</c> the plan gives <paramref name="stationId"/>: the first one a leg at that station carries,
     /// whatever the leg's state -- the pickup legs may be <c>COMPLETED</c> during the cargo-holding wait. <c>null</c> when no leg
     /// there names one.

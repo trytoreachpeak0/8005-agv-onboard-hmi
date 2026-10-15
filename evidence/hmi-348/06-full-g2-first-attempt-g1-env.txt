@@ -1,0 +1,2 @@
+  Content-addressable store is at: X:\.pnpm-store\v11
+  Virtual store is at:             node_modules/.pnpm

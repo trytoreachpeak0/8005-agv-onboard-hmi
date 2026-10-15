@@ -1,0 +1,2 @@
+dotnet format SQCD_8005AGV.sln --verify-no-changes --include <changed .cs files> (commit 45d5cd5)
+exit=0

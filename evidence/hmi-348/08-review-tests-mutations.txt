@@ -1,0 +1,11 @@
+mutation=R1-exception-requires-demand-in-worklist file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AtTheStagingStopASentCancellationWhoseDemandLeftTheWorklistIsLetGo [5 s]
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+mutation=R2-no-caption-change-notice file=src/SQCD.Agv.Wpf/ViewModels/MainViewModel.CurrentStopDeparture.cs
+build exit=0
+test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheCaptionChangeIsAnnouncedWhenAMachinePickupBecomesTheStagingPickupStop [328 ms]
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 377 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored, tree clean

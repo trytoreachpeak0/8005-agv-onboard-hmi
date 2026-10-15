@@ -1,0 +1,2 @@
+dotnet format --verify-no-changes on the two changed test files (commit b4d6a46)
+exit=0

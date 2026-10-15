@@ -420,14 +420,17 @@ public sealed partial class WireToGateBusinessService
     /// </remarks>
     public WireToGateLoadCancellationPress BindLoadCancellationPress(string reason, string? selectedDemandId)
     {
-        LoadCancellationTarget? pressed = LoadCancellationSubject(Volatile.Read(ref _lastRecoveryState), selectedDemandId);
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        LoadCancellationTarget? pressed = LoadCancellationSubject(state, selectedDemandId);
         return new WireToGateLoadCancellationPress(
             pressed?.DemandId,
             pressed?.IsLoadInFlight ?? false,
             cancellationToken => RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
                 () => RequestBoundLoadCancellationAsync(reason, selectedDemandId, pressed?.Key, cancellationToken),
-                cancellationToken));
+                cancellationToken),
+            // The same judgement as 「出发」 and the caption: the confirmation says 「撤销本次开仓」 there (8005-agv-onboard-hmi#348).
+            WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []));
     }
 
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
@@ -748,9 +751,19 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorResponse(
             LoadCancellationNothingToCancelKind,
             "按下确认时，要取消的对象已经变了，这次取消没有执行，也没有开任何仓门。"
-            + "如仍需取消，请重新按「取消装货」，按屏上当前显示为准。");
+            + $"如仍需取消，请重新按「{LoadCancellationCaptionHere()}」，按屏上当前显示为准。");
         return true;
     }
+
+    /// <summary>
+    /// The entry's caption as the operator sees it now: 「撤销本次开仓」 at the staging pickup stop, 「取消装货」 elsewhere
+    /// (8005-agv-onboard-hmi#348). A notice that tells the operator to press the entry names it by this, so it names the button
+    /// on the screen; the judgement is the one the caption and 「出发」 use.
+    /// </summary>
+    private string LoadCancellationCaptionHere() =>
+        WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
+            _session.CurrentJourney,
+            Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? []));
 
     /// <summary>
     /// The cancellation before any sublot is entered (ADR-cross-0046, first case; onboard-hmi#76):
@@ -894,6 +907,19 @@ public sealed partial class WireToGateBusinessService
             || _session.CurrentJourney.IsNonBusinessStop
             || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
             || !IsStopOf(worklist, request))
+        {
+            return NoLoadCancellationBeforeSublot;
+        }
+
+        // Nor at the staging pickup stop (CP-0012 revision four, REQ-0211; 8005-agv-onboard-hmi#348): there "not loading this
+        // one today" is the operator's 「出发」, which puts what was not loaded back to be dispatched, and the server refuses this
+        // cancellation (8005-agv-control-server#713). One already sent is the exception -- left by an earlier version, or by a
+        // stop recognized only later -- and is let through to be resent and settled: while it is out, sublot entry and 「出发」
+        // are both shut (CanSubmitSublot, LoadCancellationOpen), so shutting this entry too would leave it nowhere to go.
+        if (state.PendingLoadCancellation is not { SlotOperationAttemptId: null }
+            && !WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+                _session.CurrentJourney,
+                state.StagingPickupStationIds ?? []))
         {
             return NoLoadCancellationBeforeSublot;
         }
@@ -1518,7 +1544,7 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorEvent(
             $"load-cancellation-before-sublot-restored:{vector.PrimaryId}",
             "RESULT_ACK_PENDING",
-            "装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「取消装货」补报，不会打开仓门。 ");
+            $"装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「{LoadCancellationCaptionHere()}」补报，不会打开仓门。 ");
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
@@ -1618,7 +1644,7 @@ public sealed partial class WireToGateBusinessService
                 $"load-cancellation-unanswered:{pending.CancellationId}",
                 "RECOVERY_AUTHORIZATION_UNKNOWN",
                 $"车辆 {_session.Client.AgvId} 上次按下的装货取消没有收到服务端答复，{trigger}，车辆不会自动重新申请。"
-                + "服务端一旦授权，车辆就会开锁清空目标仓位，请到车旁确认仓门附近安全后再按一次「取消装货」。 ");
+                + $"服务端一旦授权，车辆就会开锁清空目标仓位，请到车旁确认仓门附近安全后再按一次「{LoadCancellationCaptionHere()}」。 ");
             return;
         }
 

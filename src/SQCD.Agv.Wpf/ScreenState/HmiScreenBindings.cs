@@ -12,7 +12,8 @@ internal static class HmiScreenBindings
     [
         Command("ManualSubmitCommand", "手动提交"),
         Click("OnWireToGateRecoveryClick", "申请恢复", "CanRequestWireToGateRecovery", "CanRequestWireToGateRecovery"),
-        Click("OnLoadCancellationClick", "取消装货", "CanRequestLoadCancellation", "CanPressLoadCancellation"),
+        // 文字是绑定（待送点取货停靠上叫「撤销本次开仓」，8005-agv-onboard-hmi#348），没有字面量可记。
+        Click("OnLoadCancellationClick", null, "CanRequestLoadCancellation", "CanPressLoadCancellation"),
         Click("OnLoadCompensationClick", "补偿清空", "CanRequestLoadCompensation", "CanRequestLoadCompensation"),
         Click("OnLoadCorrectionClick", "修正装货", "CanRequestLoadCorrection", "CanRequestLoadCorrection"),
         Click("OnFaultCargoHandoffClick", "故障交接", "CanRequestFaultCargoHandoff", "CanPressFaultCargoHandoff"),
@@ -118,7 +119,7 @@ internal static class HmiScreenBindings
 
     private static ButtonBinding Click(
         string handler,
-        string content,
+        string? content,
         string visibility,
         string isEnabled,
         string? automationId = null) =>

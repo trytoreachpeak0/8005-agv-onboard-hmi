@@ -227,21 +227,38 @@ public partial class MainWindow : Window
         // （8005-agv-onboard-hmi#291）。
         LoadCancellationConfirmation press = _viewModel.BeginLoadCancellation();
         // 本站多条需求时确认框复述所选那一条，免得按下去才发现选错了行（批次7-14）。
-        if (ModalDialogs.Show(
-                "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n"
-                + press.DetailText
-                + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？",
+        // 待送点取货停靠上标题与正文换成「撤销本次开仓」，机台取货一字不变（8005-agv-onboard-hmi#348）：正文在
+        // WireToGateLoadCancellationText，标题必须是字面量（ModalDialogRegistrationArchitectureTests），所以分两个调用。
+        MessageBoxResult answer = press.AtStagingPickupStop
+            ? ModalDialogs.Show(
+                press.Text,
+                "撤销本次开仓",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No)
+            : ModalDialogs.Show(
+                press.Text,
                 "取消装货",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
-                MessageBoxResult.No) != MessageBoxResult.Yes)
+                MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes)
         {
             return;
         }
 
-        if (!await press.SendAsync(CancellationToken.None))
+        if (await press.SendAsync(CancellationToken.None))
         {
-            ShowRecoveryFailure("装货取消未被接受。请检查授权、车辆停稳信号和服务端状态。", "取消装货失败");
+            return;
+        }
+
+        if (press.AtStagingPickupStop)
+        {
+            ShowRecoveryFailure(press.FailureText, "撤销本次开仓失败");
+        }
+        else
+        {
+            ShowRecoveryFailure(press.FailureText, "取消装货失败");
         }
     }
 

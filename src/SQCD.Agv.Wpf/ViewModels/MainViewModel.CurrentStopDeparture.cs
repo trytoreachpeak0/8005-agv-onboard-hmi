@@ -29,7 +29,14 @@ public sealed partial class MainViewModel
     public CurrentStopDepartureDisplay CurrentStopDeparture
     {
         get => _currentStopDeparture;
-        private set => SetProperty(ref _currentStopDeparture, value);
+        private set
+        {
+            if (SetProperty(ref _currentStopDeparture, value))
+            {
+                // 「取消装货」按钮上的字跟着待送点走（8005-agv-onboard-hmi#348）。
+                OnPropertyChanged(nameof(LoadCancellationCaption));
+            }
+        }
     }
 
     internal void ConfigureCurrentStopDeparture(
