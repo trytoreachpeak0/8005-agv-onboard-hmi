@@ -16,3 +16,18 @@
 | `06-full-g2-*` | `scripts/run-w2g-g2.ps1` 全量（G1、单元、G2） | `PASS`：单元 1261/0，G2 991/0 |
 | `07-check-ui-layout.json` | `scripts/check-ui-layout.ps1`（新增 `visibleDoorOpenPrompt`） | `PASS` |
 | `08-ci-real-rig-38773775218.txt` | CI 真装置 `real-onboard-compensate-then-reconnect` ×1（`l2.yml`，`rig=real`；cs `ef992e98`、onboard `457dcac2`、sim `fb5f7c59`） | `PASS`，104 秒 |
+
+## 审查第一阶段之后（M1～M3 返工）
+
+提交：字段前置 `9e31534`、取红 `4ccf215`、实现 `982de1a`、M3 布局用例 `4a7a32d`。09 在 `4ccf215` 上，10～14 在 `4a7a32d` 上。
+
+| 文件 | 内容 | 结论 |
+| --- | --- | --- |
+| `09-review-red-at-4ccf215.txt` | M1、M2 新用例，在排除与按仓计时还没加时跑 | 视图模型 3 条、G2 端到端 1 条按预期失败（恢复向量下横幅照出；读数断后计时清零，120 秒仍是黄色）。快照字段先单独提交，所以红的是断言而不是编译 |
+| `10-crowded-*` | 最挤的提示区（红色横幅＋取消装货＋期待动作超时＋离站倒计时），1004×660 与 989×640 | 都没有被裁；操作记录 110；仓位区 148／128。989×640 下仓位卡片只露出标题与门锁那一行，「货物」那行要滚动 |
+| `11-review-mutations.txt` | 14 个变异（含 R1 去掉恢复向量排除、R1b 业务服务不打标记、R2 去掉 `IsKnown: true`、R2b 读数未知清零计时） | 14 个全部被断言抓到，没有编译错误 |
+| `12-review-format-verify.txt` | `dotnet format --verify-no-changes` | exit 0 |
+| `13-review-architecture.txt` | 两个测试项目的 `ArchitectureTests` | 单元 203/0，G2 项目 12/0 |
+| `14-review-full-g2-*` | `run-w2g-g2.ps1` 全量 | `PASS`：单元 1261/0，G2 997/0 |
+
+CI 真装置 08 跑在审查之前的 `457dcac2` 上；返工没有改 XAML 结构以外的界面元素，是否需要重跑由调度定。
