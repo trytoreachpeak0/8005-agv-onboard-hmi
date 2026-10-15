@@ -131,6 +131,45 @@ public sealed class CurrentStopDepartureTests
         Assert.Same(WireToGateRecoveryState.Empty, WireToGateRecoveryState.Empty.WithStagingPickupStationOf(journey));
     }
 
+    /// <summary>
+    /// 8005-agv-onboard-hmi#348: the staging pickup stop offers no new cancellation before any sublot, whichever way it was
+    /// recognized.
+    /// </summary>
+    [Fact]
+    public void TheStagingPickupStopOffersNoCancellationBeforeAnySublot()
+    {
+        Assert.False(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+            Journey(Worklist(Staging, Item("STAGING_TO_WIRE"), Item("STAGING_TO_WIRE"))), []));
+        Assert.False(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+            WithFunction(Journey(Worklist(Staging, Item("WIRE_TO_GATE"))), Staging, "WIRE_STAGING"), []));
+    }
+
+    /// <summary>8005-agv-onboard-hmi#348, the regression: every machine pickup still offers it.</summary>
+    [Theory]
+    [InlineData("WIRE_TO_GATE")]
+    [InlineData("WIRE_TO_OPTICAL")]
+    [InlineData("WIRE_TO_NITROGEN")]
+    [InlineData("DIE_TO_WIRE_STAGING")]
+    [InlineData("DIE_TO_OVEN")]
+    public void AMachinePickupStillOffersTheCancellationBeforeAnySublot(string workType)
+    {
+        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+            Journey(Worklist(Machine, Item(workType))), [Staging]));
+    }
+
+    /// <summary>
+    /// 8005-agv-onboard-hmi#348: the server's station function decides here too -- a staging worklist at a station the server
+    /// names as something else still offers it, and a station mixing a staging pickup with another task type is no staging stop.
+    /// </summary>
+    [Fact]
+    public void WhatIsNotAStagingPickupStopStillOffersTheCancellationBeforeAnySublot()
+    {
+        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+            WithFunction(Journey(Worklist(Staging, Item("STAGING_TO_WIRE"))), Staging, "GATE"), [Staging]));
+        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
+            Journey(Worklist(Staging, Item("STAGING_TO_WIRE"), Item("WIRE_TO_GATE"))), [Staging]));
+    }
+
     [Fact]
     public void AStagingStationIsRememberedOnceAndAMachineStationNever()
     {

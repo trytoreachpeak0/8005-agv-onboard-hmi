@@ -1029,8 +1029,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     public string LoadCancellationConfirmationDetailText => BeginLoadCancellation().DetailText;
 
-    private static string DescribeLoadCancellationSubject(WorklistItemRow row) =>
-        $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。";
+    private static string DescribeLoadCancellationSubject(WorklistItemRow row, bool atStagingPickupStop) =>
+        WireToGateLoadCancellationText.Subject(atStagingPickupStop, row.Sublot, row.TaskTypeText, row.ExpectedBasketCountText);
 
     /// <summary>
     /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
@@ -1310,6 +1310,15 @@ public sealed partial class MainViewModel : ViewModelBase
         get => _canRequestWireToGateRecovery;
         private set => SetRecoveryEntry(ref _canRequestWireToGateRecovery, value);
     }
+
+    /// <summary>
+    /// 「取消装货」按钮上的字：待送点取货停靠上叫「撤销本次开仓」，机台取货照旧（8005-agv-onboard-hmi#348）。
+    /// </summary>
+    /// <remarks>
+    /// 待送点的认法不另写一份：「出发」入口出现（<see cref="CurrentStopDepartureDisplay.IsShown"/>）就是待送点取货停靠，两者出自
+    /// 同一个 <c>WireToGateStagingPickupStop.Is</c>（8005-agv-onboard-hmi#349）。
+    /// </remarks>
+    public string LoadCancellationCaption => WireToGateLoadCancellationText.Caption(CurrentStopDeparture.IsShown);
 
     public bool CanRequestLoadCancellation
     {
@@ -1868,27 +1877,26 @@ public sealed partial class MainViewModel : ViewModelBase
     public LoadCancellationConfirmation BeginLoadCancellation()
     {
         string? selectedDemandId = SelectedWorklistItem?.DemandId;
-        string selectedText = SelectedWorklistItem is { } selected
-            ? DescribeLoadCancellationSubject(selected)
-            : string.Empty;
         if (_loadCancellationPressBinder is not { } binder)
         {
             return new LoadCancellationConfirmation(
-                selectedText,
+                SelectedWorklistItem is { } selected ? DescribeLoadCancellationSubject(selected, false) : string.Empty,
                 cancellationToken => _wireToGateLoadCancellationRequester is null
                     ? Task.FromResult(false)
-                    : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken));
+                    : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken),
+                AtStagingPickupStop: false);
         }
 
         WireToGateLoadCancellationPress press = binder(selectedDemandId);
+        bool staging = press.AtStagingPickupStop;
         string detail = press.SubjectDemandId is not { } subjectDemandId
-            ? selectedText
+            ? SelectedWorklistItem is { } picked ? DescribeLoadCancellationSubject(picked, staging) : string.Empty
             : WorklistItems.FirstOrDefault(item => item.DemandId == subjectDemandId) is { } subject
-                ? DescribeLoadCancellationSubject(subject)
+                ? DescribeLoadCancellationSubject(subject, staging)
                 : press.SubjectIsLoadInFlight
-                    ? "将要取消的是正在进行的这次装货。"
-                    : "将要取消的任务已不在本站清单里。";
-        return new LoadCancellationConfirmation(detail, press.SendAsync);
+                    ? WireToGateLoadCancellationText.LoadInFlight(staging)
+                    : WireToGateLoadCancellationText.SubjectGone;
+        return new LoadCancellationConfirmation(detail, press.SendAsync, staging);
     }
 
     /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>

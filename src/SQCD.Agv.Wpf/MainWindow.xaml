@@ -390,7 +390,7 @@
                             IsEnabled="{Binding CanPressLoadCancellation}"
                             Visibility="{Binding CanRequestLoadCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnLoadCancellationClick"
-                            Content="取消装货" />
+                            Content="{Binding LoadCancellationCaption}" />
                     <TextBlock Margin="0,0,8,0"
                                VerticalAlignment="Center"
                                FontSize="13"

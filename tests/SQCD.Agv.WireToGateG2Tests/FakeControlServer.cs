@@ -403,6 +403,13 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public string JourneyWorkType { get; set; } = "WIRE_TO_GATE";
 
     /// <summary>
+    /// The <c>worklistRevision</c> of the worklist <see cref="SendJourneySnapshotsAfterRecovery"/> sends and of the entry request
+    /// that follows it. A test that changes the worklist's content across a restart moves it on, or the vehicle reads the same
+    /// revision with other content as a conflict (8005-agv-onboard-hmi#348).
+    /// </summary>
+    public long JourneyWorklistRevision { get; set; } = 1;
+
+    /// <summary>
     /// The <c>stopRole</c> of the worklist item, when set; otherwise it follows
     /// <see cref="SendDropoffStopSnapshots"/>.
     /// </summary>
@@ -4152,7 +4159,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
             JourneyPayload("CurrentStopWorklistSnapshot", new
             {
                 stationId = "ST-01",
-                worklistRevision = 1,
+                worklistRevision = JourneyWorklistRevision,
                 operationSessionId = OperationSessionId,
                 stationDepartureDeadlineAt = StationDepartureDeadlineAt,
                 stopEndedReason = (string?)null,
@@ -4295,7 +4302,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
             {
                 operationSessionId = OperationSessionId,
                 stationId = "ST-01",
-                worklistRevision = 1,
+                worklistRevision = JourneyWorklistRevision,
                 expectedSublots,
                 entryMethods = FrozenEntryMethods,
                 expiresOnRevisionChange = true
