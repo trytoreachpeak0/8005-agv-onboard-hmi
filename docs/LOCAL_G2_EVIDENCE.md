@@ -134,8 +134,9 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 ## 身份校验
 
 脚本逐字段核对 `$expected` 身份。现在绑定的是协议 `4.0.0` 候选：commit
-4d67655c4da5120d20cd06d99f67f14c4f2dfb08（协议仓 `fp/v2-candidate`：`8005-agv-protocol#13`、CP-0012 的出发请求，加上 `8005-agv-protocol#15`、CP-0013
-改写的「待送点缺电先送货再充电」，取代第一版候选 `c6b1ff73` 里旅程内插充电停靠的写法；由 `8005-agv-onboard-hmi#349` 绑定），`(profileId AGV_FULL_PRODUCT, protocolVersion 5)`，
+3fb214e57d861a909d872511940d26133eb32dca（协议仓 `fp/v2-candidate`：`8005-agv-protocol#13`、CP-0012 的出发请求，加上 `8005-agv-protocol#15`、CP-0013
+改写的「待送点缺电先送货再充电」，取代第一版候选 `c6b1ff73` 里旅程内插充电停靠的写法；再加上 `8005-agv-protocol#17`、CP-0014 放开的机台取货装完后出发与待送点持货倒计时，`8005-agv-protocol#19` 改写的待送点有待装时为 `LOADING`；
+由 `8005-agv-onboard-hmi#349` 绑定，`8005-agv-onboard-hmi#352` 换到这一提交），`(profileId AGV_FULL_PRODUCT, protocolVersion 5)`，
 `releaseVersion 4.0.0`。此前绑定的是已发布的 `protocol-v3.0.0`（3f091cb2，`protocolVersion 4`）。
 
 `Tag` 写的 `protocol-v4.0.0` **尚未打出**，所以脚本查的是「存在则必须指向候选 commit」而不是「必须存在」；

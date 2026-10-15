@@ -7,10 +7,10 @@
   "generatedAt": "2026-10-14T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "39721010a6812184acf353b6d74167c799085b740279e6eeee83af72609919aa",
+  "fileTableSha256": "6130497f126555967c3781f6be8db058261f524f90d729b30388caee25a4499c",
   "schemaBundleSha256": "dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628",
   "examplesSha256": "b0da007ca9712e6b390677ce62679875f195ceb76c080332f4d49ab5fc6cf923",
-  "vectorsSha256": "290b9260df46cd484f993a5a5022712fd54e043c9777da78caa0f9aabf5aa300",
+  "vectorsSha256": "24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7",
   "errorRegistrySha256": "3386154ca06bef1803e08c0b0bc5fc6e498146e3736aa1ab6a4ca604ccf01499",
   "messages": {
     "SessionHello": {
@@ -1065,8 +1065,8 @@
     {
       "path": "README.md",
       "role": "README.md",
-      "bytes": 2489,
-      "sha256": "f2f805f6acc001c65c3618bd5d33e9358dcbc6d7330b9bb08be57ecf5bb8d0aa"
+      "bytes": 2710,
+      "sha256": "18c2c8298f2d321def0c742ea7c58e786d75e3d82bf61dd3b57a4079ac9863d9"
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
@@ -1083,8 +1083,8 @@
     {
       "path": "compatibility/report.json",
       "role": "compatibility",
-      "bytes": 2222,
-      "sha256": "0e14836fb107a7cd29f476110b4677c52d4c56ea4535e0bc824e4febe03eb5ad"
+      "bytes": 2925,
+      "sha256": "82c663f7bbcf9cf10df10c3cd2b9229a4f61e731d9a2d58b625237d05fb986f9"
     },
     {
       "path": "docs/README.md",
@@ -1107,8 +1107,8 @@
     {
       "path": "docs/wire-notes.md",
       "role": "docs",
-      "bytes": 7678,
-      "sha256": "944511039a7b295e3260bb17df27e04a1a31719f0e18dce5bcb2fffb53521344"
+      "bytes": 11435,
+      "sha256": "c8c36d2230d5f8cc630a5868f0f72265763d9bd1291e75c8f3bc3e0216b04318"
     },
     {
       "path": "errors/error-codes.json",
@@ -11787,8 +11787,8 @@
     {
       "path": "integration-slices/index.json",
       "role": "integration-slices",
-      "bytes": 21858,
-      "sha256": "2d781153aba9edc1845e4d39b3f56461d8e20c8b3b7cc7a6edeb70129bc0a9f1"
+      "bytes": 22250,
+      "sha256": "e6bae4f00357080e8539aaf6bccf7f045b31b6f1873f7363f0603dabb870a795"
     },
     {
       "path": "package.json",
@@ -12249,8 +12249,8 @@
     {
       "path": "tools/g1-validate.mjs",
       "role": "tools",
-      "bytes": 14603,
-      "sha256": "3b10bafb0ab0ba33de0cedfce5da5450bc6119ecd584053585b6973149f859f5"
+      "bytes": 14834,
+      "sha256": "91b350dfc5d367852b0571e151e04d6d3609fdd8b44532455d61dd953d03377e"
     },
     {
       "path": "vectors/CV-AUTOMATIC-CHARGING-CYCLE/expected.json",
@@ -12279,8 +12279,8 @@
     {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-ACCEPTED/expected.json",
       "role": "vectors",
-      "bytes": 2117,
-      "sha256": "04a3c2d8877484e92a8103a03bb4a662574bb2b6b476aa4790b26965cba87961"
+      "bytes": 2056,
+      "sha256": "f552b6e87e5085ef20e0420168c2273f9740f0f1fb1a064ec9d897019011e829"
     },
     {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-ACCEPTED/input.ndjson",
@@ -12301,10 +12301,46 @@
       "sha256": "b2b0e41e2ba8e15ae5e18c6a3e35cce7e4d09658768a7708bb270da3397a7da0"
     },
     {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-CARGO-HOLDING/expected.json",
+      "role": "vectors",
+      "bytes": 2164,
+      "sha256": "485372cb6ef7d1ee85f50cf30b0ad54b2ed25efc04916a31beae58b778ad9330"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-CARGO-HOLDING/input.ndjson",
+      "role": "vectors",
+      "bytes": 1012,
+      "sha256": "c626aafb0199d28083889887d5e80f45f430f396a39dcfc116d3191619aa2727"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE/expected.json",
+      "role": "vectors",
+      "bytes": 1354,
+      "sha256": "0e9943c069f69b0c64e26bbfa1cd7378d30dd1ec6743eb12f2eda85559c3a545"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE/input.ndjson",
+      "role": "vectors",
+      "bytes": 391,
+      "sha256": "da593dd541f64592aec7b4902ca3e65e9ef64f4ae1ba5256a552506c1bc90739"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT/expected.json",
+      "role": "vectors",
+      "bytes": 1669,
+      "sha256": "8fed9e124829c5e57ae663bf000f3d84b51f35d444cf0a3f6ad21412bc290689"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT/input.ndjson",
+      "role": "vectors",
+      "bytes": 603,
+      "sha256": "10fc5e8ae220d66084695cba9745c39b741cafcfa44a1face85a536f554d8831"
+    },
+    {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-NOT-ALLOWED/expected.json",
       "role": "vectors",
-      "bytes": 1250,
-      "sha256": "ac0b8fa6d23facf75146743f343da12cb79e7d94c6ddea3f6939235c450abe3f"
+      "bytes": 1269,
+      "sha256": "ec4407092273e98506793e978d5c0d8ebae2af4abe829148a4048768f926c396"
     },
     {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-NOT-ALLOWED/input.ndjson",
@@ -12695,6 +12731,30 @@
       "role": "vectors",
       "bytes": 387,
       "sha256": "4510ed158a120b25bc88ed9456e9d1c555f5f1c4768b66489dd5ffa353e2f8b9"
+    },
+    {
+      "path": "vectors/CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED/expected.json",
+      "role": "vectors",
+      "bytes": 1911,
+      "sha256": "8dd8c102a8a40f08a01a377f873679e99a9ee6a73a7652708a88d9dd309f024e"
+    },
+    {
+      "path": "vectors/CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED/input.ndjson",
+      "role": "vectors",
+      "bytes": 610,
+      "sha256": "2dbd4cd926ed60b1b5385c876be04ab98e66e6dff9ec6d71975f757b454a01a4"
+    },
+    {
+      "path": "vectors/CV-STAGING-CARGO-HOLDING-TIMEOUT/expected.json",
+      "role": "vectors",
+      "bytes": 1831,
+      "sha256": "3efe8126e6f95f77456606f878881c33b5e64e2a7d496113ee4000afb8f079d5"
+    },
+    {
+      "path": "vectors/CV-STAGING-CARGO-HOLDING-TIMEOUT/input.ndjson",
+      "role": "vectors",
+      "bytes": 821,
+      "sha256": "adff80be147a7062556805985e8a8e9025105d9dc3986e581562bc1c6489ac96"
     },
     {
       "path": "vectors/CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO/expected.json",
