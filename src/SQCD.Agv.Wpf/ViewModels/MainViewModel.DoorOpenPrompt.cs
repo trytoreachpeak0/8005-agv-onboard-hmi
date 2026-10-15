@@ -9,17 +9,41 @@ public enum DoorOpenPromptTier
 
 public sealed partial class MainViewModel
 {
-    public bool HasDoorOpenPrompt => false;
+    private bool _hasDoorOpenPrompt;
+    private DoorOpenPromptTier _doorOpenPromptTier;
+    private string _doorOpenPromptHeadline = string.Empty;
+    private string _doorOpenPromptDetail = string.Empty;
+    private bool _doorOpenPromptDimmed;
 
-    public DoorOpenPromptTier DoorOpenPromptTier => DoorOpenPromptTier.None;
-
-    public string DoorOpenPromptHeadline => string.Empty;
-
-    public string DoorOpenPromptDetail => string.Empty;
-
-    public bool DoorOpenPromptDimmed => false;
-
-    internal void RefreshDoorOpenPrompt()
+    public bool HasDoorOpenPrompt
     {
+        get => _hasDoorOpenPrompt;
+        private set => SetProperty(ref _hasDoorOpenPrompt, value);
     }
+
+    public DoorOpenPromptTier DoorOpenPromptTier
+    {
+        get => _doorOpenPromptTier;
+        private set => SetProperty(ref _doorOpenPromptTier, value);
+    }
+
+    public string DoorOpenPromptHeadline
+    {
+        get => _doorOpenPromptHeadline;
+        private set => SetProperty(ref _doorOpenPromptHeadline, value);
+    }
+
+    public string DoorOpenPromptDetail
+    {
+        get => _doorOpenPromptDetail;
+        private set => SetProperty(ref _doorOpenPromptDetail, value);
+    }
+
+    public bool DoorOpenPromptDimmed
+    {
+        get => _doorOpenPromptDimmed;
+        private set => SetProperty(ref _doorOpenPromptDimmed, value);
+    }
+
+    internal void RefreshDoorOpenPrompt() => RunOnUiThread(() => HasDoorOpenPrompt = false);
 }
