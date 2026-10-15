@@ -4711,7 +4711,8 @@ public sealed partial class WireToGateBusinessService
             context.Slots,
             stage,
             guidance,
-            _clock.Now.ToUniversalTime());
+            _clock.Now.ToUniversalTime(),
+            IsRecoveryVector: true);
         PublishOperatorEvent(
             $"recovery-vector-stage:{context.VectorType}:{context.PrimaryId}:{stage}:{detailKey}",
             "OPERATION_PROGRESS",
