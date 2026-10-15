@@ -149,6 +149,46 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("装货取消未被接受。请检查授权、车辆停稳信号和服务端状态。", press.FailureText);
     }
 
+    /// <summary>
+    /// 同一个视图模型，停靠从机台取货变成待送点取货（审查第二阶段 2）：按钮上的字要跟着变，所以要发出
+    /// <c>LoadCancellationCaption</c> 的变更通知。少了这一下，读属性仍是新值，但屏上的按钮停在旧字上。
+    /// </summary>
+    [Fact]
+    public async Task TheCaptionChangeIsAnnouncedWhenAMachinePickupBecomesTheStagingPickupStop()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartStagingLoadStopAsync(new FakeIoModuleClient(), "WIRE_TO_GATE", token);
+        Assert.Equal(WireToGateLoadCancellationText.MachineCaption, harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
+
+        List<string?> announced = [];
+        harness.ViewModel.PropertyChanged += (_, args) =>
+        {
+            lock (announced)
+            {
+                announced.Add(args.PropertyName);
+            }
+        };
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(
+                2,
+                Payloads.Item(DemandA, "TD-A", "SUBLOT-A", WireToGateStagingPickupStop.StagingToWire, "PICKUP", 2),
+                Payloads.Item(DemandB, "TD-B", "SUBLOT-B", WireToGateStagingPickupStop.StagingToWire, "PICKUP", 1)));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown),
+            "the staging pickup stop's 「出发」",
+            token);
+
+        lock (announced)
+        {
+            Assert.Contains(nameof(MainViewModel.LoadCancellationCaption), announced);
+        }
+
+        Assert.Equal(WireToGateLoadCancellationText.StagingCaption, harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
+        Assert.Empty(harness.UiErrors);
+    }
+
     /// <summary>两条需求的取货停靠，项的任务类型由 <paramref name="workType"/> 给：<c>STAGING_TO_WIRE</c> 就是待送点。</summary>
     private static async Task<Harness> StartStagingLoadStopAsync(
         FakeIoModuleClient io,

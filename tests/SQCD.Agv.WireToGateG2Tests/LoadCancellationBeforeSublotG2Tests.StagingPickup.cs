@@ -136,6 +136,52 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     }
 
     /// <summary>
+    /// 已发出未结的那一次，它的需求已经不在待送点的清单里（审查第二阶段 1）：入口仍在，按一下不发任何请求，告诉操作员本机不再
+    /// 等它，扫码随之恢复，全程不开门。
+    /// </summary>
+    /// <remarks>
+    /// 守的是 <c>FindLoadCancellationBeforeSublot</c> 里「需求已离开清单」那一支在待送点也走得到。例外条件若被改成「还要求那条需求
+    /// 仍在清单里」，这里的入口就不出现：取消一直挂着、扫码关着、「出发」按不了，待送点又没有离站倒计时，车会卡在这一站，只能改日志。
+    /// 预置的取消号对不上清单里任何一项（取消号由需求与作业会话派生），等同于那条需求已经离开。
+    /// </remarks>
+    [Fact]
+    public async Task AtTheStagingStopASentCancellationWhoseDemandLeftTheWorklistIsLetGo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.JourneyWorkType = WireToGateStagingPickupStop.StagingToWire,
+            seed: WireToGateRecoveryState.Empty with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    "5b0c3e7a-2f41-4d8e-9a6b-1c2d3e4f5a6b",
+                    null,
+                    "operator-000",
+                    "SESSION",
+                    DateTimeOffset.UtcNow,
+                    "旧版本按下的扫码前取消，那条需求后来离开了本站。")
+            });
+        Assert.True(harness.Business.CurrentStopDeparture.Shown);
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the entry to be offered over the cancellation already sent",
+            token);
+        Assert.False(harness.Business.CanSubmitSublot);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync("待送点上再按一次。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("本机不再等待它", token);
+        Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.Business.CanSubmitSublot,
+            "sublot entry to come back once the vehicle stops waiting",
+            token);
+        Assert.False(harness.Business.IsLoadCancellationBeforeSublotOpen);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// 验收 4：<c>FP-IS-02</c> 的 <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c> 由这个类的夹具覆盖，它的停靠是机台取货，不是待送点，
     /// 所以待送点不提供扫码前取消不碰这条向量。夹具哪天换成待送点，向量用例会因为入口不在而红，这一条先说清是为什么。
     /// </summary>
