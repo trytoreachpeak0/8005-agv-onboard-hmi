@@ -516,6 +516,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => business.RecoveryFallbackDemandId);
             // The same method App.xaml.cs calls, not a copy of its lines (8005-agv-onboard-hmi#221).
             StationClearanceWiring.Configure(viewModel, business);
+            // The staging pickup stop's departure entry (8005-agv-onboard-hmi#349).
+            CurrentStopDepartureWiring.Configure(viewModel, business);
             UnableToChargeWiring.Configure(viewModel, business);
             ManualChargingReturnWiring.Configure(viewModel, business);
             LoadCancellationPressWiring.Configure(viewModel, business);

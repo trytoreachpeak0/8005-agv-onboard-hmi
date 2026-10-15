@@ -1,128 +1,53 @@
-# vendor/8005-agv-protocol
+# 8005-agv-protocol
 
-`8005-agv-protocol` 里被本仓库当作契约读取的文件，按字节存一份副本。
+Shared executable protocol contracts for the 8005 AGV full product
+(`AGV_FULL_PRODUCT`).
 
-## 为什么是副本而不是引用
+## Current state
 
-`manifest/release.json` 是发布身份、65 条消息面与 11 条 denylist 的权威定义，`schemas/` 是
-65 条消息与公共类型的权威形状，`errors/error-codes.json` 是 62 个错误码的权威集合，
-`integration-slices/index.json` 是 16 个切片与 39 个一致性向量的权威划分——四者的
-权威副本都在 `8005-agv-protocol`。本仓库的 `ProtocolIdentityArchitectureTests`、
-`ProtocolMessageSurfaceArchitectureTests`、`ProtocolPayloadShapeArchitectureTests`、
-`ReasonCodeRegistryArchitectureTests` 与 `ProtocolVectorTestBindingArchitectureTests` 要把它们
-当清单来源用，而**读兄弟目录不成立**：两个仓库是各自独立的克隆，没有 submodule 也没有包，
-跑测试的机器上未必有协议仓。
+The repository currently contains an **unapproved `4.0.0` superseding content
+snapshot** for `ProtocolVersion = 5` and profile `AGV_FULL_PRODUCT`.
+`protocol-v3.0.0` remains immutable, and `protocol-v4.0.0` does not exist yet.
 
-所以取用方式是 vendor 一份副本，**并把它按字节钉住**。副本被改一个字符，那条测试立刻红——
-这正是它不构成「第二份手抄清单」的原因：手抄清单会悄悄漂移，按字节绑定的副本不会。
+This candidate is **breaking** against `protocol-v3.0.0`
+(`BREAKING_PROTOCOL_VERSION_INCREASE`, `INCOMPATIBLE_EXACT_IDENTITY_REQUIRED`):
+three changes — the operator's departure request at the `STAGING_TO_WIRE`
+staging station (`CurrentStopDepartureRequested` /
+`CurrentStopDepartureResult`), `OPERATOR_DEPARTED` and `CHARGING_REQUIRED`
+appended to `loadingPhase.closedReason` and `stopEndedReason`, and a vehicle
+below the mandatory charge line at the staging station with cargo on board
+departing to deliver it before it charges (no `CHARGER` stop in the journey,
+stated in [`docs/wire-notes.md`](docs/wire-notes.md)). See
+[`compatibility/report.json`](compatibility/report.json) for the full list.
 
-## 钉法：一条常量，一张表，没有第二个哈希
+It is not a formal `ProtocolRelease` until a release approval (the product
+owner, or an AI agent the product owner authorized) covers its exact commit,
+manifest, vectors hash and compatibility classification. Both sides consume it
+as a candidate: `ApprovalStatus = SUPERSEDING_CANDIDATE`, and gate evidence
+produced on it is `UNRELEASED_CANDIDATE` and does not count towards a batch
+exit.
 
-**本目录没有引入任何新的「批准哈希」常量。** 钉法是两级的：
+Machine-readable JSON Schema, the message manifest, error registry, valid and
+invalid examples, deterministic trajectories, runner/result contracts, and the
+integration-slice index are authoritative. Markdown is explanatory only.
 
-1. `manifest/release.json` 的 SHA-256 **按定义**就是
-   `SQCD.Agv.Contracts.WireToGateRelease.ManifestSha256`——车载端每条报文的信封都带着这个值。
-   `ProtocolIdentityArchitectureTests.TheVendoredManifestIsTheProtocolManifestByteForByte`
-   直接拿那个常量去核副本：常量让副本可信，副本让常量可查，两边互为凭据。
-2. 其余 73 个文件（71 个 schema ＋ 1 份错误码注册表 ＋ 1 份切片索引）**逐个出现在该 manifest
-   自己的 `files` 表里**，`role`／`bytes`／`sha256` 齐全，`sha256` 是原始字节摘要而非规范化摘要。
-   `ProtocolIdentityArchitectureTests.EveryOtherVendoredFileIsPinnedByTheManifestFileTable`
-   遍历本目录，逐个与那张表比对，并断言没有一个文件游离在表外。
+```powershell
+pnpm install --frozen-lockfile
+pnpm manifest:finalize
+pnpm g1
+```
 
-于是整棵副本的可信度**追溯到线上那一个值**，链条上没有任何一处是人手抄进测试的。
+See:
 
-`manifest` 里的 `errorRegistrySha256`（`3386154c…`）不是这里用的那个：它由协议仓自己的
-规范化算法（JCS）算出，与原始字节摘要（`d248027d…`）不同。本仓不复现那个算法——复现它就
-变成了重新实现一个算法，而不是核对一份副本。`files` 表那一栏才是按字节的。
+- [`manifest/release.json`](manifest/release.json)
+- [`attestations/release-approval.template.json`](attestations/release-approval.template.json)
+- [`docs/README.md`](docs/README.md)
+- [`docs/release-governance.md`](docs/release-governance.md)
+- [`docs/candidate-limitations.md`](docs/candidate-limitations.md)
+- [`compatibility/report.json`](compatibility/report.json)
+- [`compatibility/implementation-version-matrix.json`](compatibility/implementation-version-matrix.json)
+- [`evidence/g1-result.json`](evidence/g1-result.json)
 
-## 当前副本
-
-四份都取自同一个提交。
-
-| 项 | 值 |
-| --- | --- |
-| 来源仓库 | `8005-agv-protocol` |
-| 来源提交 | `3f091cb2eae7c58cec54a95dd9389c9180bc7b4c`（分支 `batch-p3/protocol-v3.0.0-candidate`，父提交 `86575456`） |
-| 取用日期 | 2026-09-29 |
-
-| 来源路径 | 内容 |
-| --- | --- |
-| `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 3.0.0`、`protocolVersion 4`、`profileId AGV_FULL_PRODUCT`、65 条消息、11 条 denylist、1897 条文件表项 |
-| `schemas/`（整棵树） | 71 个文件，`$id` 段 `agv-full-product/v4`（新增 `SlotFaultDeclarationCommand`、`SlotFaultDeclarationResult`） |
-| `errors/error-codes.json` | `registryVersion 1.2.0`、62 个码（1.1.0 的 58 个一个未改，末尾新增 `SLOT_FAULT_DECLARED`、`RECOVERY_ACTION_RESULT_NOT_RECONCILED`、`ONBOARD_FATAL_FAULT_LATCHED`、`SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY`） |
-| `integration-slices/index.json` | 16 个切片、`vectorIds` 条目 42 条、去重 39 个向量（新增六条：`FP-IS-02` 一条，`FP-IS-07` 五条） |
-
-**它是候选，不是发布。**候选身份以 `8005-agv-program#151` 的关闭评论为准（`8005-agv-onboard-hmi#214`）。
-`WireToGateRelease.ApprovalStatus` 写着 `SUPERSEDING_CANDIDATE`，`Tag` 写着 `protocol-v3.0.0`——这个 tag 届时
-尚不存在，由 `8005-agv-program#152` 在同一提交上打出，两个字段要一起读才如实。这份副本只在批次分支
-`w2g/batch-p3/v3` 上；集成分支在正式发布前仍是 `protocol-v2.0.0`。在它上面跑出的 G2 一律是
-`UNRELEASED_CANDIDATE`，不计入批次出口。候选若重发（`8005-agv-program#151` 追加评论公布新身份），照下面四步重新
-vendor。
-
-**`protocolVersion` 只在同一 `profileId` 内单调递增**（`WIRE_TO_GATE_MVP 0.3.0` 与 `AGV_FULL_PRODUCT 2.0.0` 都是
-3），所以身份比较一律比完整的 `ProtocolReleaseIdentity`，日志与证据里写协议版本时成对写
-`(profileId, protocolVersion)`，本副本是 `(AGV_FULL_PRODUCT, 4)`。
-
-## 上游改了以后怎么刷新
-
-副本与上游之间**没有自动同步**，也不可能有：测试机上看不到另一个仓库。上游动了任何一份，
-就要有人跑一遍这四步。
-
-1. 在同时有两个仓库的机器上，把上游文件整份拷过来：
-
-   ```bash
-   cp <8005-agv-protocol>/manifest/release.json vendor/8005-agv-protocol/manifest/release.json
-   cp <8005-agv-protocol>/errors/error-codes.json vendor/8005-agv-protocol/errors/error-codes.json
-   cp -r <8005-agv-protocol>/schemas/. vendor/8005-agv-protocol/schemas/
-   cp <8005-agv-protocol>/integration-slices/index.json       vendor/8005-agv-protocol/integration-slices/index.json
-   ```
-
-2. 算 manifest 的新哈希：
-
-   ```bash
-   sha256sum vendor/8005-agv-protocol/manifest/release.json
-   ```
-
-3. 把它填进 `src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的 `ManifestSha256`，**并把那里
-   其余八个常量一起改到位**——那不是抄哈希，那是换一次协议身份，
-   `ProtocolIdentityArchitectureTests` 会逐字段核对。最后更新上表的来源提交与取用日期。
-   其余 73 个文件不需要任何人抄哈希：它们由新 manifest 的 `files` 表自动重新钉住。
-
-4. 跑测试。四处会随之报缺或报多，**都不是测试写错了**：
-
-   - **消息面增删** → `ProtocolMessageSurfaceArchitectureTests`：新消息车载端还没实现（钉进
-     `MessagesWithoutAnImplementation` 并写明理由），或者某条已实现的消息还留着钉。
-   - **payload 形状改动** → `ProtocolPayloadShapeArchitectureTests`：车载端发出的 payload 少了
-     一个新增的必填字段，或者还带着一个已被删掉的字段，或者某个枚举值已不在表内。
-   - **错误码增删** → `ReasonCodeRegistryArchitectureTests`：`IsProtocolErrorCode` 那份内联
-     清单与注册表不再逐个相等。
-   - **切片或向量增删** → `ProtocolVectorTestBindingArchitectureTests`：切片数／条目数／去重向量数
-     不再是 16／42／39，或者某个新向量还没有车载端具名测试与之绑定。
-
-**整份拷贝，不要手工编辑副本。**副本与上游的差异没有任何机制能自动发现，唯一的保障是
-「它永远是 `cp` 出来的」这条纪律。
-
-## G2 用它做出站报文 schema 校验
-
-`tools/SQCD.Agv.SchemaConformance`（由 `WireToGateG2Tests` 的 `OutboundSchemaConformance` 在测试进程
-结束时启动）**直接读本目录**的 `manifest/release.json` 与 `schemas/`，不另拷协议文件。每次先核
-manifest 字节的 SHA-256 等于 `WireToGateRelease.ManifestSha256`、`schemas/` 每个文件与 manifest 的
-`files` 表双向一致，对不上退出码 2、G2 失败。所以门禁验的永远是本仓当前绑定的那份契约，身份换了
-（8005-agv-onboard-hmi#79）它自动跟随。
-
-`envelope.schema.json` 的 `payload` 是一个封闭的空对象，它只描述信封：校验器拿它验「payload 换成
-`{}` 之后的那一行」，再拿 `messages/<Type>.schema.json` 验原样的整行。
-
-违约让 `dotnet test` 退出码非 0，但控制台摘要仍写 `Failed: 0`——**一律按退出码判**。细节见
-`docs/LOCAL_G2_EVIDENCE.md`。
-
-## 行尾
-
-仓库根的 `.gitattributes` 给这个目录挂了 `-text`，禁止行尾转换。哈希是按字节绑定的，
-checkout 时把 LF 换成 CRLF 会让全部摘要漂移。
-
-## 这份副本替换了什么
-
-`vendor/8005-agv-protocol/protocol-v0.1.1/errors/error-codes.json`（43 个码，取自
-`1531489e…`）。路径里的版本段一并去掉：版本是 `manifest/release.json` 里的字段，写进目录名
-就成了第二处需要人手同步的地方。
+G1 PASS proves candidate-internal consistency only. It does not prove G0 human
+approval, either product implementation, G2/G3, real RIoT, real IO, target
+hardware, or factory qualification.

@@ -495,6 +495,8 @@ public sealed class InboundPayloadSchemaBoundaryTests
     [InlineData("CLOSED", "\"CARGO_HOLDING_TIMEOUT\"", "null")]
     [InlineData("CLOSED", "\"WAITING_STATION_YIELD\"", "null")]
     [InlineData("CLOSED", "\"PLANNED_LOADING_COMPLETE\"", "\"2026-09-16T09:00:00Z\"")]
+    [InlineData("CLOSED", "\"OPERATOR_DEPARTED\"", "null")]
+    [InlineData("CLOSED", "\"CHARGING_REQUIRED\"", "null")]
     public void EveryLoadingPhaseTheSchemaDeclaresIsAccepted(
         string state,
         string closedReason,
@@ -599,7 +601,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
 
     /// <summary>
     /// <c>stopEndedReason</c> (3.0.0, 8005-agv-onboard-hmi#214): on an empty worklist every one of the
-    /// schema's seven values is accepted by the session client's own check and reaches the record.
+    /// schema's nine values (4.0.0 added two, 8005-agv-onboard-hmi#349) is accepted by the session client's own check and reaches the record.
     /// </summary>
     [Theory]
     [InlineData("COMPLETED")]
@@ -609,6 +611,8 @@ public sealed class InboundPayloadSchemaBoundaryTests
     [InlineData("CARGO_HANDED_OFF")]
     [InlineData("DEMAND_RELEASED")]
     [InlineData("TRIP_TERMINATED")]
+    [InlineData("OPERATOR_DEPARTED")]
+    [InlineData("CHARGING_REQUIRED")]
     public void EveryStopEndedReasonTheSchemaDeclaresIsAcceptedOnAnEmptyWorklist(string reason)
     {
         CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(

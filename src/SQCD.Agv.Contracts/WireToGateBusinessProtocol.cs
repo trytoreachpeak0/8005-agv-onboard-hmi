@@ -507,3 +507,32 @@ public sealed record SlotFaultDeclarationResultPayload(
     string SlotOperationAttemptId,
     string Outcome,
     WireToGateProblemPayload? Problem);
+
+/// <summary>
+/// The O_TO_C departure request at a staging pickup stop, shaped by the 4.0.0 candidate's
+/// <c>CurrentStopDepartureRequested.schema.json</c> (CP-0012, 8005-agv-onboard-hmi#349). <c>RELIABLE</c>: journaled before it
+/// is sent, acknowledged by a <c>DurableAck</c>, answered later by <see cref="CurrentStopDepartureResultPayload"/>.
+/// </summary>
+/// <remarks>
+/// <see cref="OperationSessionId"/> is required and nullable: an empty worklist carries no operation session, and the request
+/// echoes the worklist the vehicle shows.
+/// </remarks>
+public sealed record CurrentStopDepartureRequestedPayload(
+    string DepartureRequestId,
+    string? OperationSessionId,
+    string StationId,
+    long WorklistRevision,
+    WireToGateOperatorContextPayload Operator);
+
+/// <summary>
+/// The C_TO_O answer to a departure request, shaped by the 4.0.0 candidate's <c>CurrentStopDepartureResult.schema.json</c>.
+/// <c>RELIABLE</c>: the vehicle journals it before acknowledging it with a <c>DurableAck</c>.
+/// </summary>
+/// <remarks>
+/// <see cref="Problem"/> is <c>null</c> exactly when <see cref="Outcome"/> is <c>ACCEPTED</c> (the schema's <c>if/then/else</c>).
+/// </remarks>
+public sealed record CurrentStopDepartureResultPayload(
+    string DepartureRequestId,
+    string Outcome,
+    WireToGateProblemPayload? Problem,
+    long CurrentWorklistRevision);

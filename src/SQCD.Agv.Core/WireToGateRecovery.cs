@@ -511,6 +511,46 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public string? TakenOverSlotOperationAttemptId { get; init; }
 
+    /// <summary>
+    /// The latest press of 「出发」 (8005-agv-onboard-hmi#349): pending until its result is journaled, then kept with the
+    /// result so a replayed result is recognised and acknowledged again rather than applied twice. A new press replaces it,
+    /// and a press is offered only once this one has its result.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> in a journal written before this field existed. A version without it reads the journal and ignores the
+    /// field, and its next write drops it -- a pending press is then not resent, and the server's answer to it, if one comes,
+    /// is acknowledged and not shown.
+    /// </remarks>
+    public WireToGateCurrentStopDeparture? CurrentStopDeparture { get; init; }
+
+    /// <summary>
+    /// The stations where a staging pickup worklist has been seen, so the cargo-holding wait there -- an empty worklist --
+    /// is still known as a staging pickup stop after a restart (<see cref="WireToGateStagingPickupStop"/>).
+    /// </summary>
+    /// <remarks>
+    /// Only ever grows, and stays small: the staging station of a site is fixed. <c>null</c> in a journal written before this
+    /// field existed, which means none seen yet.
+    /// </remarks>
+    public IReadOnlyList<string>? StagingPickupStationIds { get; init; }
+
+    /// <summary>
+    /// The state with <paramref name="journey"/>'s station remembered as a staging pickup station when its worklist is a
+    /// staging pickup worklist; this same instance when there is nothing new to remember.
+    /// </summary>
+    public WireToGateRecoveryState WithStagingPickupStationOf(WireToGateJourneySnapshot journey)
+    {
+        ArgumentNullException.ThrowIfNull(journey);
+        if (journey.IsNonBusinessStop
+            || !WireToGateStagingPickupStop.IsStagingPickupWorklist(journey.CurrentStopWorklist)
+            || journey.CurrentStopWorklist!.StationId is not { Length: > 0 } stationId
+            || StagingPickupStationIds?.Contains(stationId, StringComparer.Ordinal) == true)
+        {
+            return this;
+        }
+
+        return this with { StagingPickupStationIds = [.. StagingPickupStationIds ?? [], stationId] };
+    }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,

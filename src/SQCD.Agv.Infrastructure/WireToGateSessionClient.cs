@@ -284,6 +284,88 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>The outbox key of one press of 「出发」: one row per <c>departureRequestId</c> (8005-agv-onboard-hmi#349).</summary>
+    public static string CurrentStopDepartureKey(string departureRequestId) =>
+        $"{CurrentStopDepartureKeyPrefix}{departureRequestId}";
+
+    public const string CurrentStopDepartureKeyPrefix = "current-stop-departure:";
+
+    /// <summary>
+    /// Sends the departure request on file in <paramref name="departure"/> and waits for its <c>DurableAck</c>
+    /// (8005-agv-onboard-hmi#349). Every call for the same press -- the first, and any later one after a restart -- builds
+    /// the same payload from the journaled record, under the same messageId and outbox key, so it is the same message.
+    /// </summary>
+    /// <remarks>
+    /// Put on file even when the session cannot carry it now (<c>durableBeforeSend</c>), like <c>OperationResult</c>: the
+    /// next handshake replays it under the same messageId, and the press is not lost to a link that dropped between the
+    /// journal and the socket.
+    /// </remarks>
+    public Task<string> SendCurrentStopDepartureRequestedAsync(
+        WireToGateCurrentStopDeparture departure,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(departure);
+        RequireUuid(departure.DepartureRequestId, nameof(departure.DepartureRequestId));
+        return SendDurableAsync(
+            "CurrentStopDepartureRequested",
+            CurrentStopDepartureKey(departure.DepartureRequestId),
+            departure.MessageId,
+            null,
+            new CurrentStopDepartureRequestedPayload(
+                departure.DepartureRequestId,
+                departure.OperationSessionId,
+                departure.StationId,
+                departure.WorklistRevision,
+                new WireToGateOperatorContextPayload(
+                    departure.OperatorId,
+                    departure.VerificationMethod,
+                    departure.VerifiedAt)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Acknowledges a <c>RELIABLE</c> message from the control server once the vehicle holds it durably
+    /// (<c>durableBeforeAck</c>). Today only <c>CurrentStopDepartureResult</c> (8005-agv-onboard-hmi#349): the first
+    /// <c>C_TO_O</c> reliable message the vehicle answers with a <c>DurableAck</c> rather than with a result of its own.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="contentSha256"/> is the received envelope's <c>ComputeContentSha256</c>, the hash the vehicle already
+    /// puts on every <c>SnapshotAppliedAck</c>; the control server compares it with the hash of the line it sent. Not a
+    /// durable send: an ack lost with the link is answered by the server sending the message again, and the vehicle
+    /// acknowledging that copy.
+    /// </remarks>
+    public async Task SendDurableAckAsync(
+        string acceptedMessageId,
+        string acceptedMessageType,
+        string contentSha256,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(acceptedMessageId, nameof(acceptedMessageId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(acceptedMessageType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contentSha256);
+        long connectionEpoch = CurrentConnectionEpoch;
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected || current.SessionGeneration is null)
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope ack = WireToGateProtocolSerializer.Create(
+            "DurableAck",
+            Guid.NewGuid().ToString("D"),
+            acceptedMessageId,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            new DurableAckPayload(
+                acceptedMessageId,
+                acceptedMessageType,
+                contentSha256,
+                _clock.Now.ToUniversalTime()));
+        await SendEnvelopeAsync(ack, connectionEpoch, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<string> SendOperationProgressAsync(
         string slotOperationAttemptId,
         string phase,
@@ -931,6 +1013,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
                 {
                     supersededReports.Add(pending);
+                    continue;
+                }
+
+                // An operator's departure request is not replayed here but once the session is up (8005-agv-onboard-hmi#349):
+                // the server answers it with a CurrentStopDepartureResult of its own, and this handshake reads one answer per
+                // line it sends -- a result between the DurableAck and the capability snapshot's ack would end the handshake.
+                // The pass over rows of an older generation (RequestStaleResend), asked for once the receive loop runs, sends
+                // it under the same messageId, where the result is read like any other.
+                if (string.Equals(pending.MessageType, "CurrentStopDepartureRequested", StringComparison.Ordinal))
+                {
                     continue;
                 }
 
@@ -1767,8 +1859,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // their own replay behaviour. And the answer to a slot fault declaration, for the same reason and
             // because it has to reach the server ahead of the OperationResult the declaration produces: on
             // file in the order they were written, the next handshake replays them in that order
-            // (8005-agv-onboard-hmi#215).
-            if (messageType is "OperationResult" or "SlotFaultDeclarationResult")
+            // (8005-agv-onboard-hmi#215). And an operator's departure request, journaled before it is sent: a press is
+            // not lost to a link that dropped between the journal and the socket (8005-agv-onboard-hmi#349).
+            if (messageType is "OperationResult" or "SlotFaultDeclarationResult" or "CurrentStopDepartureRequested")
             {
                 await StoreDurableAsync(
                     messageType,
@@ -1829,6 +1922,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // A MANUAL_REVIEW refusal gives the row up before the refusal is thrown as it always was: the caller sees what
             // it saw before onboard-hmi#254, and the next handshake no longer replays the row.
             await AbandonIfManualReviewAsync(stored, ackEnvelope, cancellationToken).ConfigureAwait(false);
+            // A departure request answered with a ProtocolProblem is the server refusing that request, whatever the reason
+            // and whether or not it was given up above: the business service settles the press as refused with this code
+            // rather than leaving it pending (8005-agv-onboard-hmi#349 review M1).
+            if (string.Equals(stored.MessageType, "CurrentStopDepartureRequested", StringComparison.Ordinal)
+                && string.Equals(ackEnvelope.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                throw new WireToGateRequestNotAcceptedException(WireToGateProtocolSerializer
+                    .DeserializePayload<ProtocolProblemPayload>(ackEnvelope).Problem.ReasonCode);
+            }
+
             ThrowIfProtocolProblem(ackEnvelope);
             WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", stored.MessageId);
             DurableAckPayload ack = WireToGateProtocolSerializer
@@ -1961,6 +2064,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         envelope.Payload,
                         allowRecoveryRequired: true,
                         CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (WireToGateRequestNotAcceptedException)
+                {
+                    // A departure request the server refused (8005-agv-onboard-hmi#349): the business service's resend loop
+                    // sends it again, meets the same refusal and settles the press. The rows after it still go out.
                 }
                 catch (InvalidDataException)
                 {
@@ -3916,6 +4024,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.DeclaredAt);
                     return true;
                 }
+            case "CurrentStopDepartureResult":
+                {
+                    command = CreateCurrentStopDepartureResult(envelope);
+                    return true;
+                }
             case "CapabilitySnapshotRequested":
             case "SafetyStateChanged":
             case "SafetyStateSnapshotRequested":
@@ -3947,6 +4060,46 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// A <c>CurrentStopDepartureResult</c> checked against every constraint the 4.0.0 candidate schema puts on it, and
+    /// nothing narrower (8005-agv-onboard-hmi#349): a <c>REJECTED</c> outcome carries a problem, <c>ACCEPTED</c> carries none.
+    /// The reason code is not narrowed to the three the wire notes name -- an unknown one is shown as it is, never as
+    /// another.
+    /// </summary>
+    internal static WireToGateCurrentStopDepartureResult CreateCurrentStopDepartureResult(WireToGateEnvelope envelope)
+    {
+        if (envelope.CorrelationId is not null)
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        CurrentStopDepartureResultPayload payload =
+            WireToGateProtocolSerializer.DeserializePayload<CurrentStopDepartureResultPayload>(envelope);
+        RequireUuid(payload.DepartureRequestId, nameof(payload.DepartureRequestId));
+        bool shapeValid = payload.CurrentWorklistRevision >= 0
+            && payload.Outcome switch
+            {
+                WireToGateCurrentStopDepartureOutcome.Accepted => payload.Problem is null,
+                WireToGateCurrentStopDepartureOutcome.Rejected =>
+                    payload.Problem is { } problem && !string.IsNullOrEmpty(problem.ReasonCode),
+                _ => false
+            };
+        if (!shapeValid)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        return new WireToGateCurrentStopDepartureResult(
+            envelope.MessageId,
+            envelope.SessionGeneration!.Value,
+            envelope.SentAt,
+            payload.DepartureRequestId,
+            payload.Outcome,
+            payload.Problem?.ReasonCode,
+            payload.CurrentWorklistRevision,
+            WireToGateProtocolSerializer.ComputeContentSha256(envelope));
     }
 
     private static void ValidateHardwareRecoveryRecord(HardwareRecoveryRecordSubmittedPayload payload)
@@ -4383,8 +4536,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         return phase.State is "CLOSED"
+            // OPERATOR_DEPARTED and CHARGING_REQUIRED are new in 4.0.0 (CP-0012, 8005-agv-onboard-hmi#349).
             ? phase.ClosedReason is ("VEHICLE_FULL" or "CARGO_HOLDING_TIMEOUT"
-                or "WAITING_STATION_YIELD" or "PLANNED_LOADING_COMPLETE")
+                or "WAITING_STATION_YIELD" or "PLANNED_LOADING_COMPLETE"
+                or "OPERATOR_DEPARTED" or "CHARGING_REQUIRED")
             : phase.ClosedReason is null;
     }
 
@@ -4501,8 +4656,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// session the way <c>8005-agv-onboard-hmi#38</c> did.
     /// </para>
     /// <para>
-    /// <c>stopEndedReason</c> (3.0.0, 8005-agv-onboard-hmi#214) is checked against the schema's seven
-    /// values and its <c>if/then/else</c>: <c>null</c> while there are items, a string once there are
+    /// <c>stopEndedReason</c> (3.0.0, 8005-agv-onboard-hmi#214) is checked against the schema's nine
+    /// values (4.0.0 added <c>OPERATOR_DEPARTED</c> and <c>CHARGING_REQUIRED</c>, 8005-agv-onboard-hmi#349) and its <c>if/then/else</c>: <c>null</c> while there are items, a string once there are
     /// none. One case is let through that the schema would refuse, on purpose: an empty worklist with
     /// no reason. That is the shape a 2.0.0 build journaled, and <c>RestorePersistedJourneyProjectionAsync</c>
     /// replays the journal through this same check on the first start after an upgrade -- refusing it
@@ -4517,7 +4672,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         if (payload.Items is { Count: > 0 } && payload.StopEndedReason is not null
             || payload.StopEndedReason is not (null or "COMPLETED" or "STATION_DEADLINE_EXPIRED"
                 or "LOAD_CANCELLED" or "LOAD_COMPENSATED" or "CARGO_HANDED_OFF" or "DEMAND_RELEASED"
-                or "TRIP_TERMINATED"))
+                or "TRIP_TERMINATED" or "OPERATOR_DEPARTED" or "CHARGING_REQUIRED"))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }

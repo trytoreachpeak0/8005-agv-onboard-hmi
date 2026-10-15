@@ -822,6 +822,48 @@
                                    Text="{Binding LoadingClosedReasonText}"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding HasLoadingClosedReason, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <!--
+                            待送点「出发」（协议 4.0.0 候选，8005-agv-onboard-hmi#349）：只在待送点取货停靠出现，机台取货不出现。
+                            摘要只显示车上已有的数据；按下后二次确认，确认后先记下再发，结果回来之前一直显示「出发请求待处理」。
+                        -->
+                        <TextBlock Margin="0,0,0,4"
+                                   FontSize="13"
+                                   Foreground="#334155"
+                                   AutomationProperties.AutomationId="StagingSummary"
+                                   AutomationProperties.ItemStatus="{Binding CurrentStopDeparture.SummaryCode}"
+                                   Text="{Binding CurrentStopDeparture.SummaryText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding CurrentStopDeparture.IsShown, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <StackPanel Margin="0,0,0,6"
+                                    Orientation="Horizontal"
+                                    Visibility="{Binding CurrentStopDeparture.IsShown, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Button Margin="0,0,8,0"
+                                    Padding="20,6"
+                                    FontSize="15"
+                                    FontWeight="Bold"
+                                    AutomationProperties.AutomationId="CurrentStopDeparture"
+                                    IsEnabled="{Binding CurrentStopDeparture.CanPress}"
+                                    Visibility="{Binding CurrentStopDeparture.IsShown, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Click="OnCurrentStopDepartureClick"
+                                    Content="出发" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="13"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       AutomationProperties.AutomationId="CurrentStopDepartureNotice"
+                                       AutomationProperties.ItemStatus="{Binding CurrentStopDeparture.NoticeCode}"
+                                       Text="{Binding CurrentStopDeparture.Notice}"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding CurrentStopDeparture.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                        <TextBlock Margin="0,0,0,6"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="#8A5A00"
+                                   AutomationProperties.AutomationId="CurrentStopDepartureStatus"
+                                   AutomationProperties.ItemStatus="{Binding CurrentStopDeparture.Status}"
+                                   Text="{Binding CurrentStopDeparture.StatusText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding CurrentStopDeparture.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="本站清单" />
                         <!--
                             可选中（批次7-14）：扫码前取消要取消哪条需求由操作员在这里点，本票只用于取消，

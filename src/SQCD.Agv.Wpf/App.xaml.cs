@@ -313,6 +313,8 @@ public partial class App : System.Windows.Application, IDisposable
                 ForcedIsolationWiring.Configure(viewModel, _wireToGateBusiness);
                 // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
                 StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);
+                // 待送点「出发」入口（8005-agv-onboard-hmi#349）。接线在 CurrentStopDepartureWiring 里，G2 夹具调的是同一个方法。
+                CurrentStopDepartureWiring.Configure(viewModel, _wireToGateBusiness);
                 // 现场确认充不上入口（8005-agv-onboard-hmi#222）。接线在 UnableToChargeWiring 里，G2 夹具调的是同一个方法。
                 UnableToChargeWiring.Configure(viewModel, _wireToGateBusiness);
                 // 人工充电保持时「充电后返回服务」按不了的原因与指引（8005-agv-onboard-hmi#293）。接线在 ManualChargingReturnWiring 里，G2 夹具调的是同一个方法。

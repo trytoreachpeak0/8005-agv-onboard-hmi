@@ -1,0 +1,2 @@
+Passed!  - Failed:     0, Passed:  1205, Skipped:     0, Total:  1205, Duration: 21 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   957, Skipped:     0, Total:   957, Duration: 3 m 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

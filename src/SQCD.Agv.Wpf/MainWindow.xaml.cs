@@ -245,6 +245,30 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 待送点「出发」（8005-agv-onboard-hmi#349）：按下这一刻取下确认框依据的那一份，确认后原样交回，业务服务核对仍是当前
+    /// 这一份才发。结果（受理、拒绝原因）显示在按钮下面那一行，这里不再另弹框。
+    /// </summary>
+    private async void OnCurrentStopDepartureClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.CurrentStopDeparture is not { Prompt: { } shown } display)
+        {
+            return;
+        }
+
+        if (ModalDialogs.Show(
+                display.ConfirmationText,
+                "出发",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await _viewModel.RequestCurrentStopDepartureAsync(shown);
+    }
+
     private async void OnLoadCompensationClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null

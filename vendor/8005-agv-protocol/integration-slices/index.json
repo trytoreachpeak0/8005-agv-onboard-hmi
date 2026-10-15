@@ -112,7 +112,12 @@
         "CV-LOAD-CANCELLATION-ALL-EMPTY",
         "CV-LOAD-CANCELLATION-BEFORE-LOAD",
         "CV-SUBLOT-REJECTED-AFTER-ENTRY",
-        "CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN"
+        "CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN",
+        "CV-CURRENT-STOP-DEPARTURE-ACCEPTED",
+        "CV-CURRENT-STOP-DEPARTURE-STALE-REVISION",
+        "CV-CURRENT-STOP-DEPARTURE-NOT-ALLOWED",
+        "CV-CURRENT-STOP-DEPARTURE-STATION-MISMATCH",
+        "CV-CURRENT-STOP-DEPARTURE-DUPLICATE-REQUEST"
       ],
       "gates": [
         "G1",
@@ -126,14 +131,17 @@
           "SUBLOT_BOUND_TO_OPERATION_SESSION",
           "SLOT_SET_AUTHORIZED_ONCE",
           "CORRECTION_AND_CANCELLATION_AUTHORIZED",
-          "EMPTY_SLOTS_SETTLE_WHILE_UNPROVEN_DOOR_HOLDS_VEHICLE"
+          "EMPTY_SLOTS_SETTLE_WHILE_UNPROVEN_DOOR_HOLDS_VEHICLE",
+          "STAGING_DEPARTURE_ON_OPERATOR_REQUEST_RELEASES_UNLOADED_DEMANDS"
         ],
         "authorityModel": {
           "controlServerFact": "OperationSession",
           "wireMessages": [
             "SublotEntryRequested",
             "SlotOperationCommand",
-            "OperationResult"
+            "OperationResult",
+            "CurrentStopDepartureRequested",
+            "CurrentStopDepartureResult"
           ],
           "onboardMode": [
             "PHYSICAL_EXECUTION_AUTHORITY",
@@ -144,12 +152,14 @@
           "controlServer": [
             "AUTHORIZE_SLOT_SET",
             "RECONCILE_LOAD_OUTCOME",
-            "HOLD_VEHICLE_ON_UNPROVEN_DOOR"
+            "HOLD_VEHICLE_ON_UNPROVEN_DOOR",
+            "DECIDE_STAGING_DEPARTURE_ON_REQUEST"
           ],
           "onboardHmi": [
             "SUBMIT_SCANNED_SUBLOT",
             "LOAD_ONLY_AUTHORIZED_SLOTS",
-            "REPORT_UNPROVEN_DOOR_AFTER_EMPTY"
+            "REPORT_UNPROVEN_DOOR_AFTER_EMPTY",
+            "REQUEST_STAGING_DEPARTURE_WITH_OPERATOR"
           ]
         }
       },
@@ -633,7 +643,8 @@
         "CV-AUTOMATIC-CHARGING-CYCLE",
         "CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION",
         "CV-MANUAL-STATION-CLEARANCE",
-        "CV-MANUAL-CHARGING-RETURN"
+        "CV-MANUAL-CHARGING-RETURN",
+        "CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO"
       ],
       "gates": [
         "G1",
@@ -646,7 +657,8 @@
         "requiredOutcomes": [
           "CHARGING_CLAIMS_THE_VEHICLE",
           "CHARGING_POLICY_DECIDED_CENTRALLY",
-          "STATION_RELEASED_ONLY_ON_CONFIRMED_CLEARANCE"
+          "STATION_RELEASED_ONLY_ON_CONFIRMED_CLEARANCE",
+          "STAGING_CARGO_DELIVERED_BEFORE_CHARGING"
         ],
         "authorityModel": {
           "controlServerFact": "VehiclePurposeClaim",
@@ -663,7 +675,8 @@
         "ownerResponsibilities": {
           "controlServer": [
             "DECIDE_CHARGING_POLICY",
-            "RELEASE_STATION_ON_CONFIRMATION"
+            "RELEASE_STATION_ON_CONFIRMATION",
+            "DELIVER_STAGING_CARGO_BEFORE_CHARGING"
           ],
           "onboardHmi": [
             "REPORT_FIELD_OBSERVATION_WITH_OPERATOR",

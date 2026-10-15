@@ -11,23 +11,22 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names <c>protocol-v3.0.0</c>, an approved release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>3f091cb2eae7c58cec54a95dd9389c9180bc7b4c</c>, the commit the
-/// annotated tag <c>protocol-v3.0.0</c> (object <c>e08c362e</c>) points at. It was frozen as the
-/// <c>3.0.0</c> candidate by <c>8005-agv-program#151</c> (bound here by 8005-agv-onboard-hmi#214)
-/// and released unchanged by <c>8005-agv-program#152</c> on 2026-10-09, with one approval in the
-/// external attestation given by an AI agent the product owner authorized for that release. The
-/// release content is the candidate's byte for byte, so the nine identity values stayed and only
-/// <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>
-/// (<c>8005-agv-control-server#393</c>, as 8005-agv-onboard-hmi#79 did for <c>2.0.0</c>).
-/// Evidence produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and
-/// does not count toward a batch exit.
+/// <b>This names the <c>4.0.0</c> candidate, not a release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>4d67655c4da5120d20cd06d99f67f14c4f2dfb08</c> on <c>fp/v2-candidate</c>: the
+/// operator's departure request at the <c>STAGING_TO_WIRE</c> staging station and <c>OPERATOR_DEPARTED</c> and
+/// <c>CHARGING_REQUIRED</c> on <c>closedReason</c> and <c>stopEndedReason</c> (<c>8005-agv-protocol#13</c>, CP-0012), and
+/// a vehicle below the mandatory charge line at the staging station delivering its cargo before it charges
+/// (<c>8005-agv-protocol#15</c>, CP-0013, which replaced the charging stop inside a <c>TRANSPORT</c> journey the first
+/// 4.0.0 candidate, <c>c6b1ff73</c>, carried). Bound here by 8005-agv-onboard-hmi#349. The tag <c>protocol-v4.0.0</c> does not
+/// exist yet, so <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by
+/// <see cref="Commit"/>, and evidence produced on this identity is <c>UNRELEASED_CANDIDATE</c> and does not
+/// count toward a batch exit. The release, if it changes nothing, moves only <see cref="ApprovalStatus"/>,
+/// as <c>protocol-v3.0.0</c> did (<c>8005-agv-control-server#393</c>).
 /// </para>
 /// <para>
-/// <b>The batch branch <c>w2g/batch-p3/v3</c> carried this identity until the release.</b> The
-/// integration branch stayed on <c>protocol-v2.0.0</c> meanwhile, because the control server refuses
-/// to package a release candidate whose approval status is not <c>APPROVED_RELEASE</c>, and the two
-/// ends have no version negotiation. <c>8005-agv-control-server#393</c> merged it back.
+/// <c>protocol-v3.0.0</c> (<c>3f091cb2</c>, <c>(AGV_FULL_PRODUCT, 4)</c>) was bound before this. The two ends
+/// have no version negotiation, so a vehicle on this identity and a control server still on v3 refuse each
+/// other's session; the control server moves in <c>8005-agv-control-server#713</c>.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -36,15 +35,14 @@ namespace SQCD.Agv.Contracts;
 /// <see cref="WireToGateProtocolSerializer.DeserializeAndValidate"/>'s -- therefore compares the
 /// whole <see cref="ProtocolReleaseIdentity"/>, and every log or evidence field that records a
 /// protocol version writes the pair <c>(profileId, protocolVersion)</c>, here
-/// <c>(AGV_FULL_PRODUCT, 4)</c>.
+/// <c>(AGV_FULL_PRODUCT, 5)</c>.
 /// </para>
 /// <para>
 /// <b>These nine values have to match the control server's.</b> <c>ProtocolCandidateIdentity</c>
 /// in <c>8005-agv-control-server</c> is the other copy; the handshake compares <c>commit</c>,
 /// <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the session on any
-/// difference. That end moved to the same candidate in <c>8005-agv-control-server#382</c> on its own
-/// batch branch <c>batch-p3/v3</c>. Neither end copies the other: both read the candidate's
-/// published identity table.
+/// difference. That end moves to this candidate in <c>8005-agv-control-server#713</c>. Neither end
+/// copies the other: both read the candidate's published manifest.
 /// </para>
 /// <para>
 /// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
@@ -55,16 +53,16 @@ namespace SQCD.Agv.Contracts;
 /// </remarks>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 4;
+    public const int ProtocolVersion = 5;
     public const string ProfileId = "AGV_FULL_PRODUCT";
-    public const string ReleaseVersion = "3.0.0";
+    public const string ReleaseVersion = "4.0.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v3.0.0";
-    public const string Commit = "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c";
-    public const string ManifestSha256 = "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e";
-    public const string SchemaBundleSha256 = "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43";
-    public const string VectorsSha256 = "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e";
-    public const string ApprovalStatus = "APPROVED_RELEASE";
+    public const string Tag = "protocol-v4.0.0";
+    public const string Commit = "4d67655c4da5120d20cd06d99f67f14c4f2dfb08";
+    public const string ManifestSha256 = "38a5d2d53e1e235f7f844d991c7258ed51910d542f235ebae6768455c5511fc4";
+    public const string SchemaBundleSha256 = "dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628";
+    public const string VectorsSha256 = "290b9260df46cd484f993a5a5022712fd54e043c9777da78caa0f9aabf5aa300";
+    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -104,7 +102,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently the 3.0.0 candidate identity.
+/// <see cref="WireToGateRelease"/> -- currently the 4.0.0 candidate identity.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>

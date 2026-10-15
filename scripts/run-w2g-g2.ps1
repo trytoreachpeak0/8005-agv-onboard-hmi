@@ -55,31 +55,30 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
     throw '-AllSlices 与 -Slice 只能给一个。'
 }
 
-# 协议 v3.0.0 的身份。这是本仓库的第二份副本，权威副本是
+# 协议 4.0.0 候选的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# protocol-v3.0.0 已于 2026-10-09 发布（8005-agv-program#152）：注释 tag 指向下面的 Commit，
-# 外置 attestation 里有一份批准，由产品负责人授权的 AI agent 给出。发布内容与候选
-# （8005-agv-program#151 冻结的 3f091cb2…，候选期的绑定见 8005-agv-onboard-hmi#214）一字未改，
-# 所以九个身份值原样保留，只把 ApprovalStatus 由 SUPERSEDING_CANDIDATE 改为 APPROVED_RELEASE
-# （8005-agv-control-server#393，照 8005-agv-onboard-hmi#79 的先例）。
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 4d67655c（protocol#13 CP-0012 的出发请求，加上 protocol#15
+# CP-0013 改写的「待送点缺电先送货再充电」，取代第一版候选 c6b1ff73 里旅程内插充电停靠的写法），
+# 由 8005-agv-onboard-hmi#349 绑定。protocol-v4.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是
+# SUPERSEDING_CANDIDATE，本身份上产出的证据是 UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
 $expected = [ordered]@{
-    ProtocolVersion = 4
+    ProtocolVersion = 5
     ProfileId = 'AGV_FULL_PRODUCT'
-    ReleaseVersion = '3.0.0'
+    ReleaseVersion = '4.0.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v3.0.0'
-    Commit = '3f091cb2eae7c58cec54a95dd9389c9180bc7b4c'
-    ManifestSha256 = 'd5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e'
-    SchemaBundleSha256 = 'e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43'
-    VectorsSha256 = 'be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e'
-    ApprovalStatus = 'APPROVED_RELEASE'
+    Tag = 'protocol-v4.0.0'
+    Commit = '4d67655c4da5120d20cd06d99f67f14c4f2dfb08'
+    ManifestSha256 = '38a5d2d53e1e235f7f844d991c7258ed51910d542f235ebae6768455c5511fc4'
+    SchemaBundleSha256 = 'dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628'
+    VectorsSha256 = '290b9260df46cd484f993a5a5022712fd54e043c9777da78caa0f9aabf5aa300'
+    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()

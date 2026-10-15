@@ -76,6 +76,12 @@ internal static class HmiScreenBindings
             null,
             null,
             "UnableToCharge.Options"),
+        Click(
+            "OnCurrentStopDepartureClick",
+            "出发",
+            "CurrentStopDeparture.IsShown",
+            "CurrentStopDeparture.CanPress",
+            "CurrentStopDeparture"),
         Command("ClearLogsCommand", "清空界面记录"),
     ];
 
@@ -105,6 +111,9 @@ internal static class HmiScreenBindings
         new("UnableToChargeStatus", "UnableToCharge.Status", "UnableToCharge.HasStatus"),
         new("CargoHoldingCountdown", "CargoHoldingCountdownStatus", "HasCargoHoldingCountdown"),
         new("LoadingClosedReason", "LoadingClosedReasonCode", "HasLoadingClosedReason"),
+        new("StagingSummary", "CurrentStopDeparture.SummaryCode", "CurrentStopDeparture.IsShown"),
+        new("CurrentStopDepartureNotice", "CurrentStopDeparture.NoticeCode", "CurrentStopDeparture.HasNotice"),
+        new("CurrentStopDepartureStatus", "CurrentStopDeparture.Status", "CurrentStopDeparture.HasStatus"),
     ];
 
     private static ButtonBinding Click(
