@@ -463,6 +463,9 @@ public sealed class CurrentStopDepartureTests
 
         Assert.StartsWith("本站已装完", text, StringComparison.Ordinal);
         Assert.Contains("立即离站", text, StringComparison.Ordinal);
+        // 用户 10-15 定：持货时屏上倒计时的标签是「本站作业剩余」，不点名哪一个标签。
+        Assert.Contains("不再等本站倒计时走完", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("离站剩余", text, StringComparison.Ordinal);
         Assert.Contains("不能再在本站纠错", text, StringComparison.Ordinal);
         Assert.Equal(namesThem, text.Contains($"后面还没装货的 {pickupStopsAfter} 个取货站点退回待派", StringComparison.Ordinal));
         Assert.DoesNotContain("待送点", text, StringComparison.Ordinal);

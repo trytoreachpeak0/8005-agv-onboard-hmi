@@ -500,7 +500,9 @@ public sealed class CurrentStopDepartureG2Tests
             token);
         // The timer that runs it on the vehicle's clock is MultiDemandViewModelTests' to prove: this harness has no running
         // dispatcher, so no countdown ticks here.
-        Assert.Matches("剩 0[45]:", harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownText));
+        string loading = harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownText);
+        Assert.StartsWith("还有任务待扫码，最迟 ", loading, StringComparison.Ordinal);
+        Assert.Matches("带已装的货离站（剩 0[45]:", loading);
 
         // A demand appended: the plan grows and the next snapshot moves the deadline.
         await harness.Server.SendJourneySnapshotAsync("UpcomingStopPlanSnapshot", Payloads.Plan(2, StagingLegs));

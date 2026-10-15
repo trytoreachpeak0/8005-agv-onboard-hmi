@@ -32,6 +32,31 @@ public sealed class LoadingPhaseTextTests
     }
 
     /// <summary>
+    /// 用户 10-15 定：待送点上 <c>LOADING</c> 带期限，说的是还有任务没扫码、到点带已装的货走，单独一句；同一状态在机台照旧，
+    /// 待送点的持货等单也照旧。到期那一句不变。
+    /// </summary>
+    [Fact]
+    public void TheStagingStopsLoadingCountdownSaysTasksAreStillToBeScanned()
+    {
+        WireToGateLoadingPhase loading = new("LOADING", Now.AddSeconds(90), null);
+
+        LoadingPhaseView staging = LoadingPhaseText.Describe(loading, Now, China, atStagingPickupStop: true);
+        Assert.Equal("还有任务待扫码，最迟 10:01 带已装的货离站（剩 01:30）", staging.Text);
+        Assert.Equal("ACTIVE", staging.Code);
+
+        Assert.Equal(
+            "等待更多任务，最迟 10:01 离站（剩 01:30）",
+            LoadingPhaseText.Describe(loading, Now, China, atStagingPickupStop: false).Text);
+        Assert.Equal(
+            "等待更多任务，最迟 10:01 离站（剩 01:30）",
+            LoadingPhaseText.Describe(
+                new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null), Now, China, atStagingPickupStop: true).Text);
+        Assert.Equal(
+            LoadingPhaseText.CargoHoldingExpiredText,
+            LoadingPhaseText.Describe(new WireToGateLoadingPhase("LOADING", Now.AddSeconds(-1), null), Now, China, atStagingPickupStop: true).Text);
+    }
+
+    /// <summary>
     /// 装满与结束不因为期限还在就改成倒计时：机台的持货期限进入 <c>CLOSED</c> 之后照旧下发（program#94 语义表：不清空）。
     /// </summary>
     [Theory]

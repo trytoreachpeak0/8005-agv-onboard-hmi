@@ -99,7 +99,7 @@ public static class WireToGateCurrentStopDepartureText
     }
 
     /// <summary>
-    /// 机台取货停靠的确认框正文（CP-0014，<c>8005-agv-onboard-hmi#352</c>）：本站已装完、按了立即离站、不再等「离站剩余」走完，
+    /// 机台取货停靠的确认框正文（CP-0014，<c>8005-agv-onboard-hmi#352</c>）：本站已装完、按了立即离站、不再等本站倒计时走完（持货时那个倒计时叫「本站作业剩余」，所以不点名标签，用户 10-15 定），
     /// 出发后不能再在本站纠错；后面有没装货的取货站点时说出个数，它们退回待派。机台上没有待送点摘要，篮数不在这里重复。
     /// </summary>
     /// <param name="pickupStopsAfter">后面还没装货的取货站点数，读自计划。</param>
@@ -108,7 +108,7 @@ public static class WireToGateCurrentStopDepartureText
         string released = pickupStopsAfter > 0
             ? $"；后面还没装货的 {pickupStopsAfter} 个取货站点退回待派，不会取消，之后会重新派车"
             : string.Empty;
-        return $"本站已装完。现在出发，车辆会立即离站送货，不再等「离站剩余」的时间走完{released}。\n\n"
+        return $"本站已装完。现在出发，车辆会立即离站送货，不再等本站倒计时走完{released}。\n\n"
             + "出发后不能再在本站纠错。确认现在出发？";
     }
 

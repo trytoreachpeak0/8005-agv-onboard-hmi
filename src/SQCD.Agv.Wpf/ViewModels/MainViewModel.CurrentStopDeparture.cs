@@ -36,6 +36,8 @@ public sealed partial class MainViewModel
             {
                 // 「取消装货」按钮上的字跟着待送点走（8005-agv-onboard-hmi#348）。
                 OnPropertyChanged(nameof(LoadCancellationCaption));
+                // 持货倒计时那一句在待送点的 LOADING 上不同（8005-agv-onboard-hmi#352）：是不是待送点由这一份说了算。
+                RefreshLoadingPhaseCore();
             }
         }
     }
