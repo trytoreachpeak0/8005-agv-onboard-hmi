@@ -1,0 +1,5 @@
+run 38675942172 (l2.yml rig=real, scenarios=real-onboard-compensate-then-reconnect, ref feat/cs713-depart-request) -> success
+2026-10-15T03:26:06.5289629Z ##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 83s
+2026-10-15T03:26:06.9987196Z control-server c291b78b5597ee46354dbef22351779890a6b28a, onboard 92481234b078a70bf3ee7dbc6df2d31d2fe5e73f, simulator fb5f7c593742bf98bc3957b8729a38aad5321f28
+2026-10-15T03:26:06.9994942Z Whole-machine committed memory during the step: min 3.7 GiB, peak 7.86 GiB (61 samples, commit-samples.csv in the evidence).
+2026-10-15T03:26:07.0011436Z | real-onboard-compensate-then-reconnect-01 | PASS | 83 | 3.66 |

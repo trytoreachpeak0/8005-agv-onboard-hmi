@@ -16,5 +16,6 @@ manifest `38a5d2d5…`。证据所在提交：`664a554`。
 | `04-p3-mutation-*.txt` | 删掉 `WireToGateCurrentStopDepartureGate.Judge` 里「仓位操作进行中」与「更正或取消未结」两条判定 | 各被对应单元测试抓住（各 1 红） |
 | `05-format-verify.txt` | `dotnet format --verify-no-changes` | exit 0 |
 | `06-full-g2-*` | `scripts/run-w2g-g2.ps1` 全量（G1 + 单元 + G2 + 线上报文 schema 核对） | `PASS`：单元 1205/0，G2 957/0，schema 核对 24034 行 0 违规 |
+| `07-ci-real-rig-38675942172.txt` | CI 真装置 `real-onboard-compensate-then-reconnect` ×1（control-server `c291b78b`＝cs#713 v4 分支，onboard `92481234`，simulator `fb5f7c59`） | `PASS`，83 秒，两端都是 v4 |
 
 变异只改被变异的那一个文件，每轮之后还原并核对工作树干净。
