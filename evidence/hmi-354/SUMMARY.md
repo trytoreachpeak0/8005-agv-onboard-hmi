@@ -41,3 +41,4 @@ CI 真装置 08 跑在审查之前的 `457dcac2` 上；返工在 `MainWindow.xam
 | `15-merge-format-verify.txt` | `dotnet format --verify-no-changes` | exit 0 |
 | `16-merge-targeted.txt` | 相关 G2 定向：本票测试类、`WorklistScrollingLayoutTests`、`MultiDemandJourneyG2Tests` 整类、`HmiScreenState*` | 227/0 |
 | `17-merge-full-g2-*` | `run-w2g-g2.ps1` 全量 | `PASS`：单元 1261/0，G2 1011/0 |
+| `18-ci-real-rig-38792718838.txt` | CI 真装置 `real-onboard-compensate-then-reconnect` ×1，最终 head（cs `6ef65ed6`、onboard `126d14e8`、sim `fb5f7c59`） | `PASS`，80 秒 |
