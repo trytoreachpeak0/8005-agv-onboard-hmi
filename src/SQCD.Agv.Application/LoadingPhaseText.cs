@@ -76,6 +76,11 @@ public static class LoadingPhaseText
         ArgumentNullException.ThrowIfNull(zone);
         return phase?.State switch
         {
+            // 8005-agv-onboard-hmi#352（C11 定）：期限给了、装货阶段还开着，就倒计时。待送点有追加进来、还没扫的需求时服务端发的
+            // 是 LOADING，期限照样在走，到期没扫的会被放回；屏上没有倒计时，客户就看不到。装满与结束不在此列：机台的期限进入
+            // CLOSED 之后照旧下发（program#94 语义表：不清空），那时这一行说的是结束原因。
+            "LOADING" when phase.CargoHoldingDeadlineAt is not null => CargoHolding(
+                LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone),
             "CARGO_HOLDING_WAIT" => CargoHolding(
                 LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone),
             "VEHICLE_FULL" => new LoadingPhaseView(LoadingPhaseLine.VehicleFull, VehicleFullText, "VEHICLE_FULL"),

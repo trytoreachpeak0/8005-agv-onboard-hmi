@@ -477,6 +477,84 @@ public sealed class CurrentStopDepartureG2Tests
     }
 
     /// <summary>
+    /// <c>CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED</c> (CP-0014; 8005-agv-onboard-hmi#352, C11's follow-up): at the staging
+    /// pickup stop with a basket on board and an appended demand not yet scanned, the server sends <c>LOADING</c> with the
+    /// cargo-holding deadline running. The countdown is shown from it, and when the next
+    /// snapshot moves the deadline -- a demand appended -- the countdown takes the new one; nothing is computed locally.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task TheStagingCountdownShowsWhileLoadingAndTakesTheMovedDeadline()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(token);
+        await WaitForPressableAsync(harness, token);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "VehicleBusinessStateSnapshot",
+            State(2, Payloads.LoadingPhase("LOADING", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(5))));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownStatus) == "ACTIVE",
+            "the countdown while loading",
+            token);
+        // The timer that runs it on the vehicle's clock is MultiDemandViewModelTests' to prove: this harness has no running
+        // dispatcher, so no countdown ticks here.
+        Assert.Matches("剩 0[45]:", harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownText));
+
+        // A demand appended: the plan grows and the next snapshot moves the deadline.
+        await harness.Server.SendJourneySnapshotAsync("UpcomingStopPlanSnapshot", Payloads.Plan(2, StagingLegs));
+        await harness.Server.SendJourneySnapshotAsync(
+            "VehicleBusinessStateSnapshot",
+            State(3, Payloads.LoadingPhase("LOADING", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(9).AddSeconds(30))));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CargoHoldingCountdownText).Contains("剩 09:", StringComparison.Ordinal),
+            "the countdown to take the moved deadline",
+            token);
+
+        Assert.True(harness.OnUi(() => harness.ViewModel.HasCargoHoldingCountdown));
+        Assert.Empty(harness.Server.CurrentStopDepartureRequests);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// <c>CV-STAGING-CARGO-HOLDING-TIMEOUT</c> (CP-0014; 8005-agv-onboard-hmi#352): the staging stop's deadline expires and the
+    /// server closes the phase with <c>CARGO_HOLDING_TIMEOUT</c>, releasing what was not loaded. The vehicle shows the
+    /// timeout from the snapshots -- no countdown left on screen though the deadline is still given -- offers no 「出发」 any
+    /// more, and departs nothing on its own.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-STAGING-CARGO-HOLDING-TIMEOUT")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task TheStagingTimeoutIsShownFromTheSnapshots()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(token);
+        await WaitForPressableAsync(harness, token);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "VehicleBusinessStateSnapshot",
+            State(2, Payloads.LoadingPhase(
+                "CLOSED",
+                cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddSeconds(-1),
+                closedReason: "CARGO_HOLDING_TIMEOUT")));
+        await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Worklist(2, null, "DEMAND_RELEASED"));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.LoadingClosedReasonCode == "CARGO_HOLDING_TIMEOUT"
+                && harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the timeout to be shown",
+            token);
+
+        Assert.Equal("等单已到期，本车结束等单，前往卸货", harness.ViewModel.LoadingClosedReasonText);
+        Assert.False(harness.OnUi(() => harness.ViewModel.HasCargoHoldingCountdown));
+        Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown));
+        // NEVER_DEPART_LOCALLY.
+        Assert.Empty(harness.Server.CurrentStopDepartureRequests);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// The cargo-holding wait at the staging station -- an empty worklist, the time an operator most often departs -- still
     /// offers 「出发」, and the request carries a <c>null</c> <c>operationSessionId</c>. A press pending when the process goes away
     /// is resent after the restart under the same id, and only once the session is up -- never inside the handshake. The wait

@@ -211,8 +211,8 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// <para>
     /// <b>The 4.0.0 candidate's commit <c>83c8f1f5</c> (CP-0014, protocol#17) refilled it with two</b>, both frozen onto
     /// <c>FP-IS-02</c>: the staging pickup stop's cargo-holding countdown, which starts once a basket is loaded and moves
-    /// when a demand is appended. 8005-agv-onboard-hmi#352 moved this end to that commit for the machine pickup's departure
-    /// and builds neither; no onboard ticket owns them yet, and the note on each says so rather than guessing one.
+    /// when a demand is appended. 8005-agv-onboard-hmi#352 moved this end to that commit and, at the coordinator's word, took
+    /// both on: <c>CurrentStopDepartureG2Tests</c> binds them. The set is empty again.
     /// </para>
     /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
@@ -227,10 +227,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED"] =
-                "FP-IS-02, CP-0014 staging cargo-holding countdown; no onboard ticket yet (reported by 8005-agv-onboard-hmi#352)",
-            ["CV-STAGING-CARGO-HOLDING-TIMEOUT"] =
-                "FP-IS-02, CP-0014 staging cargo-holding timeout; no onboard ticket yet (reported by 8005-agv-onboard-hmi#352)"
         };
 
     private sealed record VectorBinding(string VectorId, string TestName);

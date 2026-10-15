@@ -938,7 +938,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private void SyncCargoHoldingTimerCore()
     {
-        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT", CargoHoldingDeadlineAt: not null }
+        // LOADING with a deadline counts down too (8005-agv-onboard-hmi#352): the same line as LoadingPhaseText.Describe.
+        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT" or "LOADING", CargoHoldingDeadlineAt: not null }
             && !_stationDepartureCountdownStopped;
         if (!ticking)
         {

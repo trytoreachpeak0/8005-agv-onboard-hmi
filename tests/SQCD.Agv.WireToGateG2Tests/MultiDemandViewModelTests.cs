@@ -691,6 +691,33 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
+    /// 8005-agv-onboard-hmi#352（C11 定）：<c>LOADING</c> 带持货期限时，倒计时那一行出现、定时器也走；同一阶段不带期限、
+    /// 或已经结束（期限仍在下发）时，定时器停。
+    /// </summary>
+    [Fact]
+    public async Task LoadingWithACargoHoldingDeadlineRunsTheCountdownTimer()
+    {
+        using DispatcherThread ui = new();
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now), ui.Dispatcher);
+        await ui.Dispatcher.InvokeAsync(() => viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("LOADING", Now.AddSeconds(90), null))));
+
+        Assert.True(await ui.Dispatcher.InvokeAsync(() => viewModel.IsCargoHoldingCountdownTicking));
+        Assert.True(viewModel.HasCargoHoldingCountdown);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+
+        await ui.Dispatcher.InvokeAsync(() => viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CLOSED", Now.AddSeconds(90), "CARGO_HOLDING_TIMEOUT"))));
+
+        Assert.False(await ui.Dispatcher.InvokeAsync(() => viewModel.IsCargoHoldingCountdownTicking));
+        Assert.False(viewModel.HasCargoHoldingCountdown);
+        Assert.True(viewModel.HasLoadingClosedReason);
+    }
+
+    /// <summary>
     /// 断线清投影：持货倒计时与结束原因一起清掉，倒计时的定时器也停，不留旧倒计时。
     /// </summary>
     [Fact]
