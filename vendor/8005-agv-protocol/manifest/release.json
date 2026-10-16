@@ -7,7 +7,7 @@
   "generatedAt": "2026-10-16T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "1e5228ce60a15c4eea171c3e822591bf81f91cfe0ec6e8c416200f25644a4398",
+  "fileTableSha256": "d6a19ea7e619f82dcf910a331975de0e481b51f2e3188d03e20460b15e60c065",
   "schemaBundleSha256": "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933",
   "examplesSha256": "b37e84b6da4bef79ee9cea7968432003bbc5035446033d654913d2b137a25ab5",
   "vectorsSha256": "24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7",
@@ -1095,8 +1095,8 @@
     {
       "path": "docs/candidate-limitations.md",
       "role": "docs",
-      "bytes": 1939,
-      "sha256": "a228cb039e898629927a9654dcc7d617c50be26b1ba0ab76ee57fa19a04b4b7e"
+      "bytes": 2141,
+      "sha256": "d730d7b838d518c26ac1e2417e82dc2a67d1e55c42a981dcf719df8c73fb5938"
     },
     {
       "path": "docs/release-governance.md",
@@ -1107,8 +1107,8 @@
     {
       "path": "docs/wire-notes.md",
       "role": "docs",
-      "bytes": 12849,
-      "sha256": "45203475a3f196bee075b8c3eb1b6f669b52adada1c2abb3882a9fc8d0015f3a"
+      "bytes": 12982,
+      "sha256": "df80c4a1fc6c00c5b0fab33cf6a4099f5ec880f53a5d5c74519b3bd7883581cd"
     },
     {
       "path": "errors/error-codes.json",

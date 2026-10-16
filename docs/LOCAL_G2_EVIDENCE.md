@@ -133,7 +133,7 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。现在绑定的是 5.0.0 候选：commit 4ea9ac5dc19716d81ac832fa319100706592df50
+脚本逐字段核对 `$expected` 身份。现在绑定的是 5.0.0 候选：commit 9d7915786b736a6fa8d0c8737bfb115ac08a30b3
 （`8005-agv-protocol#22`，为 `8005-agv-protocol#21`；在 `protocol-v4.0.0` 之上给闭合枚举 `TransportTaskType` 追加
 `WIRE_TO_FULL_INSPECTION`，焊线/键合机台送全检区；`PublicStationFunction` 不变；由 `8005-agv-onboard-hmi#360` 绑定），
 `(profileId AGV_FULL_PRODUCT, protocolVersion 6)`，`releaseVersion 5.0.0`。此前绑定的是已发布的 `protocol-v4.0.0`
