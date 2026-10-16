@@ -90,7 +90,7 @@ public sealed class ProtocolIdentityArchitectureTests
     /// <b>Six of ten, and the other four are named here rather than left to look covered.</b>
     /// <c>ManifestSha256</c> is <see cref="TheVendoredManifestIsTheProtocolManifestByteForByte"/>'s
     /// job -- a manifest cannot carry its own digest. <c>Tag</c> and <c>ApprovalStatus</c> are
-    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease"/>'s.
+    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsACandidate"/>'s.
     /// </para>
     /// <para>
     /// <b><c>Commit</c> is the one no assertion in this assembly can bind.</b> Nothing inside the
