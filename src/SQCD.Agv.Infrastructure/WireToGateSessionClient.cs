@@ -1439,7 +1439,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
     }
 
-    private static void ValidateManualStationClearanceRequest(
+    internal static void ValidateManualStationClearanceRequest(
         ManualStationClearanceConfirmationRequestedPayload payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
