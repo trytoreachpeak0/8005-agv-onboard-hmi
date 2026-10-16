@@ -133,14 +133,15 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。现在绑定的是协议 `4.0.0` 候选：commit
-3fb214e57d861a909d872511940d26133eb32dca（协议仓 `fp/v2-candidate`：`8005-agv-protocol#13`、CP-0012 的出发请求，加上 `8005-agv-protocol#15`、CP-0013
+脚本逐字段核对 `$expected` 身份。现在绑定的是已发布的 `protocol-v4.0.0`（2026-10-16 发布，`8005-agv-program#184`）：commit
+3fb214e57d861a909d872511940d26133eb32dca（发布内容与候选逐字节相同；候选期在协议仓 `fp/v2-candidate`：`8005-agv-protocol#13`、CP-0012 的出发请求，加上 `8005-agv-protocol#15`、CP-0013
 改写的「待送点缺电先送货再充电」，取代第一版候选 `c6b1ff73` 里旅程内插充电停靠的写法；再加上 `8005-agv-protocol#17`、CP-0014 放开的机台取货装完后出发与待送点持货倒计时，`8005-agv-protocol#19` 改写的待送点有待装时为 `LOADING`；
 由 `8005-agv-onboard-hmi#349` 绑定，`8005-agv-onboard-hmi#352` 换到这一提交），`(profileId AGV_FULL_PRODUCT, protocolVersion 5)`，
 `releaseVersion 4.0.0`。此前绑定的是已发布的 `protocol-v3.0.0`（3f091cb2，`protocolVersion 4`）。
 
-`Tag` 写的 `protocol-v4.0.0` **尚未打出**，所以脚本查的是「存在则必须指向候选 commit」而不是「必须存在」；
-`approvalStatus` 声称 `APPROVED_RELEASE` 时才要求 tag 必须存在。同时确认当前 protocol HEAD 是该候选的后继提交，再执行
+`Tag` 写的 `protocol-v4.0.0` 已经打出：注释 tag 对象 `daeebc5c`，解引用到 3fb214e5。脚本查「tag 存在则必须指向绑定的
+commit」，并且因为 `approvalStatus` 是 `APPROVED_RELEASE`，还要求 tag 必须存在——所以本机跑 G2 前，先在协议克隆里
+`git fetch --tags`，否则直接判失败。同时确认当前 protocol HEAD 是绑定 commit 的后继提交，再执行
 protocol G1。release manifest、Schema bundle 和 vectors 哈希仍会逐项校验。工作区路径包含 # 时，脚本临时
 映射一个盘符运行 G1；协议仓库本身不会被修改。CI（`.github/workflows/test.yml`）按同一对常量选检出：
 `ApprovalStatus` 为 `APPROVED_RELEASE` 时按 `Tag` 检出，否则按 `Commit` 检出。
@@ -148,9 +149,10 @@ protocol G1。release manifest、Schema bundle 和 vectors 哈希仍会逐项校
 两端没有版本协商：车载端换到这个身份之后，与仍在 v3 上的服务端互相拒绝会话，两端联调要等
 `8005-agv-control-server#713` 也换过来。
 
-`approvalStatus` 是 `SUPERSEDING_CANDIDATE`，不是 `APPROVED_RELEASE`：发布需要一份批准
-attestation 加注释 tag，两件都还没发生。在这个身份上跑出的 G2 一律标 `UNRELEASED_CANDIDATE`，只是开发态，
-不计入批次出口。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
+`approvalStatus` 是 `APPROVED_RELEASE`：注释 tag 与外置批准 attestation 都已发布，由
+`8005-agv-onboard-hmi#358` 把声明从 `SUPERSEDING_CANDIDATE` 翻过来。翻转之后在这个身份上跑出的 G2 绑定的是已发布协议，
+可以计入批次出口；翻转之前候选期跑出的 G2 证据里记的是 `SUPERSEDING_CANDIDATE`，仍是 `UNRELEASED_CANDIDATE`，
+不计入。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
 
 该证据只代表 OnboardHmi 本机 G2。summary.json 会明确保留
 controlServerG2=PENDING_EXTERNAL 和 g3=PENDING_JOINT，不能把本机结果当作

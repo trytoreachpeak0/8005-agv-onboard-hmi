@@ -11,25 +11,29 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>4.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>3fb214e57d861a909d872511940d26133eb32dca</c> on <c>fp/v2-candidate</c>: the
-/// operator's departure request at the <c>STAGING_TO_WIRE</c> staging station and <c>OPERATOR_DEPARTED</c> and
-/// <c>CHARGING_REQUIRED</c> on <c>closedReason</c> and <c>stopEndedReason</c> (<c>8005-agv-protocol#13</c>, CP-0012), and
-/// a vehicle below the mandatory charge line at the staging station delivering its cargo before it charges
-/// (<c>8005-agv-protocol#15</c>, CP-0013, which replaced the charging stop inside a <c>TRANSPORT</c> journey the first
-/// 4.0.0 candidate, <c>c6b1ff73</c>, carried), and the same departure request at a machine pickup stop once its loads are
-/// done, with the staging stop's cargo-holding deadline (<c>8005-agv-protocol#17</c>, CP-0014; <c>8005-agv-protocol#19</c>
-/// made the staging stop with a demand still to load read <c>LOADING</c>). Bound here by
-/// 8005-agv-onboard-hmi#349, moved to this commit by 8005-agv-onboard-hmi#352. The tag <c>protocol-v4.0.0</c> does not
-/// exist yet, so <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by
-/// <see cref="Commit"/>, and evidence produced on this identity is <c>UNRELEASED_CANDIDATE</c> and does not
-/// count toward a batch exit. The release, if it changes nothing, moves only <see cref="ApprovalStatus"/>,
-/// as <c>protocol-v3.0.0</c> did (<c>8005-agv-control-server#393</c>).
+/// <b>This names <c>protocol-v4.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>3fb214e57d861a909d872511940d26133eb32dca</c>, the commit the annotated tag
+/// <c>protocol-v4.0.0</c> (object <c>daeebc5c</c>) points at: the operator's departure request at the
+/// <c>STAGING_TO_WIRE</c> staging station and <c>OPERATOR_DEPARTED</c> and <c>CHARGING_REQUIRED</c> on
+/// <c>closedReason</c> and <c>stopEndedReason</c> (<c>8005-agv-protocol#13</c>, CP-0012), and a vehicle below the
+/// mandatory charge line at the staging station delivering its cargo before it charges (<c>8005-agv-protocol#15</c>,
+/// CP-0013, which replaced the charging stop inside a <c>TRANSPORT</c> journey the first 4.0.0 candidate,
+/// <c>c6b1ff73</c>, carried), and the same departure request at a machine pickup stop once its loads are done, with
+/// the staging stop's cargo-holding deadline (<c>8005-agv-protocol#17</c>, CP-0014; <c>8005-agv-protocol#19</c> made
+/// the staging stop with a demand still to load read <c>LOADING</c>). It was bound here as the <c>4.0.0</c> candidate
+/// on <c>fp/v2-candidate</c> by 8005-agv-onboard-hmi#349, moved to this commit by 8005-agv-onboard-hmi#352, and
+/// released unchanged on 2026-10-16 (<c>8005-agv-program#184</c>), with one approval in the external attestation
+/// (SHA-256 <c>68f3516e</c>) given by an AI agent the product owner authorized for that release. The release content
+/// is the candidate's byte for byte, so the nine identity values stayed and only <see cref="ApprovalStatus"/> moved
+/// from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>, as <c>protocol-v3.0.0</c> did
+/// (<c>8005-agv-control-server#393</c>, 8005-agv-onboard-hmi#284). CI now checks the protocol out by <see cref="Tag"/>.
+/// Evidence produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and does not count
+/// toward a batch exit.
 /// </para>
 /// <para>
 /// <c>protocol-v3.0.0</c> (<c>3f091cb2</c>, <c>(AGV_FULL_PRODUCT, 4)</c>) was bound before this. The two ends
 /// have no version negotiation, so a vehicle on this identity and a control server still on v3 refuse each
-/// other's session; the control server moves in <c>8005-agv-control-server#713</c>.
+/// other's session; the control server moved in <c>8005-agv-control-server#713</c>.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -44,8 +48,8 @@ namespace SQCD.Agv.Contracts;
 /// <b>These nine values have to match the control server's.</b> <c>ProtocolCandidateIdentity</c>
 /// in <c>8005-agv-control-server</c> is the other copy; the handshake compares <c>commit</c>,
 /// <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the session on any
-/// difference. That end moves to this candidate in <c>8005-agv-control-server#713</c>. Neither end
-/// copies the other: both read the candidate's published manifest.
+/// difference. That end moved to this identity in <c>8005-agv-control-server#713</c>. Neither end
+/// copies the other: both read the protocol's published manifest.
 /// </para>
 /// <para>
 /// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
@@ -65,7 +69,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "beca46a7fe98003ce1f21efb88f2c1406f3040883d0b372a51505a843e306f3a";
     public const string SchemaBundleSha256 = "dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628";
     public const string VectorsSha256 = "24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -105,7 +109,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently the 4.0.0 candidate identity.
+/// <see cref="WireToGateRelease"/> -- currently <c>protocol-v4.0.0</c>.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>
