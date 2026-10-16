@@ -56,7 +56,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
-    /// <c>workType</c> is <c>TransportTaskType</c>, the six MES literals; every one of them passes
+    /// <c>workType</c> is <c>TransportTaskType</c>, the seven MES literals; every one of them passes
     /// the session client's own inbound check, not only the deserialiser.
     /// </summary>
     /// <remarks>
@@ -66,6 +66,8 @@ public sealed class InboundPayloadSchemaBoundaryTests
     /// <c>PROTOCOL_SCHEMA_INVALID</c> -- the <c>8005-agv-onboard-hmi#38</c> lockup again. The
     /// deserialiser alone never refused them: the narrowing lived in
     /// <c>WireToGateSessionClient.ValidateCurrentStopWorklist</c>, which is why this goes through it.
+    /// <c>WIRE_TO_FULL_INSPECTION</c> is the seventh, appended by protocol 5.0.0 (8005-agv-protocol#21,
+    /// 8005-agv-onboard-hmi#360): a check still listing six would refuse the whole stop that carries one.
     /// </remarks>
     [Theory]
     [InlineData("DIE_TO_WIRE_STAGING")]
@@ -74,6 +76,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
     [InlineData("WIRE_TO_OPTICAL")]
     [InlineData("STAGING_TO_WIRE")]
     [InlineData("WIRE_TO_NITROGEN")]
+    [InlineData("WIRE_TO_FULL_INSPECTION")]
     public void EveryWorkTypeTheSchemaDeclaresIsAccepted(string workType)
     {
         CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
@@ -86,7 +89,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
-    /// A value outside the six is still <c>PROTOCOL_SCHEMA_INVALID</c>: that is the schema's own
+    /// A value outside the seven is still <c>PROTOCOL_SCHEMA_INVALID</c>: that is the schema's own
     /// enum, not a business narrowing, and widening the check stops at it.
     /// </summary>
     [Theory]
