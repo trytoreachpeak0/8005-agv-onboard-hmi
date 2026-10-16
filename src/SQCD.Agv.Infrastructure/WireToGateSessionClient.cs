@@ -4649,7 +4649,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// ninth item is a schema violation, not a narrowing.
     /// </para>
     /// <para>
-    /// <c>workType</c> is checked against the schema's own enum -- the six MES literals -- and
+    /// <c>workType</c> is checked against the schema's own enum -- the seven MES literals -- and
     /// nothing narrower. Batch 6 (<c>8005-agv-onboard-hmi#115</c>) widened it from
     /// <c>WIRE_TO_GATE</c> alone: nothing above this reads <c>workType</c> to decide anything, so
     /// the widening opens no crash path, and a <c>STAGING_TO_WIRE</c> journey must not lock the
@@ -4688,7 +4688,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 || string.IsNullOrWhiteSpace(item.TransportDemandKey)
                 || string.IsNullOrWhiteSpace(item.Sublot)
                 || item.WorkType is not ("DIE_TO_WIRE_STAGING" or "DIE_TO_OVEN" or "WIRE_TO_GATE"
-                    or "WIRE_TO_OPTICAL" or "STAGING_TO_WIRE" or "WIRE_TO_NITROGEN")
+                    or "WIRE_TO_OPTICAL" or "STAGING_TO_WIRE" or "WIRE_TO_NITROGEN" or "WIRE_TO_FULL_INSPECTION")
                 || item.StopRole is not ("PICKUP" or "DROPOFF")
                 || item.ExpectedBasketCount is < 1 or > 8))
         {
