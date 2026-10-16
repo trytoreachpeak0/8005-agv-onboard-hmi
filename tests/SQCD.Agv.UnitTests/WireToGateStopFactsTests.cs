@@ -20,8 +20,11 @@ public sealed class WireToGateStopFactsTests
     [InlineData("WIRE_TO_OPTICAL", "焊线→三光")]
     [InlineData("STAGING_TO_WIRE", "待送→焊线机台")]
     [InlineData("WIRE_TO_NITROGEN", "焊线→氮气柜")]
-    public void EachOfTheSixTaskTypesHasItsOwnText(string workType, string expected)
+    [InlineData("WIRE_TO_FULL_INSPECTION", "焊线→全检")]
+    public void EachOfTheSevenTaskTypesHasItsOwnText(string workType, string expected)
     {
+        // 第七类 WIRE_TO_FULL_INSPECTION 的文案取自票面 8005-agv-onboard-hmi#360：与 WIRE_TO_GATE 的「焊线→质检关卡」
+        // 一眼能分开，全检区与人工质检关卡是两个地方（program#195 决定第 2 条）。
         Assert.Equal(expected, WireToGateStopFacts.TaskTypeText(Journey(Item(workType, "PICKUP"))));
     }
 
@@ -31,7 +34,7 @@ public sealed class WireToGateStopFactsTests
     [InlineData("")]
     public void AValueOutsideTheTableIsUnknownRatherThanTheNearestKnownType(string workType)
     {
-        // 入站校验会先拒掉六值之外的 workType；文案表仍不把它映射成任何已知类型，缺一行时显示「未知」而不是猜。
+        // 入站校验会先拒掉七值之外的 workType；文案表仍不把它映射成任何已知类型，缺一行时显示「未知」而不是猜。
         Assert.Equal("未知", WireToGateStopFacts.TaskTypeText(Journey(Item(workType, "PICKUP"))));
     }
 
