@@ -23,6 +23,7 @@ public sealed class MultiDemandViewModelTests
     private const string DemandA = "aaaaaaaa-0000-4000-8000-00000000000a";
     private const string DemandB = "bbbbbbbb-0000-4000-8000-00000000000b";
     private const string DemandC = "cccccccc-0000-4000-8000-00000000000c";
+    private const string DemandD = "dddddddd-0000-4000-8000-00000000000d";
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 2, 0, 0, TimeSpan.Zero);
     private static readonly TimeZoneInfo China =
         TimeZoneInfo.CreateCustomTimeZone("CST+8", TimeSpan.FromHours(8), "CST", "CST");
@@ -41,13 +42,15 @@ public sealed class MultiDemandViewModelTests
             1,
             Item(DemandC, "SUBLOT-C", "WIRE_TO_NITROGEN", "DROPOFF", 3),
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
-            Item(DemandB, "SUBLOT-B", "WIRE_TO_OPTICAL", "PICKUP", 1))));
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_OPTICAL", "PICKUP", 1),
+            Item(DemandD, "SUBLOT-D", "WIRE_TO_FULL_INSPECTION", "PICKUP", 2))));
 
         Assert.Equal(
             [
                 ("SUBLOT-C", "卸货", "焊线→氮气柜", "3 篮"),
                 ("SUBLOT-A", "取货", "焊线→质检关卡", "2 篮"),
-                ("SUBLOT-B", "取货", "焊线→三光", "1 篮")
+                ("SUBLOT-B", "取货", "焊线→三光", "1 篮"),
+                ("SUBLOT-D", "取货", "焊线→全检", "2 篮")
             ],
             viewModel.WorklistItems.Select(row =>
                 (row.Sublot, row.DirectionText, row.TaskTypeText, row.ExpectedBasketCountText)));

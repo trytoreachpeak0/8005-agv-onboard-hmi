@@ -116,12 +116,15 @@ public sealed class InboundPayloadSchemaBoundaryTests
     /// The single-item theory above proves each literal on its own. Batch 10 is the first time the
     /// control server can put several of them at one AREA stop, and the check runs over every item,
     /// so a narrowing on any one of them would refuse the whole snapshot -- the
-    /// <c>8005-agv-onboard-hmi#38</c> lockup again.
+    /// <c>8005-agv-onboard-hmi#38</c> lockup again. <c>WIRE_TO_FULL_INSPECTION</c> joins them in protocol 5.0.0: agv01
+    /// carries it mixed with <c>WIRE_TO_GATE</c>, <c>WIRE_TO_OPTICAL</c> and <c>WIRE_TO_NITROGEN</c>
+    /// (8005-agv-onboard-hmi#360).
     /// </remarks>
     [Fact]
-    public void AWorklistMixingTheFourSameDirectionTypesWithWireToGateIsAccepted()
+    public void AWorklistMixingTheFiveSameDirectionTypesWithWireToGateIsAccepted()
     {
-        string[] workTypes = ["WIRE_TO_GATE", "DIE_TO_WIRE_STAGING", "DIE_TO_OVEN", "WIRE_TO_OPTICAL", "WIRE_TO_NITROGEN"];
+        string[] workTypes =
+            ["WIRE_TO_GATE", "DIE_TO_WIRE_STAGING", "DIE_TO_OVEN", "WIRE_TO_OPTICAL", "WIRE_TO_NITROGEN", "WIRE_TO_FULL_INSPECTION"];
         CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
             "CurrentStopWorklistSnapshot",
             WorklistPayloadWithWorkTypes(workTypes));
@@ -274,6 +277,69 @@ public sealed class InboundPayloadSchemaBoundaryTests
             () => WireToGateSessionClient.ValidateUpcomingStopPlan(payload));
         Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
     }
+
+    /// <summary>
+    /// <c>publicStationFunction</c> is <c>PublicStationFunction</c>: <c>null</c> or one of its five literals, each of which
+    /// passes the inbound check on a plan leg.
+    /// </summary>
+    /// <remarks>
+    /// Protocol 5.0.0 added <c>WIRE_TO_FULL_INSPECTION</c> to <c>TransportTaskType</c> and deliberately nothing to this
+    /// enum (8005-agv-program#195, decision 6: the specification no longer maintains the field and the control server sends
+    /// <c>null</c>), so the session client's two checks of it stay as they were (8005-agv-onboard-hmi#360). Until this test
+    /// nothing pinned the range at all.
+    /// </remarks>
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"WIRE_STAGING\"")]
+    [InlineData("\"OVEN\"")]
+    [InlineData("\"GATE\"")]
+    [InlineData("\"OPTICAL\"")]
+    [InlineData("\"NITROGEN\"")]
+    public void EveryPublicStationFunctionTheSchemaDeclaresIsAccepted(string publicStationFunction)
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithPublicStationFunction(publicStationFunction));
+
+        WireToGateSessionClient.ValidateUpcomingStopPlan(payload);
+
+        Assert.Equal(
+            JsonSerializer.Deserialize<string?>(publicStationFunction),
+            Assert.Single(payload.Legs).PublicStationFunction);
+    }
+
+    /// <summary>
+    /// A station function outside the five stays <c>PROTOCOL_SCHEMA_INVALID</c>, the full inspection area included: the
+    /// task type gained a value, the station function did not.
+    /// </summary>
+    [Theory]
+    [InlineData("FULL_INSPECTION")]
+    [InlineData("WIRE_TO_FULL_INSPECTION")]
+    [InlineData("gate")]
+    [InlineData("")]
+    public void APublicStationFunctionOutsideTheSchemaIsRefused(string publicStationFunction)
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithPublicStationFunction($"\"{publicStationFunction}\""));
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidateUpcomingStopPlan(payload));
+        Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
+    }
+
+    /// <summary>
+    /// A plan of one business leg whose <c>publicStationFunction</c> is the raw JSON value given.
+    /// </summary>
+    private static string PlanPayloadWithPublicStationFunction(string publicStationFunction) =>
+        $$"""
+        {"planRevision":4,
+        "legs":[{"movementLegId":"00000000-0000-4000-8000-000000000601",
+        "legType":"TO_DROPOFF","stopPurposeCategory":"BUSINESS",
+        "demandId":"00000000-0000-4000-8000-000000000602",
+        "publicStationFunction":{{publicStationFunction}},"sequence":1,"stationId":"ST-1",
+        "mapId":"MAP-26","state":"PLANNED"}]}
+        """;
 
     private static int[] Sequences(string commaSeparated) =>
         commaSeparated.Split(',').Select(value => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
