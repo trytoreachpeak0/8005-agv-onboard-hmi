@@ -95,6 +95,8 @@ public sealed class InboundPayloadSchemaBoundaryTests
     [Theory]
     [InlineData("WIRE_TO_OVEN")]
     [InlineData("wire_to_gate")]
+    [InlineData("wire_to_full_inspection")]
+    [InlineData("WIRE_TO_FULL_INSPECTON")]
     [InlineData("")]
     public void AWorkTypeOutsideTheSchemaIsRefused(string workType)
     {
@@ -340,6 +342,164 @@ public sealed class InboundPayloadSchemaBoundaryTests
         "publicStationFunction":{{publicStationFunction}},"sequence":1,"stationId":"ST-1",
         "mapId":"MAP-26","state":"PLANNED"}]}
         """;
+
+    /// <summary>
+    /// The worklist's <c>workType</c> check accepts exactly the vendored schema's <c>TransportTaskType</c>: every value it
+    /// lists, and nothing else any vendored schema names.
+    /// </summary>
+    /// <remarks>
+    /// The theories above list the literals by hand, so they catch a value dropped from the check but not one added to it,
+    /// and they say nothing when the vendored schema moves without the check (review of 8005-agv-onboard-hmi#360). Reading
+    /// the enum from <c>types.schema.json</c> closes both: re-vendoring a protocol that appends a value turns this red until
+    /// the check follows, and a check that admits a value of another enum, a lowercase spelling or the empty string turns
+    /// it red too. The probes are every string enum value of every vendored schema, which is where a stray literal would
+    /// most plausibly come from, plus the lowercase spelling of each declared value and the empty string.
+    /// </remarks>
+    [Fact]
+    public void TheWorkTypeCheckAcceptsExactlyTheSchemasTransportTaskTypes()
+    {
+        string[] declared = SchemaEnum("TransportTaskType");
+
+        Assert.Equal(
+            declared.Order(StringComparer.Ordinal),
+            AcceptedProbes(declared, workType => WireToGateSessionClient.ValidateCurrentStopWorklist(
+                Inbound<CurrentStopWorklistSnapshotPayload>(
+                    "CurrentStopWorklistSnapshot",
+                    WorklistPayload("null", workType)))));
+    }
+
+    /// <summary>
+    /// The plan leg's <c>publicStationFunction</c> check accepts exactly the vendored schema's
+    /// <c>PublicStationFunction</c>, besides <c>null</c>.
+    /// </summary>
+    [Fact]
+    public void ThePlanLegCheckAcceptsExactlyTheSchemasPublicStationFunctions()
+    {
+        string[] declared = SchemaEnum("PublicStationFunction");
+
+        Assert.Equal(
+            declared.Order(StringComparer.Ordinal),
+            AcceptedProbes(declared, function => WireToGateSessionClient.ValidateUpcomingStopPlan(
+                Inbound<UpcomingStopPlanSnapshotPayload>(
+                    "UpcomingStopPlanSnapshot",
+                    PlanPayloadWithPublicStationFunction(JsonSerializer.Serialize(function))))));
+    }
+
+    /// <summary>
+    /// The manual station clearance request's <c>publicStationFunction</c> check, the second of the two, accepts exactly
+    /// the vendored schema's <c>PublicStationFunction</c>, besides <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// This payload is the vehicle's own request, checked before it is sent, so it is built as a record rather than read
+    /// from inbound bytes.
+    /// </remarks>
+    [Fact]
+    public void TheManualClearanceCheckAcceptsExactlyTheSchemasPublicStationFunctions()
+    {
+        string[] declared = SchemaEnum("PublicStationFunction");
+
+        WireToGateSessionClient.ValidateManualStationClearanceRequest(ManualClearanceRequest(null));
+        Assert.Equal(
+            declared.Order(StringComparer.Ordinal),
+            AcceptedProbes(declared, function =>
+                WireToGateSessionClient.ValidateManualStationClearanceRequest(ManualClearanceRequest(function))));
+    }
+
+    private static ManualStationClearanceConfirmationRequestedPayload ManualClearanceRequest(string? publicStationFunction) =>
+        new(
+            "00000000-0000-4000-8000-000000000701",
+            "ST-1",
+            publicStationFunction,
+            "STATION_EMPTY",
+            new WireToGateOperatorContextPayload(
+                "OP-1", "BADGE", new DateTimeOffset(2026, 10, 16, 8, 0, 0, TimeSpan.Zero)),
+            new DateTimeOffset(2026, 10, 16, 8, 0, 1, TimeSpan.Zero));
+
+    /// <summary>
+    /// The values of <c>$defs/<paramref name="name"/></c> in the vendored <c>types.schema.json</c>.
+    /// </summary>
+    private static string[] SchemaEnum(string name)
+    {
+        using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
+            Path.Combine(ProtocolIdentityArchitectureTests.VendorRoot(), "schemas", "common", "types.schema.json")));
+        string[] values = types.RootElement.GetProperty("$defs").GetProperty(name).GetProperty("enum")
+            .EnumerateArray().Select(value => value.GetString()!).ToArray();
+        Assert.NotEmpty(values);
+        return values;
+    }
+
+    /// <summary>
+    /// The probes <paramref name="check"/> lets through, in ordinal order: every string enum value of every vendored
+    /// schema, the <paramref name="declared"/> values and their lowercase spellings, and the empty string.
+    /// </summary>
+    private static string[] AcceptedProbes(IReadOnlyCollection<string> declared, Action<string> check)
+    {
+        IEnumerable<string> probes = EveryVendoredSchemaEnumString()
+            .Concat(declared)
+            .Concat(declared.Select(value => value.ToLowerInvariant()))
+            .Append(string.Empty)
+            .Distinct(StringComparer.Ordinal);
+
+        return probes.Where(probe =>
+            {
+                try
+                {
+                    check(probe);
+                    return true;
+                }
+                catch (InvalidDataException refused) when (refused.Message == "PROTOCOL_SCHEMA_INVALID")
+                {
+                    return false;
+                }
+            })
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Every string under an <c>enum</c> keyword in every vendored schema file.
+    /// </summary>
+    private static List<string> EveryVendoredSchemaEnumString()
+    {
+        string schemas = Path.Combine(ProtocolIdentityArchitectureTests.VendorRoot(), "schemas");
+        List<string> values = [];
+        foreach (string path in Directory.EnumerateFiles(schemas, "*.schema.json", SearchOption.AllDirectories))
+        {
+            using JsonDocument schema = JsonDocument.Parse(File.ReadAllBytes(path));
+            Collect(schema.RootElement);
+        }
+
+        // A value of another enum the station function check must refuse; if it is missing, the walk found nothing.
+        Assert.Contains("CHARGER", values);
+        return values;
+
+        void Collect(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (JsonProperty property in element.EnumerateObject())
+                {
+                    if (property.Name == "enum" && property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        values.AddRange(property.Value.EnumerateArray()
+                            .Where(value => value.ValueKind == JsonValueKind.String)
+                            .Select(value => value.GetString()!));
+                    }
+                    else
+                    {
+                        Collect(property.Value);
+                    }
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in element.EnumerateArray())
+                {
+                    Collect(item);
+                }
+            }
+        }
+    }
 
     private static int[] Sequences(string commaSeparated) =>
         commaSeparated.Split(',').Select(value => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
