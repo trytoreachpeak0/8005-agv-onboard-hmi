@@ -33,7 +33,8 @@ public static class WireToGateStopFacts
     public const string UnknownTaskTypeText = "未知";
 
     /// <summary>
-    /// 六类 MES 运输任务的中文文案，唯一的一处。文案取自 MES 统一查询六个分支的路线注释。
+    /// 七类 MES 运输任务的中文文案，唯一的一处。前六类取自 MES 统一查询六个分支的路线注释；第七类
+    /// <c>WIRE_TO_FULL_INSPECTION</c>（协议 5.0.0）取自 <c>8005-agv-onboard-hmi#360</c>，与「焊线→质检关卡」区分开。
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> TaskTypeTexts =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -43,7 +44,8 @@ public static class WireToGateStopFacts
             ["WIRE_TO_GATE"] = "焊线→质检关卡",
             ["WIRE_TO_OPTICAL"] = "焊线→三光",
             ["STAGING_TO_WIRE"] = "待送→焊线机台",
-            ["WIRE_TO_NITROGEN"] = "焊线→氮气柜"
+            ["WIRE_TO_NITROGEN"] = "焊线→氮气柜",
+            ["WIRE_TO_FULL_INSPECTION"] = "焊线→全检"
         };
 
     /// <summary>
