@@ -235,12 +235,15 @@ public sealed class WaitingPointIdleReturnG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", BusinessLeg(1, "ARRIVED"), token);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanSubmit && harness.ViewModel.CanRequestLoadCancellation,
+            () => harness.ViewModel.CanSubmit && harness.OnUi(() => harness.ViewModel.WorklistItems.Any(row => row.CanPressCancellation)),
+            // At a machine pickup it is the row's 「取消」 (8005-agv-onboard-hmi#363).
             "the entry and the cancellation before any sublot to be offered",
             token);
 
         Assert.True(harness.Business.CanSubmitSublot);
-        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.Contains(
+            harness.Session.CurrentJourney.CurrentStopWorklist!.Items,
+            item => harness.Business.CanRequestWorklistRowCancellation(item.DemandId));
         Assert.Equal("ST-01", harness.ViewModel.VisitText);
         Assert.Equal(string.Empty, harness.ViewModel.IdleReturnStatus);
         Assert.Equal("取货", harness.ViewModel.StopDirectionText);
