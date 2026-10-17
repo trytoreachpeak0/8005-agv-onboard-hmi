@@ -22,7 +22,8 @@ namespace SQCD.Agv.Wpf.ScreenState;
 /// <b>Content boundary.</b> No guidance line: the controller's names the sublot being verified
 /// (<c>OnboardController</c>, <c>正在确认物料条码 {sublot}</c>), and the slot operation's can too (research section 4.1,
 /// <c>HmiScreenStateContentBoundaryArchitectureTests</c>); only whether one is there. The sublot rejection is only
-/// whether there is one, as <c>Create</c> takes it. No timestamp that moves with every IO reading, so the content
+/// whether there is one. <c>Create</c> also takes its reason code (onboard-hmi#366), which is not repeated here: the
+/// snapshot already carries it through the <c>SublotRejectionReasonCode</c> binding. No timestamp that moves with every IO reading, so the content
 /// revision does not either.
 /// </para>
 /// </remarks>
