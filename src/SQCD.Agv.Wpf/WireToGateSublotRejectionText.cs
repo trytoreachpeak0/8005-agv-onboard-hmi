@@ -51,7 +51,7 @@ public static class WireToGateSublotRejectionText
             : $"服务端拒绝装货取消：{reasonCode}。";
 
     /// <summary>What the operator can do next, which turns on whether the entry request was kept.</summary>
-    public static string NextStep(bool canEnterAgain) =>
+    public static string NextStep(string reasonCode, bool canEnterAgain) =>
         canEnterAgain
             ? "请核对物料后重新扫码。"
             : "本站录入清单已变化，等待服务端新的录入请求。";

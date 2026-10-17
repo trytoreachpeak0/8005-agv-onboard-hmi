@@ -2604,7 +2604,8 @@ public sealed partial class MainViewModel : ViewModelBase
             presentationInputs.CanSubmit,
             presentationInputs.LoadCancellationPending,
             presentationInputs.SublotRejected,
-            presentationInputs.EntryPausedUntilStopped);
+            presentationInputs.EntryPausedUntilStopped,
+            sublotRejection?.ReasonCode);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死

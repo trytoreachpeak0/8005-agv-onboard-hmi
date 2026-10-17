@@ -103,6 +103,36 @@ public sealed class SublotRejectedAfterEntryG2Tests
     }
 
     /// <summary>
+    /// <c>SLOT_INOPERABLE</c>（受理后有仓位被停用，control-server#754）的拒收事件：录入请求虽保留，事件里的下一步也是
+    /// 取消该需求并联系系统维护人员，不叫操作员重新扫码（onboard-hmi#366）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
+    public async Task AnInoperableSlotRejectionTellsTheOperatorToCancelRatherThanScanAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RejectionHarness harness = await RejectionHarness.StartAsync(
+            server =>
+            {
+                server.RejectSublotSubmissionsWith = "SLOT_INOPERABLE";
+                server.RejectionWorklistRevision = 1;
+            },
+            token);
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await harness.WaitForEventAsync("SUBLOT_REJECTED", token);
+
+        Assert.True(harness.Business.CurrentSublotRejection?.EntryRequestKept);
+        WireToGateOperatorEvent rejected = Assert.Single(
+            harness.Events, item => item.Kind == "SUBLOT_REJECTED");
+        Assert.Equal(
+            "子批 SUBLOT-001 被服务端拒收：可用的空仓位不足，有仓位已被停用。重扫也无法装入，请取消该需求并联系系统维护人员。",
+            rejected.Message);
+        Assert.DoesNotContain("重新扫码", rejected.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 操作员再录入一次，上一次的拒收原因就从提示区撤下；新的拒收到来时换成新的那条。
     /// </summary>
     [Fact]

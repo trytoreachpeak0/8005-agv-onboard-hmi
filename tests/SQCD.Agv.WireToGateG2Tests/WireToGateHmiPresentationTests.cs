@@ -87,6 +87,26 @@ public sealed class WireToGateHmiPresentationTests
         Assert.False(banner.HasError);
     }
 
+    /// <summary>
+    /// <c>SLOT_INOPERABLE</c> 的下一步按码给，不随录入请求是否保留：重扫无用，提示区不再说「重新扫码」（onboard-hmi#366）。
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnInoperableSlotRejectionTellsTheOperatorToCancelWhateverTheEntryRequest(bool canSubmit)
+    {
+        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+            Session(WireToGateSessionReadiness.Ready),
+            operation: null,
+            canSubmit: canSubmit,
+            sublotRejected: true,
+            sublotRejectionReasonCode: "SLOT_INOPERABLE");
+
+        Assert.Equal("子批被拒收", banner.StateText);
+        Assert.Equal("重扫也无法装入，请取消该需求并联系系统维护人员。", banner.Guidance);
+        Assert.DoesNotContain("重新扫码", banner.Guidance, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void OperationProjectionOverridesReadyBannerAndTargetsEveryPhysicalSlot()
     {
