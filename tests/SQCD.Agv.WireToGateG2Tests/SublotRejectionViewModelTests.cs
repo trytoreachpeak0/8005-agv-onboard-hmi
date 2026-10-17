@@ -47,6 +47,29 @@ public sealed class SublotRejectionViewModelTests
         Assert.True(viewModel.HasWarning);
     }
 
+    /// <summary>
+    /// <c>SLOT_INOPERABLE</c> 经 <see cref="MainViewModel"/> 真实路径进提示区：原因一行说仓位不足，下一步说取消并联系维护人员，
+    /// 录入请求保留时也不说「重新扫码」（onboard-hmi#366）。
+    /// </summary>
+    [Fact]
+    public async Task AnInoperableSlotRejectionTellsTheOperatorToCancelEvenWhenTheEntryRequestIsKept()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        WireToGateSublotRejection? rejection = Rejection("SLOT_INOPERABLE", kept: true);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => true,
+            sublotRejection: () => rejection);
+
+        viewModel.UpdateWireToGateStatus(ReadySession());
+
+        Assert.Equal("子批 SUBLOT-001 被服务端拒收：可用的空仓位不足，有仓位已被停用。", viewModel.SublotRejectionText);
+        Assert.Equal("SLOT_INOPERABLE", viewModel.SublotRejectionReasonCode);
+        Assert.Equal("子批被拒收", viewModel.StateText);
+        Assert.Equal("重扫也无法装入，请取消该需求并联系系统维护人员。", viewModel.Guidance);
+    }
+
     [Fact]
     public async Task AWithdrawnRejectionLeavesThePromptArea()
     {

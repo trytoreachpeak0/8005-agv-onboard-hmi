@@ -16,7 +16,8 @@ public static class WireToGateHmiPresentation
         bool canSubmit,
         bool loadCancellationPending = false,
         bool sublotRejected = false,
-        bool entryPausedUntilStopped = false)
+        bool entryPausedUntilStopped = false,
+        string? sublotRejectionReasonCode = null)
     {
         if (operation is { Stage: WireToGateHmiOperationStage.RecoveryRequired })
         {
@@ -77,7 +78,7 @@ public static class WireToGateHmiPresentation
             // this row says what to do next, which turns on whether the entry request was kept.
             WireToGateSessionReadiness.Ready when sublotRejected => new(
                 "子批被拒收",
-                WireToGateSublotRejectionText.NextStep(canSubmit),
+                WireToGateSublotRejectionText.NextStep(sublotRejectionReasonCode ?? string.Empty, canSubmit),
                 HasWarning: true,
                 HasError: false),
             WireToGateSessionReadiness.Ready when canSubmit => new(

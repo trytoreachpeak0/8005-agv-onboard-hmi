@@ -51,13 +51,39 @@ public sealed class WireToGateSublotRejectionTextTests
             WireToGateSublotRejectionText.Describe(Rejection("SUBLOT_NOT_IN_DISPATCH_SCOPE", "OUTSIDE-001", demandId: null)));
     }
 
-    [Fact]
-    public void TheNextStepFollowsWhetherTheOperatorCanEnterAgain()
+    /// <summary>
+    /// 除 <c>SLOT_INOPERABLE</c> 外，下一步只随录入请求是否保留：五个已知码与未识别码都钉住原来的两句（onboard-hmi#366）。
+    /// </summary>
+    [Theory]
+    [InlineData("SUBLOT_NOT_IN_DISPATCH_SCOPE")]
+    [InlineData("SUBLOT_BOX_COUNT_UNAVAILABLE")]
+    [InlineData("PACKAGE_CAPACITY_UNRESOLVED")]
+    [InlineData("EXPECTED_BASKET_COUNT_MISMATCH")]
+    [InlineData("WORKLIST_REVISION_STALE")]
+    [InlineData("SOME_FUTURE_REASON")]
+    public void TheNextStepFollowsWhetherTheOperatorCanEnterAgain(string reasonCode)
     {
-        Assert.Equal("请核对物料后重新扫码。", WireToGateSublotRejectionText.NextStep(canEnterAgain: true));
+        Assert.Equal("请核对物料后重新扫码。", WireToGateSublotRejectionText.NextStep(reasonCode, canEnterAgain: true));
         Assert.Equal(
             "本站录入清单已变化，等待服务端新的录入请求。",
-            WireToGateSublotRejectionText.NextStep(canEnterAgain: false));
+            WireToGateSublotRejectionText.NextStep(reasonCode, canEnterAgain: false));
+    }
+
+    /// <summary>
+    /// <c>SLOT_INOPERABLE</c>：受理后有仓位被停用，这一侧可分的空仓不够（control-server#754）。重扫多少次都会被拒，
+    /// 所以不论录入请求是否保留，下一步都是取消该需求并联系系统维护人员，不叫操作员重新扫码（onboard-hmi#366）。
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnInoperableSlotTellsTheOperatorToCancelRatherThanScanAgain(bool canEnterAgain)
+    {
+        string reason = WireToGateSublotRejectionText.Reason("SLOT_INOPERABLE");
+        string nextStep = WireToGateSublotRejectionText.NextStep("SLOT_INOPERABLE", canEnterAgain);
+
+        Assert.Equal("可用的空仓位不足，有仓位已被停用", reason);
+        Assert.Equal("重扫也无法装入，请取消该需求并联系系统维护人员。", nextStep);
+        Assert.DoesNotContain("重新扫码", reason + nextStep, StringComparison.Ordinal);
     }
 
     /// <summary>

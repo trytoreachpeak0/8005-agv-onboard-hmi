@@ -2747,7 +2747,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             $"sublot-rejected:{command.MessageId}",
             "SUBLOT_REJECTED",
             WireToGateSublotRejectionText.Describe(rejection)
-                + WireToGateSublotRejectionText.NextStep(rejection.EntryRequestKept));
+                + WireToGateSublotRejectionText.NextStep(rejection.ReasonCode, rejection.EntryRequestKept));
     }
 
     private async Task HandleBlockedResumeAsync(
