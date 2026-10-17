@@ -32,7 +32,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-08")]
     [Trait("ProtocolVector", "CV-MULTI-STOP-PLAN-NINE-LEGS")]
-    public async Task ANineLegPlanIsAcknowledgedAndShownInFullInSequenceOrder()
+    public async Task ANineLegRemainingPlanIsAcknowledgedAndShownInSequenceOrder()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await Harness.StartAsync(
