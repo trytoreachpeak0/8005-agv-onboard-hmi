@@ -132,22 +132,24 @@ public sealed class CurrentStopDepartureTests
     }
 
     /// <summary>
-    /// 8005-agv-onboard-hmi#348: the staging pickup stop offers no new cancellation before any sublot, whichever way it was
-    /// recognized.
+    /// 8005-agv-onboard-hmi#353: the staging pickup stop's rows each carry their own 「取消」, whichever way the stop was
+    /// recognized. (Until 8005-agv-onboard-hmi#363 this was pinned as "the staging pickup stop offers no new cancellation before
+    /// any sublot" through the shared entry, the same fact from the other side.)
     /// </summary>
     [Fact]
-    public void TheStagingPickupStopOffersNoCancellationBeforeAnySublot()
+    public void TheStagingPickupStopOffersARowCancellation()
     {
-        Assert.False(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
-            Journey(Worklist(Staging, Item("STAGING_TO_WIRE"), Item("STAGING_TO_WIRE"))), []));
-        Assert.False(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
-            WithFunction(Journey(Worklist(Staging, Item("WIRE_TO_GATE"))), Staging, "WIRE_STAGING"), []));
+        Assert.True(WireToGatePickupStop.OffersWorklistRowCancellation(
+            Journey(Worklist(Staging, Item("STAGING_TO_WIRE"), Item("STAGING_TO_WIRE")))));
+        Assert.True(WireToGatePickupStop.OffersWorklistRowCancellation(
+            WithFunction(Journey(Worklist(Staging, Item("WIRE_TO_GATE"))), Staging, "WIRE_STAGING")));
     }
 
     /// <summary>
-    /// 8005-agv-onboard-hmi#348, the regression: every machine pickup still offers it. <c>WIRE_TO_FULL_INSPECTION</c>
-    /// (8005-agv-onboard-hmi#360) is a machine pickup like <c>WIRE_TO_OPTICAL</c>: picked up at a wire bonding machine,
-    /// delivered to a fixed public area.
+    /// CP-0016, 8005-agv-onboard-hmi#363: every machine pickup now offers a row's 「取消」 too, and so no longer offers the
+    /// shared entry's "pick, then cancel". This pinned the opposite until then (<c>AMachinePickupStillOffersTheCancellationBeforeAnySublot</c>,
+    /// 8005-agv-onboard-hmi#348). <c>WIRE_TO_FULL_INSPECTION</c> (8005-agv-onboard-hmi#360) is a machine pickup like
+    /// <c>WIRE_TO_OPTICAL</c>.
     /// </summary>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
@@ -156,23 +158,29 @@ public sealed class CurrentStopDepartureTests
     [InlineData("WIRE_TO_FULL_INSPECTION")]
     [InlineData("DIE_TO_WIRE_STAGING")]
     [InlineData("DIE_TO_OVEN")]
-    public void AMachinePickupStillOffersTheCancellationBeforeAnySublot(string workType)
+    public void AMachinePickupOffersARowCancellationToo(string workType)
     {
-        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
-            Journey(Worklist(Machine, Item(workType))), [Staging]));
+        Assert.True(WireToGatePickupStop.OffersWorklistRowCancellation(Journey(Worklist(Machine, Item(workType)))));
     }
 
     /// <summary>
-    /// 8005-agv-onboard-hmi#348: the server's station function decides here too -- a staging worklist at a station the server
-    /// names as something else still offers it, and a station mixing a staging pickup with another task type is no staging stop.
+    /// 8005-agv-onboard-hmi#363: a worklist that is not all pickups -- a dropoff among them -- and an empty one offer no row's
+    /// 「取消」; nor does a stop the server named a waiting point or a charger.
     /// </summary>
     [Fact]
-    public void WhatIsNotAStagingPickupStopStillOffersTheCancellationBeforeAnySublot()
+    public void WhatIsNotAPickupStopOffersNoRowCancellation()
     {
-        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
-            WithFunction(Journey(Worklist(Staging, Item("STAGING_TO_WIRE"))), Staging, "GATE"), [Staging]));
-        Assert.True(WireToGateStagingPickupStop.OffersLoadCancellationBeforeAnySublot(
-            Journey(Worklist(Staging, Item("STAGING_TO_WIRE"), Item("WIRE_TO_GATE"))), [Staging]));
+        Assert.False(WireToGatePickupStop.OffersWorklistRowCancellation(
+            Journey(Worklist(Machine, Item("WIRE_TO_GATE"), Item("STAGING_TO_WIRE", "DROPOFF")))));
+        Assert.False(WireToGatePickupStop.OffersWorklistRowCancellation(Journey(Worklist(Machine))));
+        Assert.False(WireToGatePickupStop.OffersWorklistRowCancellation(
+            Journey(Worklist(Machine, Item("WIRE_TO_GATE"))) with
+            {
+                UpcomingStopPlan = new WireToGateUpcomingStopPlan(
+                    1,
+                    [new WireToGateMovementLeg("leg-1", null, "CHARGER", null, null, 1, "CH-211", "MAP-26", "ACTIVE")],
+                    new string('0', 64))
+            }));
     }
 
     [Fact]
