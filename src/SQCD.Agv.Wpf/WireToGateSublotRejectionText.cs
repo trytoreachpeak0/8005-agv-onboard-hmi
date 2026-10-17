@@ -9,7 +9,8 @@ namespace SQCD.Agv.Wpf;
 /// <para>
 /// ADR-cross-0057 asks for the <b>real</b> reason in front of the operator, not a generic "not in the
 /// list". The three codes the 2.0.0 candidate added for this message and the reused
-/// <c>EXPECTED_BASKET_COUNT_MISMATCH</c> each have their own sentence.
+/// <c>EXPECTED_BASKET_COUNT_MISMATCH</c>, <c>WORKLIST_REVISION_STALE</c> and <c>SLOT_INOPERABLE</c> each have their
+/// own sentence.
 /// </para>
 /// <para>
 /// <b>Any other code is shown as itself.</b> The registry lets the server grow the set, and a guessed
@@ -27,10 +28,14 @@ public static class WireToGateSublotRejectionText
         "EXPECTED_BASKET_COUNT_MISMATCH" => "花篮数量与已预留仓位数不符",
         // An entry that reached the server after the stop had ended (8005-agv-onboard-hmi#199).
         WorklistRevisionStale => "本站作业已结束，不再接收扫码",
+        // A slot was disabled after acceptance and this side no longer has enough free slots (control-server#754).
+        SlotInoperable => "可用的空仓位不足，有仓位已被停用",
         _ => $"未识别的拒收原因（{reasonCode}）"
     };
 
     private const string WorklistRevisionStale = "WORKLIST_REVISION_STALE";
+
+    private const string SlotInoperable = "SLOT_INOPERABLE";
 
     /// <summary>The reason line: which entry was refused, and why.</summary>
     public static string Describe(WireToGateSublotRejection rejection)
@@ -51,8 +56,15 @@ public static class WireToGateSublotRejectionText
             : $"服务端拒绝装货取消：{reasonCode}。";
 
     /// <summary>What the operator can do next, which turns on whether the entry request was kept.</summary>
+    /// <remarks>
+    /// <c>SLOT_INOPERABLE</c> is the exception and turns on the code alone (onboard-hmi#366): scanning again is
+    /// refused again for as long as the slot stays disabled, so the operator is told to cancel the demand and get
+    /// maintenance, whether or not the entry request was kept.
+    /// </remarks>
     public static string NextStep(string reasonCode, bool canEnterAgain) =>
-        canEnterAgain
-            ? "请核对物料后重新扫码。"
-            : "本站录入清单已变化，等待服务端新的录入请求。";
+        reasonCode == SlotInoperable
+            ? "重扫也无法装入，请取消该需求并联系系统维护人员。"
+            : canEnterAgain
+                ? "请核对物料后重新扫码。"
+                : "本站录入清单已变化，等待服务端新的录入请求。";
 }
