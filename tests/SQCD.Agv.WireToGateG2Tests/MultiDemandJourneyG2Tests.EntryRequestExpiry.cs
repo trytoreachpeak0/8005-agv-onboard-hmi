@@ -38,6 +38,13 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <summary>The line the operator reads when the stop's entry request is withdrawn.</summary>
     private const string EntryWithdrawnLine = "本站作业已结束，录入请求已撤销，不再接收扫码。";
 
+    /// <summary>
+    /// Whether the cancel-before-scan entry is on screen: at a machine pickup it is a worklist row's 「取消」, not the shared
+    /// entry (CP-0016, 8005-agv-onboard-hmi#363).
+    /// </summary>
+    private static bool RowCancellationOnScreen(Harness harness) =>
+        harness.OnUi(() => harness.ViewModel.WorklistItems.Any(row => row.CanPressCancellation));
+
     /// <summary>A sublot only the drop-off's request names, so waiting on it cannot be met by the pickup's.</summary>
     private static readonly string[] SublotGateOnly = ["SUBLOT-GATE"];
 
@@ -67,7 +74,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             cancellationToken: token);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanSubmit && harness.ViewModel.CanRequestLoadCancellation,
+            () => harness.ViewModel.CanSubmit && RowCancellationOnScreen(harness),
             "the scan entry and the cancel-before-scan entry to be on screen",
             token);
         Assert.NotEqual(StationDepartureCountdownFormatter.AbsentText, harness.ViewModel.StationDepartureCountdownText);
@@ -86,7 +93,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             {
                 Assert.False(harness.ViewModel.CanSubmit, "the scan entry is still open on screen");
                 Assert.False(
-                    harness.ViewModel.CanRequestLoadCancellation,
+                    RowCancellationOnScreen(harness),
                     "the cancel-before-scan entry is still on screen");
                 Assert.Equal("ST-01 / 本站作业已完成", harness.ViewModel.VisitText);
                 Assert.Equal(StationDepartureCountdownFormatter.AbsentText, harness.ViewModel.StationDepartureCountdownText);
@@ -135,7 +142,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () =>
             {
                 Assert.False(harness.ViewModel.CanSubmit, "the last stop's scan entry is still open on screen");
-                Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+                Assert.False(RowCancellationOnScreen(harness));
             },
             token);
         Assert.Null(harness.Business.ExpectedSublots);
@@ -469,11 +476,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         await AssertWhileAsync(
             DisplaySettleWindow,
             () => Assert.True(
-                harness.ViewModel.CanRequestLoadCancellation,
+                RowCancellationOnScreen(harness),
                 "the cancel-before-scan entry was hidden by a same-stop revision"),
             token);
 
-        await harness.ViewModel.RequestLoadCancellationAsync(token);
+        await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandA)).SendAsync(token);
         JsonElement request = Assert.Single(Received(harness, "LoadCancellationStartRequested"));
         Assert.Equal(DemandA, request.GetProperty("demandId").GetString());
         Assert.Equal(0, harness.Io.UnlockCount);
@@ -591,7 +598,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             cancellationToken: token);
 
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandA)).SendAsync(token));
 
         await harness.WaitUntilAsync(
             () => OperatorLog(harness).Any(line => line.StartsWith("服务端拒绝装货取消", StringComparison.Ordinal)),

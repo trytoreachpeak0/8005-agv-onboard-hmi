@@ -261,7 +261,8 @@ public sealed class AutomaticChargingCycleG2Tests
         await using Harness harness = await StartWithEntryRequestAsync(
             "TRANSPORT", BusinessLeg(1, "ARRIVED"), token, server => server.JourneyBatteryState = batteryState);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanSubmit && harness.ViewModel.CanRequestLoadCancellation,
+            () => harness.ViewModel.CanSubmit && harness.OnUi(() => harness.ViewModel.WorklistItems.Any(row => row.CanPressCancellation)),
+            // At a machine pickup it is the row's 「取消」 (8005-agv-onboard-hmi#363).
             "the entry and the cancellation before any sublot to be offered",
             token);
 
@@ -500,6 +501,13 @@ public sealed class AutomaticChargingCycleG2Tests
             {
                 Assert.False(harness.ViewModel.CanRequestLoadCancellation);
                 Assert.False(harness.Business.CanRequestLoadCancellation);
+                // Nor on any row (8005-agv-onboard-hmi#363 review L3): not a pickup stop for the rows' 「取消」 either.
+                Assert.DoesNotContain(
+                    harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()),
+                    row => row.OffersCancellation || row.CanPressCancellation);
+                Assert.DoesNotContain(
+                    harness.Session.CurrentJourney.CurrentStopWorklist?.Items ?? [],
+                    item => harness.Business.CanRequestWorklistRowCancellation(item.DemandId));
             },
             token);
 

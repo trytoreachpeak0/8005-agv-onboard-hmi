@@ -57,12 +57,14 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
 
     /// <summary>
     /// 验收 3（回归）：机台取货停靠，同样的停靠形状换成 <c>WIRE_TO_GATE</c> 或 <c>DIE_*</c> 的项，扫码前取消照旧提供、照旧走完。
+    /// CP-0016 起它在那一行的「取消」上，与待送点一样，底部共用入口不再给（8005-agv-onboard-hmi#363；原名
+    /// <c>AMachinePickupStillOffersTheCancellationBeforeAnySublot</c>，断言共用入口亮着）。
     /// </summary>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
     [InlineData("DIE_TO_WIRE_STAGING")]
     [InlineData("DIE_TO_OVEN")]
-    public async Task AMachinePickupStillOffersTheCancellationBeforeAnySublot(string workType)
+    public async Task AMachinePickupOffersTheCancellationBeforeAnySublotOnTheRow(string workType)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
@@ -70,10 +72,13 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             server => server.JourneyWorkType = workType);
 
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
-        Assert.True(harness.Business.CanRequestLoadCancellation);
-        Assert.True(harness.Business.CanRequestLoadCancellationBeforeAnySublot);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.False(harness.Business.CanRequestLoadCancellationBeforeAnySublot);
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
 
-        Assert.True(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        Assert.True(await harness.Business
+            .BindWorklistRowCancellationPress("到站后现场确认本站没有要装的货。", DemandId)
+            .SendAsync(token));
 
         (_, JsonElement result) = Assert.Single(harness.ResultsReceived());
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
@@ -104,8 +109,10 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 existingServer: server,
                 journalPath: journalPath))
             {
-                Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
-                    "到站后现场确认本站没有要装的货。", token));
+                Assert.False(await beforeRestart.Business.RequestWorklistRowCancellationAsync(
+                    DemandId,
+                    "到站后现场确认本站没有要装的货。",
+                    token));
             }
 
             await using FakeControlServer serverAfterRestart = BeforeSublotHarness.NewServer();

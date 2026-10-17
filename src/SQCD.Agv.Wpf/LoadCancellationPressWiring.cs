@@ -19,8 +19,9 @@ internal static class LoadCancellationPressWiring
         viewModel.ConfigureLoadCancellationPress(selectedDemandId => business.BindLoadCancellationPress(
             WireToGateBusinessService.LoadCancellationDefaultReason,
             selectedDemandId));
-        // 待送点清单每行的「取消」（8005-agv-onboard-hmi#353）：同一个请求，主体由操作员按哪一行给出。
+        // 取货停靠清单每行的「取消」（待送点 8005-agv-onboard-hmi#353，机台 8005-agv-onboard-hmi#363）：同一个请求，主体由操作员按哪一行给出。
         viewModel.ConfigureWorklistRowCancellation(
+            () => business.OffersWorklistRowCancellationAtThisStop,
             business.CanRequestWorklistRowCancellation,
             demandId => business.BindWorklistRowCancellationPress(
                 WireToGateBusinessService.LoadCancellationDefaultReason,

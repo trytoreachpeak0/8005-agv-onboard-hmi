@@ -32,10 +32,11 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
             token,
             fatalFaultLatched: () => true);
-        Assert.True(harness.Business.CanRequestLoadCancellationBeforeAnySublot);
+        // 机台上扫码前取消在那一行的「取消」上（8005-agv-onboard-hmi#363）。
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
 
         (bool pressed, NotSupportedException? ioAttempted) = await PressRecordingIoAsync(
-            harness, "设备故障，本站不装了。", token);
+            harness, "设备故障，本站不装了。", rowPress: true, token);
 
         // 这一行就是锁存期间放开它的理由，所以先断它：一旦开了门，红在这里，而不是红在后面别的地方。
         Assert.Equal(0, harness.Io.UnlockCount);
@@ -57,8 +58,8 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
             token,
             fatalFaultLatched: () => true);
-        // 入口判定时是扫码之前。
-        Assert.True(harness.Business.CanRequestLoadCancellationBeforeAnySublot);
+        // 入口判定时是扫码之前：那一行的「取消」（8005-agv-onboard-hmi#363）。
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
 
         // 按下之前，一条装货命令到了：执行器把它写成未结算的在途装货（1、2 号仓），1 号仓在活动集里。
         await harness.UpdateRecoveryStateAsync(
@@ -86,7 +87,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token);
 
         // 恢复请求的包装把拒绝落成 false 加一条 RECOVERY_BLOCKED，码是 FATAL_FAULT_LATCHED。
-        Assert.False(await harness.Business.RequestLoadCancellationAsync("设备故障，本站不装了。", token));
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "设备故障，本站不装了。", token));
         await harness.WaitForRecoveryBlockedAsync("FATAL_FAULT_LATCHED", token);
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
         Assert.Equal(0, harness.Io.UnlockCount);
@@ -156,7 +157,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
 
         Volatile.Write(ref latched, true);
         (bool pressed, NotSupportedException? ioAttempted) = await PressRecordingIoAsync(
-            harness, "设备故障，本站不装了。", token);
+            harness, "设备故障，本站不装了。", rowPress: false, token);
 
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Null(ioAttempted);
@@ -174,16 +175,21 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     /// <c>SimulateOperatorLoad</c>）：开锁脉冲照常计数，紧接着的 <c>WaitForLockerAsync</c> 抛
     /// <c>NotSupportedException</c>，而恢复请求的包装不接这个类型，它会直接从按键里抛出来。不接住它，注入「真去开门」时
     /// 用例会红在这个异常上，而不是红在 <c>UnlockCount == 0</c> 上——照样能发现开门，但红的理由与判据写的不是同一件事
-    /// （PR #189 审查低项 3）。
+    /// （PR #189 审查低项 3）。<paramref name="rowPress"/>：扫码前取消在机台上按那一行的「取消」，在途那一半仍按底部入口
+    /// （8005-agv-onboard-hmi#363）。
     /// </remarks>
     private static async Task<(bool Pressed, NotSupportedException? IoAttempted)> PressRecordingIoAsync(
         BeforeSublotHarness harness,
         string reason,
+        bool rowPress,
         CancellationToken token)
     {
         try
         {
-            return (await harness.Business.RequestLoadCancellationAsync(reason, token), null);
+            return (rowPress
+                    ? await harness.Business.RequestWorklistRowCancellationAsync(DemandId, reason, token)
+                    : await harness.Business.RequestLoadCancellationAsync(reason, token),
+                null);
         }
         catch (NotSupportedException exception)
         {

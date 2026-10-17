@@ -1,0 +1,63 @@
+== M1 (21:32:43) file=src/SQCD.Agv.Core/WireToGatePickupStop.cs changed_files=1
+-            && worklist.Items.All(item => string.Equals(item.StopRole, PickupRole, StringComparison.Ordinal));
++            && worklist.Items.All(item => string.Equals(item.StopRole, PickupRole, StringComparison.Ordinal))
++            && worklist.Items.All(item => item.WorkType == "STAGING_TO_WIRE");
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterARestartARowAlreadyOnBoardAtAMachinePickupOffersNoCancellation [5 s]
+  Error Message:
+   Timed out after 5s waiting for: B's row cancellation. UI errors: []
+  Stack Trace:
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AMachineRowPressWhoseAnswerWasLostIsResentUnchanged [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupARowWithALoadUnderwayOffersNoRowCancellationAndTheBottomEntryCancelsTheLoad [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.PressingARowAtAMachinePickupCancelsThatDemandOnly [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "DIE_TO_WIRE_STAGING") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "WIRE_TO_GATE") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+restored; git status lines=0
+== M2 (21:34:32) file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs changed_files=1
+-            || !WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney)
+-            || IsLoadedOnBoard(state, demandId))
++            || !WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney))
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterARestartARowAlreadyOnBoardOffersNoCancellation [759 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterARestartARowAlreadyOnBoardAtAMachinePickupOffersNoCancellation [146 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 997 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+== M3 (21:35:30) file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs changed_files=1
+-            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation)
+-            && !IsLoadCancellationBeforeSublotVectorOnFile())
++            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithABeforeSublotCancellationOnFileOnlyItsRowCanBePressedAndItReportsIt [5 s]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+== M4 (21:37:16) file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs changed_files=1
+-            && WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney))
++            && WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? []))
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithTwoItemsTheSharedEntryOffersNoCancellationBeforeAnySublotAndSendsNothing [840 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+final status: 0 (21:38:52)

@@ -476,7 +476,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 _commandSlotsByDemand,
                 _journaledOperations,
                 _slotGroupLayout);
-            // 待送点上还没装的行各有一个「取消」（8005-agv-onboard-hmi#353）。
+            // 取货停靠（待送点、机台）上还没装的行各有一个「取消」（8005-agv-onboard-hmi#353、#363）。
             bool offersCancellation = OffersWorklistRowCancellation(item.DemandId, side.Code);
             WorklistItems.Add(new WorklistItemRow(
                 item.DemandId,

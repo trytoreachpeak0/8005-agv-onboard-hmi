@@ -343,7 +343,13 @@ public sealed class CurrentStopDepartureG2Tests
         CurrentStopDepartureDisplay display = harness.OnUi(() => harness.ViewModel.CurrentStopDeparture);
         Assert.Equal(CurrentStopDepartureDisplay.Empty, display);
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
-        Assert.True(harness.ViewModel.CanRequestLoadCancellation);
+        // The cancellation before any sublot is on the rows at a machine pickup (8005-agv-onboard-hmi#363); the shared entry,
+        // when it shows for a load in flight, keeps the machine's caption.
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.Any(row => row.CanPressCancellation)),
+            "the rows' cancellation",
+            token);
+        Assert.False(harness.ViewModel.CanRequestLoadCancellation);
         Assert.Equal(WireToGateLoadCancellationText.MachineCaption, harness.ViewModel.LoadCancellationCaption);
         Assert.False(harness.ScreenState().Buttons.Single(button => button.Key == "OnCurrentStopDepartureClick").Visible);
 

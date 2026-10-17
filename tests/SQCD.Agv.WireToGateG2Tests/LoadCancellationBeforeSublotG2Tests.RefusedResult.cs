@@ -43,7 +43,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             },
             recoveryOptions: MaintenanceSwitchOffWithProof());
 
-        await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token);
+        await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "到站后现场确认本站没有要装的货。", token);
         await BeforeSublotHarness.WaitUntilAsync(
             () => harness.Business.ConflictedRecoveryView is not null,
             "the refused cancellation to wait for a maintainer's manual check",
@@ -55,8 +55,8 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.True(harness.Business.CanCloseConflictedRecoveryAfterReview);
 
         // While it waits for the check, cancelling again is not offered, and a press reports nothing again.
-        Assert.False(harness.Business.CanRequestLoadCancellation);
-        Assert.False(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandId));
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "到站后现场确认本站没有要装的货。", token));
         Assert.Single(harness.ResultsReceived());
 
         Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
