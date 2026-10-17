@@ -337,11 +337,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.ExpectedSublots is not null && harness.ViewModel.WorklistItems.Count == 1,
             "the one-item worklist and the entry request to arrive",
             token);
+        // At a machine pickup the cancellation before any sublot is the row's 「取消」 (8005-agv-onboard-hmi#363).
         await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellationBeforeAnySublot,
+            () => harness.Business.CanRequestWorklistRowCancellation(DemandA),
             "the cancellation-before-sublot entry to be offered",
             token);
-        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
+        WorklistRowCancellationConfirmation press = harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandA));
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
@@ -403,30 +404,32 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 一次扫码前取消已经发出、还没等到答复：选中另一行时，确认框复述的仍是日志簿里那条需求，再按重发的也是它。
+    /// 一次扫码前取消已经发出、还没等到答复：只有日志簿里那条需求的那一行按得动，别的行与底部入口都不给，再按重发的也是它。
     /// </summary>
+    /// <remarks>
+    /// 原名 <c>WithACancellationSentAndUnansweredTheConfirmationNamesItsDemandNotTheSelectedRow</c>，钉的是「先选另一行、底部
+    /// 入口的确认框仍复述 B」。CP-0016 起机台上扫码前取消在每一行上（8005-agv-onboard-hmi#363），同一件事换成「另一行按不动」。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
-    public async Task WithACancellationSentAndUnansweredTheConfirmationNamesItsDemandNotTheSelectedRow()
+    public async Task WithACancellationSentAndUnansweredOnlyItsRowCanBePressedAndItResendsIt()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationAuthorizationsToDrop = 1,
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandB);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token));
         Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
 
-        SelectWorklistItem(harness, DemandA);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.LoadCancellationConfirmationDetailText.StartsWith(
-                "将要取消的任务：子批 SUBLOT-B，",
-                StringComparison.Ordinal),
-            "the confirmation to name B, the demand the sent cancellation is about",
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()) is
+                [{ DemandId: DemandA, CanPressCancellation: false }, { DemandId: DemandB, CanPressCancellation: true }],
+            "only B's row, the demand the sent cancellation is about, to be pressable",
             token);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
 
-        await harness.ViewModel.RequestLoadCancellationAsync(token);
+        await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token);
         Assert.All(
             Received(harness, "LoadCancellationStartRequested"),
             request => Assert.Equal(DemandB, request.GetProperty("demandId").GetString()));
@@ -434,30 +437,33 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 扫码前取消已经授权、结果还没被确认（向量在日志里）：选中另一行时，确认框复述的仍是向量那条需求，再按补报的也是它。
+    /// 扫码前取消已经授权、结果还没被确认（向量在日志里）：只有向量那条需求的那一行按得动，别的行与底部入口都不给，再按补报的
+    /// 也是它。
     /// </summary>
+    /// <remarks>
+    /// 原名 <c>WithABeforeSublotCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow</c>，改法同上一条
+    /// （8005-agv-onboard-hmi#363）。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
-    public async Task WithABeforeSublotCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow()
+    public async Task WithABeforeSublotCancellationOnFileOnlyItsRowCanBePressedAndItReportsIt()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationResultAcksToDrop = 1,
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandB);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token));
         Assert.NotNull(ReadJournal(harness, token).RecoveryVector);
 
-        SelectWorklistItem(harness, DemandA);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.LoadCancellationConfirmationDetailText.StartsWith(
-                "将要取消的任务：子批 SUBLOT-B，",
-                StringComparison.Ordinal),
-            "the confirmation to name B, the demand the cancellation on file is about",
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()) is
+                [{ DemandId: DemandA, CanPressCancellation: false }, { DemandId: DemandB, CanPressCancellation: true }],
+            "only B's row, the demand the cancellation on file is about, to be pressable",
             token);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
 
-        Assert.True(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.True(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token));
         Assert.All(
             Received(harness, "LoadCancellationResult"),
             result => Assert.Equal(DemandB, result.GetProperty("demandId").GetString()));

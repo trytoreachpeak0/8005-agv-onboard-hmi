@@ -42,11 +42,21 @@ public sealed partial class WireToGateBusinessService
     /// with no limit -- so it has to be there as shipped, and it is the station operator's step, the
     /// same as the cancellation before any sublot (#76). Compensation, correction, resume and the other
     /// recovery vectors stay behind the switch.
+    /// <para>
+    /// A cancellation before any sublot on file -- authorized, its result not yet acknowledged -- is the second half's alone
+    /// (<see cref="CanRequestLoadCancellationBeforeSublot"/>), which leaves it to its worklist row while that row is there
+    /// (8005-agv-onboard-hmi#363). Counted in the first half too, it lit the shared entry beside the row for the same press.
+    /// </para>
     /// </remarks>
     public bool CanRequestLoadCancellation =>
         (CanUseStationOperator()
-            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
+            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation)
+            && !IsLoadCancellationBeforeSublotVectorOnFile())
         || CanRequestLoadCancellationBeforeSublot();
+
+    private bool IsLoadCancellationBeforeSublotVectorOnFile() =>
+        Volatile.Read(ref _lastRecoveryState).RecoveryVector is { } vector
+        && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector);
 
     /// <summary>
     /// The half of <see cref="CanRequestLoadCancellation"/> that is a cancellation before any sublot: the

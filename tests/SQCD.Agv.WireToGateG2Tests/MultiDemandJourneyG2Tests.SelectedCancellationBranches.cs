@@ -31,9 +31,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationDecision = "REJECTED",
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandB);
 
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandB, token));
 
         await harness.WaitUntilAsync(
             () => harness.Events.Any(item =>
@@ -56,8 +55,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // Nothing is pinned to B any more: the next press is free to name the other demand, and does.
         // A record that outlived the refusal would turn this press into a retry of B's request.
-        SelectWorklistItem(harness, DemandA);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandA, token));
         Assert.Equal(
             [DemandB, DemandA],
             Received(harness, "LoadCancellationStartRequested")
@@ -101,12 +99,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.LoadsOnBoard.Any(load => load.Load.DemandId == DemandB),
             "the seeded load of B to reach the state the entry is lit from",
             token);
-        SelectWorklistItem(harness, DemandB);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandB, token));
         Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
 
-        SelectWorklistItem(harness, DemandA);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandA, token));
 
         JsonElement request = Assert.Single(Received(harness, "LoadCancellationStartRequested"));
         Assert.Equal(DemandA, request.GetProperty("demandId").GetString());
@@ -138,9 +134,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartTwoItemStopAsync(cancellationToken: token);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
-            "选中的那条已经不在了，还是按了一次。",
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(
             "dddddddd-0000-4000-8000-00000000000d",
+            "那一行已经不在了，还是按了一次。",
             token));
 
         Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
@@ -152,9 +148,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             harness.LogsSnapshot(),
             line => line.Message.Contains("请重新选择", StringComparison.Ordinal));
         // And the stop is still fully cancellable once a real row is named.
-        Assert.True(await harness.Business.RequestLoadCancellationAsync(
-            "重新选了一条。",
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(
             DemandB,
+            "重新按了一行。",
             token));
         Assert.Equal(
             DemandB,
@@ -181,10 +177,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationAuthorizationsToDrop = 2,
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandB);
 
-        Task<bool> first = harness.ViewModel.RequestLoadCancellationAsync(token);
-        Task<bool> second = harness.ViewModel.RequestLoadCancellationAsync(token);
+        Task<bool> first = PressRowAsync(harness, DemandB, token);
+        Task<bool> second = PressRowAsync(harness, DemandB, token);
         Assert.False(await first);
         Assert.False(await second);
 
@@ -221,9 +216,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationResultAcksToDrop = 1,
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandA);
 
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandA, token));
         Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
         Assert.NotNull(harness.Business.ExpectedSublots);
 
@@ -241,8 +235,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 token);
         }
 
-        // The second press resends the same result; this time it is acknowledged and settles.
-        Assert.True(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        // The second press resends the same result; this time it is acknowledged and settles. While A's row is there it is
+        // pressed on that row; once A has left the worklist the shared entry is the close-out (8005-agv-onboard-hmi#363).
+        Assert.True(worklistStillNamesTheCancelledDemand
+            ? await PressRowAsync(harness, DemandA, token)
+            : await harness.ViewModel.RequestLoadCancellationAsync(token));
 
         Assert.False(harness.Business.IsLoadCancellationBeforeSublotOpen);
         Assert.Equal(
@@ -281,14 +278,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         string journalPath = Harness.NewJournalPath();
         await using Harness dropped = await StartTwoItemStopAsync(journalPath, cancellationToken: token);
-        SelectWorklistItem(dropped, DemandB);
         await dropped.StopServerAsync();
         await dropped.WaitUntilAsync(
-            () => !dropped.Business.CanRequestLoadCancellation,
+            () => !dropped.Business.CanRequestWorklistRowCancellation(DemandB),
             "the session to drop once the control server is gone",
             token);
 
-        Assert.False(await dropped.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(dropped, DemandB, token));
 
         Assert.DoesNotContain(
             dropped.Server.ReceivedEnvelopes,
@@ -329,8 +325,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTwoItemStopAsync(
             configure: server => server.LoadCancellationAuthorizationsToDrop = 1,
             cancellationToken: token);
-        SelectWorklistItem(harness, DemandB);
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.False(await PressRowAsync(harness, DemandB, token));
         Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
 
         // The stop becomes A alone, with the entry request reissued for the new revision -- the pair
@@ -356,6 +351,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the stop to become A alone, entry request included",
             token);
 
+        // B's row is gone, so this is the shared entry's close-out, the one before-sublot use it keeps at a machine pickup
+        // (8005-agv-onboard-hmi#363).
         Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
 
         // Still exactly the one request, still about B: A was never asked about.
@@ -466,9 +463,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         await ShrinkStopToAAsync(harness, token);
 
         // Pressed with B still picked, the way the view would while its rebuild is still queued.
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
-            "选中 B 之后清单只剩 A 了，还是按了一次。",
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(
             DemandB,
+            "按下 B 那一行之后清单只剩 A 了。",
             token));
 
         Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
@@ -545,10 +542,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Null((await ReadRecoveryStateAsync(journalPath, token)).PendingLoadCancellation);
         Assert.True(harness.Business.CanSubmitSublot);
 
-        // The next press is a new first press, about the demand the operator picked.
-        Assert.True(await harness.Business.RequestLoadCancellationAsync(
-            "再按一次。",
+        // The next press is a new first press, about the row the operator pressed (8005-agv-onboard-hmi#363).
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(
             DemandB,
+            "再按一次。",
             token));
         Assert.Equal(
             DemandB,
@@ -556,6 +553,14 @@ public sealed partial class MultiDemandJourneyG2Tests
                 .GetProperty("demandId").GetString());
         Assert.Equal(0, harness.Io.UnlockCount);
     }
+
+    /// <summary>
+    /// The 「取消」 on <paramref name="demandId"/>'s row, sent at once: at a machine pickup a cancellation before any sublot is
+    /// pressed on its row, not picked and then pressed on the shared entry (CP-0016, 8005-agv-onboard-hmi#363). Unbound, as the
+    /// shared entry's press these tests made was, so what they assert about the wire is unchanged.
+    /// </summary>
+    private static Task<bool> PressRowAsync(Harness harness, string demandId, CancellationToken token) =>
+        harness.Business.RequestWorklistRowCancellationAsync(demandId, "现场确认不装了。", token);
 
     /// <summary>Replaces the stop with A alone, entry request included, and waits for both.</summary>
     private static async Task ShrinkStopToAAsync(Harness harness, CancellationToken cancellationToken)

@@ -44,12 +44,17 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 验收 3（回归）：机台取货，同样两条需求、同样的录入请求，按钮照旧出现、照旧要先选需求，叫「取消装货」。
+    /// 机台取货，同样两条需求、同样的录入请求：CP-0016 起扫码前取消与待送点一样在每一行上，底部按钮不出现、不提示先选；
+    /// 「出发」不在，说明车没有把机台认成待送点（8005-agv-onboard-hmi#363）。
     /// </summary>
+    /// <remarks>
+    /// 原名 <c>AtAMachinePickupTheCancellationBeforeAnySublotIsUnchanged</c>，钉的是「底部按钮照旧出现、要先选、叫『取消装货』」，
+    /// 断言随 CP-0016 反过来。底部按钮在机台上仍叫「取消装货」，由装货中取消那几条钉住。
+    /// </remarks>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
     [InlineData("DIE_TO_WIRE_STAGING")]
-    public async Task AtAMachinePickupTheCancellationBeforeAnySublotIsUnchanged(string workType)
+    public async Task AtAMachinePickupTheCancellationBeforeAnySublotIsOnTheRowsNotTheSharedEntry(string workType)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartStagingLoadStopAsync(
@@ -58,14 +63,16 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             server => server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"]);
         await harness.WaitUntilAsync(
-            () => harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation),
-            "the machine pickup's cancellation entry",
+            () => harness.Business.CanSubmitSublot
+                && harness.OnUi(() => harness.ViewModel.WorklistItems.Count == 2
+                    && harness.ViewModel.WorklistItems.All(row => row.CanPressCancellation)),
+            "the machine pickup's row cancellations",
             token);
 
         Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown));
-        Assert.True(harness.OnUi(() => harness.ViewModel.HasLoadCancellationSelectionHint));
-        Assert.Equal("取消装货", harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
-        Assert.True(ButtonOf(harness.ScreenState(), "OnLoadCancellationClick").Visible);
+        Assert.False(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));
+        Assert.False(harness.OnUi(() => harness.ViewModel.HasLoadCancellationSelectionHint));
+        Assert.False(ButtonOf(harness.ScreenState(), "OnLoadCancellationClick").Visible);
     }
 
     /// <summary>
