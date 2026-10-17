@@ -1,0 +1,41 @@
+== M1 (BeforeSublotPressPhrase back to staging-only) (22:49:18) at 5a2a5c5 file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs changed_files=1
+-        WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney)
++        WireToGateStagingPickupStop.Is(_session.CurrentJourney, Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupTheRestoredNoticeSendsTheOperatorToTheRowThatIsOnTheScreen [2 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「取消装货」补报，不会打开仓门。 "
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+== M2 (review M5: vector branch && !rowStop) (22:52:21) at 5a2a5c5 file=src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs changed_files=1
+-                && !(rowStop && HasWorklistRow(vector.DemandId));
++                && !rowStop;
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.SettlingKeepsTheEntryRequestOnlyWhenTheNewWorklistIsAboutAnotherDemand(worklistStillNamesTheCancelledDemand: False) [8 s]
+  Error Message:
+   Timed out after 5s waiting for: the shared entry offered as the close-out once A's row has gone. UI errors: []
+  Stack Trace:
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+== L3 (review M8: drop !journey.IsNonBusinessStop) (22:54:04) at 5a2a5c5 file=src/SQCD.Agv.Core/WireToGatePickupStop.cs changed_files=1
+-        return !journey.IsNonBusinessStop
+-            && journey.CurrentStopWorklist is { Items.Count: > 0 } worklist
++        return journey.CurrentStopWorklist is { Items.Count: > 0 } worklist
+  Failed SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.TheCancellationBeforeAnySublotIsNotOfferedAtAWaitingPoint [201 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Filter matched in collection
+             ↓ (pos 0)
+  Failed SQCD.Agv.WireToGateG2Tests.AutomaticChargingCycleG2Tests.AClearancePurposeOverABusinessLegOffersNoEntry [1 s]
+  Error Message:
+   Assert.DoesNotContain() Failure: Filter matched in collection
+             ↓ (pos 0)
+  Failed SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.AnIdleReturnPurposeOverABusinessLegStillOffersNoEntry [749 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Filter matched in collection
+             ↓ (pos 0)
+  Failed SQCD.Agv.WireToGateG2Tests.AutomaticChargingCycleG2Tests.AChargingPurposeOverABusinessLegStillOffersNoEntry [679 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Filter matched in collection
+             ↓ (pos 0)
+Failed!  - Failed:     5, Passed:    18, Skipped:     0, Total:    23, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored; git status lines=0
+final status: 0 (22:55:50)
