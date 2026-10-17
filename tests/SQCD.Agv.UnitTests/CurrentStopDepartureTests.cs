@@ -144,11 +144,16 @@ public sealed class CurrentStopDepartureTests
             WithFunction(Journey(Worklist(Staging, Item("WIRE_TO_GATE"))), Staging, "WIRE_STAGING"), []));
     }
 
-    /// <summary>8005-agv-onboard-hmi#348, the regression: every machine pickup still offers it.</summary>
+    /// <summary>
+    /// 8005-agv-onboard-hmi#348, the regression: every machine pickup still offers it. <c>WIRE_TO_FULL_INSPECTION</c>
+    /// (8005-agv-onboard-hmi#360) is a machine pickup like <c>WIRE_TO_OPTICAL</c>: picked up at a wire bonding machine,
+    /// delivered to a fixed public area.
+    /// </summary>
     [Theory]
     [InlineData("WIRE_TO_GATE")]
     [InlineData("WIRE_TO_OPTICAL")]
     [InlineData("WIRE_TO_NITROGEN")]
+    [InlineData("WIRE_TO_FULL_INSPECTION")]
     [InlineData("DIE_TO_WIRE_STAGING")]
     [InlineData("DIE_TO_OVEN")]
     public void AMachinePickupStillOffersTheCancellationBeforeAnySublot(string workType)

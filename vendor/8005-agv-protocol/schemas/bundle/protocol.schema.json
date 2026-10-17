@@ -1,208 +1,208 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v5/bundle/protocol.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v6/bundle/protocol.schema.json",
   "title": "AGV_FULL_PRODUCT protocol bundle",
   "oneOf": [
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SessionHello.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SessionHello.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SessionAccepted.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SessionAccepted.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SessionRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SessionRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/Heartbeat.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/Heartbeat.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/HeartbeatAck.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/HeartbeatAck.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/CapabilitySnapshotRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/CapabilitySnapshotRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/CapabilitySnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/CapabilitySnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/RecoveryStateReport.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/RecoveryStateReport.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SessionReadiness.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SessionReadiness.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SafetyStateChanged.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SafetyStateChanged.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SafetyStateSnapshotRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SafetyStateSnapshotRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SafetyStateSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SafetyStateSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/PreDepartureSafetyCheck.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/PreDepartureSafetyCheck.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/PreDepartureSafetyCheckResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/PreDepartureSafetyCheckResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/VehicleBusinessStateSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/VehicleBusinessStateSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/CurrentStopWorklistSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/CurrentStopWorklistSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/UpcomingStopPlanSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/UpcomingStopPlanSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SublotEntryRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SublotEntryRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SublotSubmitted.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SublotSubmitted.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SublotRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SublotRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotOperationCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotOperationCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotOperationCommandRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotOperationCommandRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/OperationProgress.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/OperationProgress.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/OperationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/OperationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ManualChargingReturnToServiceRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ManualChargingReturnToServiceRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ManualChargingReturnToServiceResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ManualChargingReturnToServiceResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCorrectionRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCorrectionRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCorrectionRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCorrectionRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCorrectionCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCorrectionCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCorrectionResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCorrectionResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCancellationStartRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCancellationStartRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCancellationAuthorization.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCancellationAuthorization.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCancellationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCancellationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCompensationRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCompensationRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCompensationRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCompensationRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCompensationCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCompensationCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/LoadCompensationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/LoadCompensationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ExceptionRecoverySessionRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ExceptionRecoverySessionRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ExceptionRecoverySessionOpened.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ExceptionRecoverySessionOpened.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ExceptionRecoverySessionRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ExceptionRecoverySessionRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ExceptionRecoverySessionSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ExceptionRecoverySessionSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/RecoveryActionSubmitted.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/RecoveryActionSubmitted.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/RecoveryActionAccepted.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/RecoveryActionAccepted.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/RecoveryActionRejected.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/RecoveryActionRejected.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/HardwareRecoveryRecordSubmitted.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/HardwareRecoveryRecordSubmitted.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/HardwareRecoveryRecordResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/HardwareRecoveryRecordResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotOperationResumeCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotOperationResumeCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/FaultCargoRecoveryCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/FaultCargoRecoveryCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/FaultCargoRecoveryResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/FaultCargoRecoveryResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ForcedMechanicalRecoveryCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ForcedMechanicalRecoveryCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ForcedMechanicalRecoveryResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ForcedMechanicalRecoveryResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/DurableAck.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/DurableAck.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SnapshotAppliedAck.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SnapshotAppliedAck.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ProtocolProblem.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ProtocolProblem.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/DemandSelectionRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/DemandSelectionRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/DemandSelectionResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/DemandSelectionResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/UnableToChargeFieldConfirmationRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/UnableToChargeFieldConfirmationRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/UnableToChargeFieldConfirmationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/UnableToChargeFieldConfirmationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ManualStationClearanceConfirmationRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ManualStationClearanceConfirmationRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/ManualStationClearanceConfirmationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/ManualStationClearanceConfirmationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotConfigurationActivationCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotConfigurationActivationCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotConfigurationActivationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotConfigurationActivationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/OnboardAlarmSnapshot.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/OnboardAlarmSnapshot.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotFaultDeclarationCommand.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotFaultDeclarationCommand.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/SlotFaultDeclarationResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/SlotFaultDeclarationResult.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/CurrentStopDepartureRequested.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/CurrentStopDepartureRequested.schema.json"
     },
     {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v5/messages/CurrentStopDepartureResult.schema.json"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/messages/CurrentStopDepartureResult.schema.json"
     }
   ]
 }

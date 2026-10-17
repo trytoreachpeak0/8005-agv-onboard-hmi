@@ -55,34 +55,31 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
     throw '-AllSlices 与 -Slice 只能给一个。'
 }
 
-# 协议 v4.0.0 的身份。这是本仓库的第二份副本，权威副本是
+# 协议 5.0.0 候选的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# protocol-v4.0.0 已于 2026-10-16 发布（8005-agv-program#184）：注释 tag（对象 daeebc5c）指向下面的 Commit
-# 3fb214e5，外置 attestation（SHA-256 68f3516e…）里有一份批准，由产品负责人授权的 AI agent 给出。发布内容与候选
-# 逐字节相同：fp/v2-candidate 上的 3fb214e5（protocol#13 CP-0012 的出发请求，加上 protocol#15 CP-0013 改写的
-# 「待送点缺电先送货再充电」，取代第一版候选 c6b1ff73 里旅程内插充电停靠的写法；再加上 protocol#17 CP-0014 放开的
-# 机台取货装完后出发与待送点持货倒计时，protocol#19 改写的待送点有待装时为 LOADING），候选期由
-# 8005-agv-onboard-hmi#349 绑定、#352 换到这一提交。所以九个身份值原样保留，只把 ApprovalStatus 由
-# SUPERSEDING_CANDIDATE 改为 APPROVED_RELEASE（照 protocol-v3.0.0 的先例 8005-agv-onboard-hmi#284）。
-# 候选期在本身份上产出的证据仍是 UNRELEASED_CANDIDATE，不计入批次出口。
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 4e9f3df8（protocol#22 的合并提交，树与其 head 9d791578 相同；为 protocol#21）：在 protocol-v4.0.0（3fb214e5）之上给闭合
+# 枚举 TransportTaskType 追加 WIRE_TO_FULL_INSPECTION（焊线/键合机台送全检区），属于破坏性改动，所以升大版本；
+# PublicStationFunction 不变。由 8005-agv-onboard-hmi#360 绑定，与服务端 8005-agv-control-server#737 同包。
+# protocol-v5.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是 SUPERSEDING_CANDIDATE，本身份上产出的证据是
+# UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
 $expected = [ordered]@{
-    ProtocolVersion = 5
+    ProtocolVersion = 6
     ProfileId = 'AGV_FULL_PRODUCT'
-    ReleaseVersion = '4.0.0'
+    ReleaseVersion = '5.0.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v4.0.0'
-    Commit = '3fb214e57d861a909d872511940d26133eb32dca'
-    ManifestSha256 = 'beca46a7fe98003ce1f21efb88f2c1406f3040883d0b372a51505a843e306f3a'
-    SchemaBundleSha256 = 'dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628'
+    Tag = 'protocol-v5.0.0'
+    Commit = '4e9f3df8fb1733311e1ce534c1129cfb904760a4'
+    ManifestSha256 = '743b886d99194038b893e98aed2a1dd01409cd7f80d39c734e02d860e0e5827c'
+    SchemaBundleSha256 = 'd51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933'
     VectorsSha256 = '24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7'
-    ApprovalStatus = 'APPROVED_RELEASE'
+    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()

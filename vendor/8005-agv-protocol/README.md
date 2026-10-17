@@ -5,22 +5,17 @@ Shared executable protocol contracts for the 8005 AGV full product
 
 ## Current state
 
-The repository currently contains an **unapproved `4.0.0` superseding content
-snapshot** for `ProtocolVersion = 5` and profile `AGV_FULL_PRODUCT`.
-`protocol-v3.0.0` remains immutable, and `protocol-v4.0.0` does not exist yet.
+The repository currently contains an **unapproved `5.0.0` superseding content
+snapshot** for `ProtocolVersion = 6` and profile `AGV_FULL_PRODUCT`.
+`protocol-v4.0.0` remains immutable, and `protocol-v5.0.0` does not exist yet.
 
-This candidate is **breaking** against `protocol-v3.0.0`
+This candidate is **breaking** against `protocol-v4.0.0`
 (`BREAKING_PROTOCOL_VERSION_INCREASE`, `INCOMPATIBLE_EXACT_IDENTITY_REQUIRED`):
-four changes — the operator's departure request at the `STAGING_TO_WIRE`
-staging station, and at a machine pickup stop once its committed loads are
-complete (`CurrentStopDepartureRequested` / `CurrentStopDepartureResult`),
-`OPERATOR_DEPARTED` and `CHARGING_REQUIRED` appended to
-`loadingPhase.closedReason` and `stopEndedReason`, a vehicle below the
-mandatory charge line at the staging station with cargo on board departing to
-deliver it before it charges (no `CHARGER` stop in the journey), and a
-cargo-holding deadline at the staging station once cargo is on board, moved by
-each demand appended there and ending with `CARGO_HOLDING_TIMEOUT` (all stated
-in [`docs/wire-notes.md`](docs/wire-notes.md)). See
+one change — `WIRE_TO_FULL_INSPECTION`, wire bonding machines to the
+full-inspection area, appended to the closed enum `TransportTaskType`, so a
+`4.0.0` implementation rejects a worklist carrying it and both implementations
+move to `5.0.0` together; `PublicStationFunction` is unchanged (stated in
+[`docs/wire-notes.md`](docs/wire-notes.md)). See
 [`compatibility/report.json`](compatibility/report.json) for the full list.
 
 It is not a formal `ProtocolRelease` until a release approval (the product

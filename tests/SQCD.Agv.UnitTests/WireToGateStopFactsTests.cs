@@ -20,8 +20,11 @@ public sealed class WireToGateStopFactsTests
     [InlineData("WIRE_TO_OPTICAL", "焊线→三光")]
     [InlineData("STAGING_TO_WIRE", "待送→焊线机台")]
     [InlineData("WIRE_TO_NITROGEN", "焊线→氮气柜")]
-    public void EachOfTheSixTaskTypesHasItsOwnText(string workType, string expected)
+    [InlineData("WIRE_TO_FULL_INSPECTION", "焊线→全检")]
+    public void EachOfTheSevenTaskTypesHasItsOwnText(string workType, string expected)
     {
+        // 第七类 WIRE_TO_FULL_INSPECTION 的文案取自票面 8005-agv-onboard-hmi#360：与 WIRE_TO_GATE 的「焊线→质检关卡」
+        // 一眼能分开，全检区与人工质检关卡是两个地方（program#195 决定第 2 条）。
         Assert.Equal(expected, WireToGateStopFacts.TaskTypeText(Journey(Item(workType, "PICKUP"))));
     }
 
@@ -31,7 +34,7 @@ public sealed class WireToGateStopFactsTests
     [InlineData("")]
     public void AValueOutsideTheTableIsUnknownRatherThanTheNearestKnownType(string workType)
     {
-        // 入站校验会先拒掉六值之外的 workType；文案表仍不把它映射成任何已知类型，缺一行时显示「未知」而不是猜。
+        // 入站校验会先拒掉七值之外的 workType；文案表仍不把它映射成任何已知类型，缺一行时显示「未知」而不是猜。
         Assert.Equal("未知", WireToGateStopFacts.TaskTypeText(Journey(Item(workType, "PICKUP"))));
     }
 
@@ -72,10 +75,11 @@ public sealed class WireToGateStopFactsTests
     [InlineData("WIRE_TO_OPTICAL")]
     [InlineData("STAGING_TO_WIRE")]
     [InlineData("WIRE_TO_NITROGEN")]
+    [InlineData("WIRE_TO_FULL_INSPECTION")]
     public void TheSameStopRoleShowsTheSameDirectionWhateverTheTaskType(string workType)
     {
         // STAGING_TO_WIRE 在 AREA 机台是卸货，WIRE_TO_GATE 在 AREA 机台是取货——方向随服务端的 stopRole，
-        // 不随任务类型：同一个 stopRole，六类显示一样。
+        // 不随任务类型：同一个 stopRole，七类显示一样。
         Assert.Equal("取货", WireToGateStopFacts.DirectionText(Journey(Item(workType, "PICKUP"))));
         Assert.Equal("卸货", WireToGateStopFacts.DirectionText(Journey(Item(workType, "DROPOFF"))));
     }
@@ -207,20 +211,21 @@ public sealed class WireToGateStopFactsTests
     }
 
     /// <summary>
-    /// 批次 10 放开的同向四类，在清单列表的每一行上显示自己的文案，不显示「未知」
-    /// （批次10-03，<c>8005-agv-onboard-hmi#289</c>）。
+    /// 批次 10 放开的同向四类，加上协议 5.0.0 的 <c>WIRE_TO_FULL_INSPECTION</c>，在清单列表的每一行上显示自己的文案，
+    /// 不显示「未知」（批次10-03，<c>8005-agv-onboard-hmi#289</c>；<c>8005-agv-onboard-hmi#360</c>）。
     /// </summary>
     /// <remarks>
-    /// 顶栏的六类用例也经过 <see cref="WireToGateStopFacts.ItemTaskTypeText"/>，但走的是顶栏那条路；
+    /// 顶栏的七类用例也经过 <see cref="WireToGateStopFacts.ItemTaskTypeText"/>，但走的是顶栏那条路；
     /// 这里直接钉清单行上的那一段，它是 <c>MainViewModel</c> 给每一行取文案的入口。期望文案同样取自
-    /// MES 路线注释，不从被测代码抄。
+    /// MES 路线注释（第五类取自票面），不从被测代码抄。第五类与三光同形：焊线机台取货、送往固定终点的公共区域。
     /// </remarks>
     [Theory]
     [InlineData("DIE_TO_WIRE_STAGING", "装片→焊线待送")]
     [InlineData("DIE_TO_OVEN", "装片→烘箱")]
     [InlineData("WIRE_TO_OPTICAL", "焊线→三光")]
     [InlineData("WIRE_TO_NITROGEN", "焊线→氮气柜")]
-    public void EachOfTheFourSameDirectionTaskTypesShowsItsOwnTextOnItsRow(string workType, string expected)
+    [InlineData("WIRE_TO_FULL_INSPECTION", "焊线→全检")]
+    public void EachOfTheFiveSameDirectionTaskTypesShowsItsOwnTextOnItsRow(string workType, string expected)
     {
         Assert.Equal(expected, WireToGateStopFacts.ItemTaskTypeText(Item(workType, "PICKUP")));
     }
