@@ -11,11 +11,15 @@ snapshot** for `ProtocolVersion = 6` and profile `AGV_FULL_PRODUCT`.
 
 This candidate is **breaking** against `protocol-v4.0.0`
 (`BREAKING_PROTOCOL_VERSION_INCREASE`, `INCOMPATIBLE_EXACT_IDENTITY_REQUIRED`):
-one change — `WIRE_TO_FULL_INSPECTION`, wire bonding machines to the
+the breaking change is `WIRE_TO_FULL_INSPECTION`, wire bonding machines to the
 full-inspection area, appended to the closed enum `TransportTaskType`, so a
 `4.0.0` implementation rejects a worklist carrying it and both implementations
-move to `5.0.0` together; `PublicStationFunction` is unchanged (stated in
-[`docs/wire-notes.md`](docs/wire-notes.md)). See
+move to `5.0.0` together; `PublicStationFunction` is unchanged. A later
+revision of the same candidate (protocol#23) changes no schema: a departure
+request at a machine pickup stop whose `worklistRevision` is stale but differs
+in nothing material is decided by the remaining checks, and the journey plan
+is worded as the remaining plan. Both are stated in
+[`docs/wire-notes.md`](docs/wire-notes.md). See
 [`compatibility/report.json`](compatibility/report.json) for the full list.
 
 It is not a formal `ProtocolRelease` until a release approval (the product

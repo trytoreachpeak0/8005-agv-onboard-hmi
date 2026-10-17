@@ -9,7 +9,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <remarks>
 /// <para>
 /// The vector's order is <c>UpcomingStopPlanSnapshot → SnapshotAppliedAck → CurrentStopWorklistSnapshot →
-/// SnapshotAppliedAck</c> and its onboard assertions are <c>DISPLAY_FULL_JOURNEY_PLAN</c> and
+/// SnapshotAppliedAck</c> and its onboard assertions are <c>DISPLAY_REMAINING_JOURNEY_PLAN</c> (until protocol#23,
+/// <c>DISPLAY_FULL_JOURNEY_PLAN</c>) and
 /// <c>NEVER_REORDER_LEGS_LOCALLY</c>. Both tests read the plan off the view model's leg list, the thing
 /// the operator sees, not off the payload: a plan acknowledged and then shown in the order it arrived
 /// would pass a payload-shape check.
@@ -31,7 +32,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-08")]
     [Trait("ProtocolVector", "CV-MULTI-STOP-PLAN-NINE-LEGS")]
-    public async Task ANineLegPlanIsAcknowledgedAndShownInFullInSequenceOrder()
+    public async Task ANineLegRemainingPlanIsAcknowledgedAndShownInSequenceOrder()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await Harness.StartAsync(
@@ -58,8 +59,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(harness.UiErrors);
         Assert.Equal(
             [
-                "1|BUSINESS|COMPLETED",
-                "2|BUSINESS|ARRIVED",
+                "1|BUSINESS|ARRIVED",
+                "2|BUSINESS|PLANNED",
                 "3|WAITING_POINT|PLANNED",
                 "4|BUSINESS|PLANNED",
                 "5|CHARGER|PLANNED",
@@ -133,18 +134,19 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// Nine legs, in the order the server sends them: not their <c>sequence</c> order. Two demands are
-    /// picked up at ST-01 (the completed and the arrived leg); waiting points and the charger carry no
-    /// leg type and no demand.
+    /// picked up at ST-01 (the arrived leg and the next one); waiting points and the charger carry no
+    /// leg type and no demand. Every leg is still to come: since protocol#23 the plan is the remaining plan -- the
+    /// current stop and those after it -- and a passed stop is not sent (8005-agv-onboard-hmi#362).
     /// </summary>
     private static readonly object[] NineLegsOutOfOrder =
     [
         Payloads.Leg(9, "TO_DROPOFF", "BUSINESS", DemandA, "ST-GATE", "PLANNED"),
         Payloads.Leg(3, null, "WAITING_POINT", null, "WP-03", "PLANNED"),
         Payloads.Leg(6, "TO_DROPOFF", "BUSINESS", DemandB, "ST-OPT", "PLANNED"),
-        Payloads.Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "COMPLETED"),
+        Payloads.Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "ARRIVED"),
         Payloads.Leg(5, null, "CHARGER", null, "CH-05", "PLANNED"),
         Payloads.Leg(8, null, "WAITING_POINT", null, "WP-08", "PLANNED"),
-        Payloads.Leg(2, "TO_PICKUP", "BUSINESS", DemandB, "ST-01", "ARRIVED"),
+        Payloads.Leg(2, "TO_PICKUP", "BUSINESS", DemandB, "ST-01", "PLANNED"),
         Payloads.Leg(7, "TO_DROPOFF", "BUSINESS", DemandC, "ST-N2", "PLANNED"),
         Payloads.Leg(4, "TO_PICKUP", "BUSINESS", DemandC, "ST-GATE", "PLANNED")
     ];

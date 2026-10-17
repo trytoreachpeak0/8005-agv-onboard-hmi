@@ -208,6 +208,83 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// 审查 M1（探针 P2）：日志里留着 B 的扫码前取消、已授权、结果未得服务端确认，车在机台两条需求上起来。补报提示要叫操作员按
+    /// 屏上有的那个按钮——那一行的「取消」，不是不在屏上的「取消装货」；B 那一行按得动、底部入口不出现，按下补报的是 B。
+    /// </summary>
+    [Fact]
+    public async Task AtAMachinePickupTheRestoredNoticeSendsTheOperatorToTheRowThatIsOnTheScreen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = await NewJournalSeededAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                RecoveryVector = new WireToGateRecoveryVectorContext(
+                    WireToGateRecoveryVectorTypes.LoadCancellation,
+                    "6f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+                    null,
+                    DemandB,
+                    null,
+                    null,
+                    [],
+                    null,
+                    "operator-001",
+                    "SESSION",
+                    DateTimeOffset.UtcNow)
+            },
+            token);
+        await using Harness harness = await StartStagingLoadStopAsync(
+            new FakeIoModuleClient(),
+            "WIRE_TO_GATE",
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"];
+            },
+            journalPath);
+        await harness.WaitUntilAsync(
+            () => harness.Events.Any(item => item.Kind == "RESULT_ACK_PENDING"),
+            "the restored cancellation's notice",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()) is
+                [{ DemandId: DemandA }, { DemandId: DemandB, OffersCancellation: true, CanPressCancellation: true }],
+            "B's row pressable",
+            token);
+
+        WireToGateOperatorEvent notice = harness.Events.First(item => item.Kind == "RESULT_ACK_PENDING");
+        Assert.Contains("可再按一次那一行的「取消」补报", notice.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("取消装货", notice.Message, StringComparison.Ordinal);
+        Assert.False(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));
+        Assert.False(ButtonOf(harness.ScreenState(), "OnLoadCancellationClick").Visible);
+
+        Assert.True(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token));
+        Assert.NotEmpty(Received(harness, "LoadCancellationResult"));
+        Assert.All(
+            Received(harness, "LoadCancellationResult"),
+            result => Assert.Equal(DemandB, result.GetProperty("demandId").GetString()));
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>审查 L1：机台上按一行，暂停扫码的提示写的是那一行的子批，不是笼统的「本站装货」。</summary>
+    [Fact]
+    public async Task AtAMachinePickupARowPressNoticeNamesThatRowsSublot()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartMachineRowStopAsync(
+            "WIRE_TO_GATE",
+            token,
+            server => server.LoadCancellationAuthorizationsToDrop = 1);
+
+        Assert.False(await harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB)).SendAsync(token));
+
+        Assert.Contains(
+            harness.Events,
+            item => item.Kind == "RECOVERY_VECTOR_REQUESTED"
+                && item.Message.StartsWith("已申请取消子批 SUBLOT-B，", StringComparison.Ordinal));
+    }
+
     /// <summary>机台两条需求（A 2 篮、B 1 篮）、录入请求开着、服务端应答取消，两行的「取消」都已按得动。</summary>
     private static async Task<Harness> StartMachineRowStopAsync(
         string workType,

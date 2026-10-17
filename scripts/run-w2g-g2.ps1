@@ -60,9 +60,11 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 4e9f3df8（protocol#22 的合并提交，树与其 head 9d791578 相同；为 protocol#21）：在 protocol-v4.0.0（3fb214e5）之上给闭合
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 13eca82a（protocol#24 的合并提交，树与其 head ce68f3d5 相同；为 protocol#23）：在 protocol-v4.0.0（3fb214e5）之上给闭合
 # 枚举 TransportTaskType 追加 WIRE_TO_FULL_INSPECTION（焊线/键合机台送全检区），属于破坏性改动，所以升大版本；
-# PublicStationFunction 不变。由 8005-agv-onboard-hmi#360 绑定，与服务端 8005-agv-control-server#737 同包。
+# PublicStationFunction 不变。先由 8005-agv-onboard-hmi#360 绑定在 4e9f3df8（protocol#21）；同一候选的第二次修订
+# protocol#23 不改 schema、消息与错误码，只新增向量 CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED（清单版本过期但无实质
+# 差别的出发请求受理）并把旅程计划措辞改为剩余计划。由 8005-agv-onboard-hmi#362 改钉，与服务端 8005-agv-control-server#748 同包。
 # protocol-v5.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是 SUPERSEDING_CANDIDATE，本身份上产出的证据是
 # UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
@@ -75,10 +77,10 @@ $expected = [ordered]@{
     ReleaseVersion = '5.0.0'
     Repository = '8005-agv-protocol'
     Tag = 'protocol-v5.0.0'
-    Commit = '4e9f3df8fb1733311e1ce534c1129cfb904760a4'
-    ManifestSha256 = '743b886d99194038b893e98aed2a1dd01409cd7f80d39c734e02d860e0e5827c'
+    Commit = '13eca82ac199bd97c1ad49d036c70cb5b012250f'
+    ManifestSha256 = '128daae52758749d4d6f346231fdb336ca5d1079773bcab5430c20c53ce6b10b'
     SchemaBundleSha256 = 'd51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933'
-    VectorsSha256 = '24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7'
+    VectorsSha256 = '291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a'
     ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 

@@ -6,13 +6,16 @@ namespace SQCD.Agv.Wpf;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why the staging pickup stop says something else.</b> There the cancellation before any sublot is not offered, so what is
-/// left is the load in flight -- the door is open and the basket does not fit or the wrong one was scanned. The control server
+/// <b>Why the staging pickup stop says something else.</b> There the shared entry offers no new cancellation before any sublot --
+/// that is each row's 「取消」, at a machine pickup too since CP-0016 (8005-agv-onboard-hmi#353, #363) -- so what is left is the
+/// load in flight -- the door is open and the basket does not fit or the wrong one was scanned. The control server
 /// puts that demand back to be dispatched instead of cancelling it (<c>8005-agv-control-server#713</c>), so a caption that says
 /// 「取消」 would tell the operator the demand is gone when it is not.
 /// </para>
 /// <para>
-/// <b>The machine pickup's wording does not change, character for character</b>: the real-rig L2 scenarios find the button and
+/// <b>The machine pickup's wording does not change, character for character</b>: at a machine pickup the shared entry is left the
+/// load in flight and the close-out of a cancellation whose row has gone (8005-agv-onboard-hmi#363), and the real-rig L2
+/// scenarios find the button and
 /// its confirmation by these captions (<c>8005-agv-control-server</c> <c>scripts/l2/L2.psm1</c>, <c>InvokeButton</c> and
 /// <c>Confirm</c>).
 /// </para>

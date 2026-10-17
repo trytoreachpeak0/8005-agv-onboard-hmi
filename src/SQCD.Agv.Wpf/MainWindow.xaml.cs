@@ -275,7 +275,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 待送点清单某一行的「取消」（CP-0014 修订项二，8005-agv-onboard-hmi#353）：按下这一刻取下按键，确认框复述这一行、说清
+    /// 取货停靠清单某一行的「取消」（待送点 CP-0014 修订项二、8005-agv-onboard-hmi#353；机台 CP-0016、8005-agv-onboard-hmi#363）：按下这一刻取下按键，确认框复述这一行、说清
     /// 这条需求就此结束不再派；确认后发出，业务服务核对对象没变才发。
     /// </summary>
     private async void OnWorklistRowCancellationClick(object sender, RoutedEventArgs e)

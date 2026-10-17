@@ -233,6 +233,16 @@ public sealed partial class MultiDemandJourneyG2Tests
                     && only.DemandId == DemandB,
                 "the worklist without A to arrive",
                 token);
+            // A's row has gone, so the shared entry is the close-out, offered and pressable on the screen (review M2 of
+            // 8005-agv-onboard-hmi#363): nothing else could report it.
+            await harness.WaitUntilAsync(
+                () =>
+                {
+                    harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+                    return harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation && harness.ViewModel.CanPressLoadCancellation);
+                },
+                "the shared entry offered as the close-out once A's row has gone",
+                token);
         }
 
         // The second press resends the same result; this time it is acknowledged and settles. While A's row is there it is

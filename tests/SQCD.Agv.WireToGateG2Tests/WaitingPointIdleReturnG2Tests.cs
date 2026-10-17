@@ -460,6 +460,13 @@ public sealed class WaitingPointIdleReturnG2Tests
             {
                 Assert.False(harness.ViewModel.CanRequestLoadCancellation);
                 Assert.False(harness.Business.CanRequestLoadCancellation);
+                // Nor on any row (8005-agv-onboard-hmi#363 review L3): not a pickup stop for the rows' 「取消」 either.
+                Assert.DoesNotContain(
+                    harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()),
+                    row => row.OffersCancellation || row.CanPressCancellation);
+                Assert.DoesNotContain(
+                    harness.Session.CurrentJourney.CurrentStopWorklist?.Items ?? [],
+                    item => harness.Business.CanRequestWorklistRowCancellation(item.DemandId));
             },
             token);
 

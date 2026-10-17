@@ -7,10 +7,10 @@
   "generatedAt": "2026-10-16T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "d6a19ea7e619f82dcf910a331975de0e481b51f2e3188d03e20460b15e60c065",
+  "fileTableSha256": "f1288ff3ac6a11c4de7a35cd1209ef7b6147884f5a207f8df1424e60ed1d1aca",
   "schemaBundleSha256": "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933",
   "examplesSha256": "b37e84b6da4bef79ee9cea7968432003bbc5035446033d654913d2b137a25ab5",
-  "vectorsSha256": "24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7",
+  "vectorsSha256": "291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a",
   "errorRegistrySha256": "3386154ca06bef1803e08c0b0bc5fc6e498146e3736aa1ab6a4ca604ccf01499",
   "messages": {
     "SessionHello": {
@@ -1065,8 +1065,8 @@
     {
       "path": "README.md",
       "role": "README.md",
-      "bytes": 2348,
-      "sha256": "78d177288c227d8872cdcf532d086e7853a5818183297eaa4a24c63206d29f78"
+      "bytes": 2637,
+      "sha256": "fae2eb295ac354d82e2f743065e9b5bace07070f6f97669c0bef79ea9417d21d"
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
@@ -1083,8 +1083,8 @@
     {
       "path": "compatibility/report.json",
       "role": "compatibility",
-      "bytes": 1283,
-      "sha256": "702159d58ae26124f896c922b46f9ddd494506ba72442f7df3d64a8d8006ce24"
+      "bytes": 1733,
+      "sha256": "6f818fab861c292a323afbfe4682d303b0476750f4beb3a56f864a9126e53be7"
     },
     {
       "path": "docs/README.md",
@@ -1095,8 +1095,8 @@
     {
       "path": "docs/candidate-limitations.md",
       "role": "docs",
-      "bytes": 2141,
-      "sha256": "d730d7b838d518c26ac1e2417e82dc2a67d1e55c42a981dcf719df8c73fb5938"
+      "bytes": 2358,
+      "sha256": "504ea2e34718144d138ce27aead315da5559a14350ca116838e2f4fa3329bb67"
     },
     {
       "path": "docs/release-governance.md",
@@ -1107,8 +1107,8 @@
     {
       "path": "docs/wire-notes.md",
       "role": "docs",
-      "bytes": 12982,
-      "sha256": "df80c4a1fc6c00c5b0fab33cf6a4099f5ec880f53a5d5c74519b3bd7883581cd"
+      "bytes": 14618,
+      "sha256": "ed27478d17422bfb3075ecda4e29bfa999ad7d10884e578912d3f5c7fdeefa7e"
     },
     {
       "path": "errors/error-codes.json",
@@ -11805,8 +11805,8 @@
     {
       "path": "integration-slices/index.json",
       "role": "integration-slices",
-      "bytes": 22250,
-      "sha256": "e6bae4f00357080e8539aaf6bccf7f045b31b6f1873f7363f0603dabb870a795"
+      "bytes": 22326,
+      "sha256": "5c64d0335218fe31b6a0d6362af3eaa7446832dda781eb9a7ffb6dbd90cbaa86"
     },
     {
       "path": "package.json",
@@ -12267,8 +12267,8 @@
     {
       "path": "tools/g1-validate.mjs",
       "role": "tools",
-      "bytes": 14834,
-      "sha256": "c0454ea0c08cf377e7dae49a42880813c980dab159f9442d158b224fed9549f4"
+      "bytes": 15778,
+      "sha256": "e211b1ec044f8c3b77082224acf7e031d8ea8cbe7ba4780bc0a3f23d0264a177"
     },
     {
       "path": "vectors/CV-AUTOMATIC-CHARGING-CYCLE/expected.json",
@@ -12367,10 +12367,22 @@
       "sha256": "da593dd541f64592aec7b4902ca3e65e9ef64f4ae1ba5256a552506c1bc90739"
     },
     {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED/expected.json",
+      "role": "vectors",
+      "bytes": 2164,
+      "sha256": "ab0e6931d4b38b4ec9301a433bdbf9d2d79d4ff5450d96afd9fd0921679084ee"
+    },
+    {
+      "path": "vectors/CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED/input.ndjson",
+      "role": "vectors",
+      "bytes": 603,
+      "sha256": "10fc5e8ae220d66084695cba9745c39b741cafcfa44a1face85a536f554d8831"
+    },
+    {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-STALE-REVISION/expected.json",
       "role": "vectors",
-      "bytes": 1208,
-      "sha256": "b6b58ee382de7f053dce5d1134ba56fd1973cb989d5e97c26ad99d19b8776eb1"
+      "bytes": 1250,
+      "sha256": "2b58665046972a4e2643c676f68873febfd161cc1247962ec404d4b3f6745164"
     },
     {
       "path": "vectors/CV-CURRENT-STOP-DEPARTURE-STALE-REVISION/input.ndjson",
@@ -12549,8 +12561,8 @@
     {
       "path": "vectors/CV-MULTI-STOP-PLAN-NINE-LEGS/expected.json",
       "role": "vectors",
-      "bytes": 1007,
-      "sha256": "ce4a6d94e01904ab514a6b34fc7b782f31ce013be122a0bf1d9d95cc8ac10949"
+      "bytes": 1012,
+      "sha256": "1a263bc175e721baf56f7329b8d832e03e775b028af64f7168f0588426620fd5"
     },
     {
       "path": "vectors/CV-MULTI-STOP-PLAN-NINE-LEGS/input.ndjson",

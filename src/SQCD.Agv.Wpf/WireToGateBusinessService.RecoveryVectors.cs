@@ -1447,11 +1447,11 @@ public sealed partial class WireToGateBusinessService
         {
             // Published before the send, which waits for the answer: sublot entry closes from here
             // (CanSubmitSublot), and the operator sees why while the request is out.
-            // At the staging pickup stop the press is one row's, so the notice names that row's sublot
-            // (8005-agv-onboard-hmi#353); elsewhere it reads as it always has.
+            // At a pickup stop -- staging (8005-agv-onboard-hmi#353) or machine (8005-agv-onboard-hmi#363) -- the press is one
+            // row's, so the notice names that row's sublot; elsewhere it reads as it always has.
             PublishOperatorResponse(
                 "RECOVERY_VECTOR_REQUESTED",
-                WireToGateStagingPickupStop.Is(_session.CurrentJourney, state.StagingPickupStationIds ?? [])
+                WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney)
                     && _session.CurrentJourney.CurrentStopWorklist?.Items.FirstOrDefault(
                         item => string.Equals(item.DemandId, demandId, StringComparison.Ordinal)) is { } row
                     ? WireToGateLoadCancellationText.RowRequested(row.Sublot) + " "
@@ -1742,13 +1742,13 @@ public sealed partial class WireToGateBusinessService
 
     /// <summary>
     /// The entry a notice sends the operator to for a cancellation before any sublot about <paramref name="demandId"/>: its
-    /// worklist row's 「取消」 at the staging pickup stop while that row is on the screen (8005-agv-onboard-hmi#353), the
-    /// shared entry by its caption otherwise.
+    /// worklist row's 「取消」 at a pickup stop -- staging (8005-agv-onboard-hmi#353) or machine (8005-agv-onboard-hmi#363) --
+    /// while that row is on the screen, the shared entry by its caption otherwise. The same judgement that shows the row's
+    /// button and hides the shared entry (<see cref="CanRequestLoadCancellationBeforeSublot"/>), so the notice names the
+    /// button that is there.
     /// </summary>
     private string BeforeSublotPressPhrase(string demandId) =>
-        WireToGateStagingPickupStop.Is(
-                _session.CurrentJourney,
-                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])
+        WireToGatePickupStop.OffersWorklistRowCancellation(_session.CurrentJourney)
             && HasWorklistRow(demandId)
             ? WireToGateLoadCancellationText.RowPressPhrase
             : $"「{LoadCancellationCaptionHere()}」";
