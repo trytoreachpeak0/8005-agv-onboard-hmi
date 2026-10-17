@@ -14,7 +14,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// 清单靠服务端下一份 worklist 刷新（<c>8005-agv-control-server#723</c>）。
 /// </summary>
 /// <remarks>
-/// 共用的「先选再取消」入口在待送点仍然不出现（<c>8005-agv-onboard-hmi#348</c>）；机台取货的入口、按钮与文字一字不变。
+/// 共用的「先选再取消」入口在待送点仍然不出现（<c>8005-agv-onboard-hmi#348</c>）。机台取货自 CP-0016 起同样每行一个「取消」，用例在
+/// <c>MultiDemandJourneyG2Tests.MachineRowCancellation.cs</c>（<c>8005-agv-onboard-hmi#363</c>）。
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
 {
@@ -354,34 +355,6 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(WireToGateLoadCancellationText.RowFailureText, press.FailureText);
         Assert.DoesNotContain("放回待派", press.Text, StringComparison.Ordinal);
         Assert.Empty(harness.UiErrors);
-    }
-
-    /// <summary>验收 3（回归）：机台取货，同样两条需求，清单上没有行内「取消」，共用入口照旧要先选。</summary>
-    [Theory]
-    [InlineData("WIRE_TO_GATE")]
-    [InlineData("DIE_TO_WIRE_STAGING")]
-    public async Task AtAMachinePickupNoRowHasItsOwnCancellation(string workType)
-    {
-        CancellationToken token = TestContext.Current.CancellationToken;
-        await using Harness harness = await StartStagingLoadStopAsync(
-            new FakeIoModuleClient(),
-            workType,
-            token,
-            server => server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"]);
-        await harness.WaitUntilAsync(
-            () => harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation),
-            "the machine pickup's cancellation entry",
-            token);
-
-        Assert.All(
-            harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()),
-            row => Assert.False(row.OffersCancellation || row.CanPressCancellation));
-        Assert.All(harness.ScreenState().WorklistRows, row => Assert.False(row.CancellationShown));
-        // The business half on its own, so the staging judgement there is pinned too (review phase 2, P2).
-        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandA));
-        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandB));
-        Assert.True(harness.OnUi(() => harness.ViewModel.HasLoadCancellationSelectionHint));
-        Assert.Equal("取消装货", harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
     }
 
     /// <summary>待送点两条需求（A 2 篮、B 1 篮）、录入请求开着、服务端应答取消。</summary>
