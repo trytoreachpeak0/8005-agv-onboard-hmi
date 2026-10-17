@@ -12,7 +12,8 @@ namespace SQCD.Agv.Contracts;
 /// <remarks>
 /// <para>
 /// <b>This names the <c>5.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>9d7915786b736a6fa8d0c8737bfb115ac08a30b3</c> (<c>8005-agv-protocol#22</c>, for
+/// <c>8005-agv-protocol</c> commit <c>4e9f3df8fb1733311e1ce534c1129cfb904760a4</c> on <c>fp/v2-candidate</c>, the merge of
+/// <c>8005-agv-protocol#22</c> (tree identical to its head <c>9d791578</c>; for
 /// <c>8005-agv-protocol#21</c>): <c>protocol-v4.0.0</c> with one value appended to the closed
 /// <c>TransportTaskType</c> enum, <c>WIRE_TO_FULL_INSPECTION</c> (wire bonding machine to the full inspection area),
 /// which is a breaking change and so a new major version; <c>PublicStationFunction</c> is unchanged. Bound here by
@@ -58,7 +59,7 @@ public static class WireToGateRelease
     public const string ReleaseVersion = "5.0.0";
     public const string Repository = "8005-agv-protocol";
     public const string Tag = "protocol-v5.0.0";
-    public const string Commit = "9d7915786b736a6fa8d0c8737bfb115ac08a30b3";
+    public const string Commit = "4e9f3df8fb1733311e1ce534c1129cfb904760a4";
     public const string ManifestSha256 = "743b886d99194038b893e98aed2a1dd01409cd7f80d39c734e02d860e0e5827c";
     public const string SchemaBundleSha256 = "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933";
     public const string VectorsSha256 = "24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7";

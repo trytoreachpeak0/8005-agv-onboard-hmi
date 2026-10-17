@@ -60,7 +60,7 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 绑定的是 8005-agv-protocol 上的 9d791578（protocol#22，为 protocol#21）：在 protocol-v4.0.0（3fb214e5）之上给闭合
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 4e9f3df8（protocol#22 的合并提交，树与其 head 9d791578 相同；为 protocol#21）：在 protocol-v4.0.0（3fb214e5）之上给闭合
 # 枚举 TransportTaskType 追加 WIRE_TO_FULL_INSPECTION（焊线/键合机台送全检区），属于破坏性改动，所以升大版本；
 # PublicStationFunction 不变。由 8005-agv-onboard-hmi#360 绑定，与服务端 8005-agv-control-server#737 同包。
 # protocol-v5.0.0 这个 tag 尚未打出，所以 ApprovalStatus 是 SUPERSEDING_CANDIDATE，本身份上产出的证据是
@@ -75,7 +75,7 @@ $expected = [ordered]@{
     ReleaseVersion = '5.0.0'
     Repository = '8005-agv-protocol'
     Tag = 'protocol-v5.0.0'
-    Commit = '9d7915786b736a6fa8d0c8737bfb115ac08a30b3'
+    Commit = '4e9f3df8fb1733311e1ce534c1129cfb904760a4'
     ManifestSha256 = '743b886d99194038b893e98aed2a1dd01409cd7f80d39c734e02d860e0e5827c'
     SchemaBundleSha256 = 'd51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933'
     VectorsSha256 = '24cc3a5e5023bc7ead70f609456136208a40c04c1ecd0982a7182880d8eaa0c7'
