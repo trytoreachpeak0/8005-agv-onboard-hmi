@@ -68,7 +68,8 @@ public static class WireToGateLoadCancellationText
 
     /// <summary>
     /// The 「取消」 on each worklist row at the staging pickup stop (CP-0014 revision two, <c>REQ-0211</c>;
-    /// 8005-agv-onboard-hmi#353). Pressed and confirmed, the demand ends for good: the control server cancels it and never
+    /// 8005-agv-onboard-hmi#353) and at a machine pickup (CP-0016; 8005-agv-onboard-hmi#363). Pressed and confirmed, the demand
+    /// ends for good: the control server cancels it and never
     /// dispatches it again, so the confirmation says so and says there is no undo.
     /// </summary>
     public const string RowCaption = "取消";

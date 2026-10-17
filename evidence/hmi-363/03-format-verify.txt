@@ -1,0 +1,2 @@
+dotnet format --verify-no-changes --no-restore
+exit=0 (at working tree after 659c128 + doc edits)

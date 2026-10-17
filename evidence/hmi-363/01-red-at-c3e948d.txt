@@ -1,0 +1,25 @@
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartMachineRowStopAsync(String workType, CancellationToken token, Action`1 alsoConfigure, FakeIoModuleClient io) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 243
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(String workType) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 36
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:38.22]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "WIRE_TO_GATE") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "WIRE_TO_GATE") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 743
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartMachineRowStopAsync(String workType, CancellationToken token, Action`1 alsoConfigure, FakeIoModuleClient io) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 233
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartMachineRowStopAsync(String workType, CancellationToken token, Action`1 alsoConfigure, FakeIoModuleClient io) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 243
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(String workType) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 36
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:43.33]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedMachineRowCancellationLeavesTheRowAndScanningAsTheyWere [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedMachineRowCancellationLeavesTheRowAndScanningAsTheyWere [5 s]
+  Error Message:
+   Timed out after 5s waiting for: both rows' cancellation. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 743
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartMachineRowStopAsync(String workType, CancellationToken token, Action`1 alsoConfigure, FakeIoModuleClient io) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 233
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartMachineRowStopAsync(String workType, CancellationToken token, Action`1 alsoConfigure, FakeIoModuleClient io) in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 243
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedMachineRowCancellationLeavesTheRowAndScanningAsTheyWere() in F:\8005-wt\fti-363-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.MachineRowCancellation.cs:line 126
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     7, Passed:     7, Skipped:     0, Total:    14, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
