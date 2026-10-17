@@ -53,9 +53,9 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token);
-        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
 
-        Assert.True(await harness.Business.RequestLoadCancellationAsync(
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
 
         JsonElement request = Assert.Single(harness.PayloadsReceived("LoadCancellationStartRequested"));
@@ -92,7 +92,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.Null(state.PendingLoadCancellation);
         Assert.Null(state.UnsettledSlotOperationAttemptId);
         Assert.False(harness.Business.CanSubmitSublot);
-        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandId));
         Assert.Null(harness.Business.CurrentOperationSnapshot);
     }
 
@@ -113,10 +113,10 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 LastCompletedLoadOperationContext = SettledLoad()
             });
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "录入过的需求也按了一次取消。", token));
 
-        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandId));
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
     }
 
@@ -142,11 +142,11 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                     "在途装货的取消，还没等到应答。")
             });
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "又按了扫码前的取消。", token));
 
         await harness.WaitForRecoveryBlockedAsync("RECOVERY_VECTOR_CONFLICT", token);
-        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.False(harness.Business.CanRequestWorklistRowCancellation(DemandId));
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
     }
 
@@ -164,7 +164,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token,
             server => server.LoadCancellationBeforeSublotAuthorizedSlots = [1]);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
 
         await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
@@ -184,7 +184,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token,
             server => server.LoadCancellationBeforeSublotAuthorizedAttemptId = AttemptId);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
 
         await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
@@ -204,12 +204,12 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token,
             server => server.LoadCancellationDecision = "REJECTED");
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
 
         await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
         Assert.True(harness.Business.CanSubmitSublot);
-        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
         WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
         Assert.Null(state.PendingLoadCancellation);
         Assert.Null(state.RecoveryVector);
@@ -235,13 +235,13 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 token,
                 server => server.LoadCancellationAuthorizationsToDrop = 1);
 
-            Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
                 "到站后现场确认本站没有要装的货。", token));
             Assert.NotNull((await harness.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
-            Assert.True(harness.Business.CanRequestLoadCancellation);
+            Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
 
             Environment.SetEnvironmentVariable(OperatorVariable, "operator-002");
-            Assert.True(await harness.Business.RequestLoadCancellationAsync(
+            Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
                 "换了个人又按了一次。", token));
 
             AssertRetriedWithTheFirstPressContent(harness.Server.ReceivedEnvelopes);
@@ -275,7 +275,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 existingServer: server,
                 journalPath: journalPath))
             {
-                Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
+                Assert.False(await beforeRestart.Business.RequestWorklistRowCancellationAsync(DemandId,
                     "到站后现场确认本站没有要装的货。", token));
             }
 
@@ -287,9 +287,9 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 existingServer: serverAfterRestart,
                 journalPath: journalPath,
                 baselineRevision: 2);
-            Assert.True(afterRestart.Business.CanRequestLoadCancellation);
+            Assert.True(afterRestart.Business.CanRequestWorklistRowCancellation(DemandId));
 
-            Assert.True(await afterRestart.Business.RequestLoadCancellationAsync(
+            Assert.True(await afterRestart.Business.RequestWorklistRowCancellationAsync(DemandId,
                 "重启之后换了个人再按一次。", token));
 
             AssertRetriedWithTheFirstPressContent(
@@ -318,17 +318,17 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token,
             server => server.LoadCancellationResultAcksToDrop = 1);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
 
         WireToGateRecoveryState unacknowledged = await harness.ReadRecoveryStateAsync(token);
         Assert.NotNull(unacknowledged.PendingLoadCancellation);
         Assert.NotNull(unacknowledged.RecoveryVector);
         await AssertSublotEntryClosedAsync(harness, token);
-        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
         Assert.Null(harness.Business.CurrentOperationSnapshot);
 
-        Assert.True(await harness.Business.RequestLoadCancellationAsync(
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "再按一次补报结果。", token));
 
         (string MessageId, JsonElement Payload)[] results = [.. harness.ResultsReceived()];
@@ -363,7 +363,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             existingServer: server,
             journalPath: journalPath))
         {
-            Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
+            Assert.False(await beforeRestart.Business.RequestWorklistRowCancellationAsync(DemandId,
                 "到站后现场确认本站没有要装的货。", token));
             Assert.NotNull((await beforeRestart.ReadRecoveryStateAsync(token)).RecoveryVector);
         }
@@ -417,12 +417,12 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             deadline + TimeSpan.FromSeconds(20),
             StationDepartureCountdownFormatter.Format(deadline, deadline + TimeSpan.FromSeconds(20)));
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
         Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
         Assert.Equal("已到期，正在取消本站装货", harness.Business.DescribeExpiredStationDeadline(expired));
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "没等到答复，又按了一次。", token));
         await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
         Assert.True(harness.Business.CanSubmitSublot);
@@ -461,12 +461,12 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                 server.LoadCancellationDecision = "REJECTED";
             });
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));
         Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
         await AssertSublotEntryClosedAsync(harness, token);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "再按一次，这次服务端拒绝。", token));
         await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
 
@@ -644,14 +644,14 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [1] }, token);
         harness.Io.OpenDoor(0);
 
-        Assert.False(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "到站后现场确认本站没有要装的货。", token));
 
         await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
         Assert.Equal([1], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
 
         harness.Io.CloseDoor(0, cargo: false);
-        Assert.True(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "到站后现场确认本站没有要装的货。", token));
         (_, JsonElement result) = Assert.Single(harness.ResultsReceived());
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
         Assert.Equal(0, harness.Io.UnlockCount);

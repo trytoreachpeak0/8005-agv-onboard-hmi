@@ -390,6 +390,30 @@ public sealed partial class WireToGateBusinessService
                 cancellationToken),
             cancellationToken);
 
+    /// <summary>
+    /// A worklist row's 「取消」 sent straight away, the way <see cref="RequestLoadCancellationAsync(string, string?, CancellationToken)"/>
+    /// sends the shared entry's: not held to a subject taken earlier. The screen goes through
+    /// <see cref="BindWorklistRowCancellationPress"/>; this is the plain overload beside it (8005-agv-onboard-hmi#363), which is
+    /// what a cancellation before any sublot at a machine pickup is pressed through now that the shared entry no longer offers
+    /// one there.
+    /// </summary>
+    /// <param name="demandId">The demand whose row is pressed.</param>
+    /// <param name="reason">As for <see cref="RequestLoadCancellationAsync(string, string?, CancellationToken)"/>.</param>
+    public Task<bool> RequestWorklistRowCancellationAsync(
+        string demandId,
+        string reason,
+        CancellationToken cancellationToken) =>
+        RunRecoveryRequestAsync(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            () => RequestLoadCancellationCoreAsync(
+                reason,
+                demandId,
+                pressedByOperator: true,
+                rowPress: true,
+                alreadyRead: null,
+                cancellationToken),
+            cancellationToken);
+
     /// <param name="reason">
     /// The administrator's reason for the exception recovery session -- who judged, the fault category, what
     /// was seen (CP-0005 section 5, onboard-hmi#109). Blank keeps this action's fixed text.
