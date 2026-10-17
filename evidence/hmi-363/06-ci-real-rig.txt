@@ -1,0 +1,11 @@
+CI real-rig (control-server l2.yml rig=real), dispatched by cs#753 under one hold, ref fti/753-machine-row-cancellation-l2 @ 04f93b3705e65499641e93ae901cdc41709c5851
+
+green round  run 39054785337  conclusion=success  2026-10-17T17:40:26Z
+  onboard_ref e60e70e97f9c926b94ec07615c6fed95c52f198e (hmi#363 final head)
+  real-onboard-compensate-then-reconnect 9/9 PASS
+  real-onboard-stale-stop-after-station-timeout 15/15 PASS
+  (L2-SST-06: SessionHello 1 -> 1 after the press, connection not dropped)
+
+red round    run 39055442380  conclusion=failure  2026-10-17T17:49:41Z
+  onboard_ref adc1a28f153dc17aa54dcff1400abcc4bc21ff0b (w2g/fp-v2-impl tip, without hmi#363)
+  red at L2-SST-01 (judged by the coordinator as the expected reason: the build without hmi#363)
