@@ -845,8 +845,10 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 完整计划，按 <c>sequence</c> 排，本地不重排、不合并（批次7-13，<c>DISPLAY_FULL_JOURNEY_PLAN</c>、
-    /// <c>NEVER_REORDER_LEGS_LOCALLY</c>）。已完成的腿与当前所在的腿照服务端下发的列着。
+    /// 服务端下发的计划，按 <c>sequence</c> 排，本地不重排、不合并（批次7-13，<c>NEVER_REORDER_LEGS_LOCALLY</c>；
+    /// protocol#23 起向量措辞为 <c>DISPLAY_REMAINING_JOURNEY_PLAN</c>，此前是 <c>DISPLAY_FULL_JOURNEY_PLAN</c>）。
+    /// 计划里有什么就列什么：协议 5.0.0 候选要求计划只含当前停靠及其后未完成的停靠，服务端由
+    /// 8005-agv-control-server#749 实现；收到已完成的腿也照样列着。
     /// </summary>
     public ObservableCollection<JourneyPlanLegRow> JourneyPlanLegs { get; } = [];
 

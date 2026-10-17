@@ -125,11 +125,20 @@ public sealed class CurrentStopDepartureG2Tests
     /// <c>CV-CURRENT-STOP-DEPARTURE-STALE-REVISION</c>: the refusal is shown in Chinese, the stop is unchanged, and a new press
     /// is a new request -- the refused one is never resent unchanged.
     /// </summary>
+    /// <remarks>
+    /// Since protocol#23 the server refuses a stale revision only when it differs in something material, and never applies
+    /// that exception at a staging pickup stop -- which is where this runs, so the refusal stands as before. Whether the change
+    /// is material is decided by the server alone; the vehicle shows whichever answer comes back, so nothing here narrows.
+    /// The acceptance side is <see cref="AnAcceptanceOnAStaleRevisionWithoutMaterialChangeIsAdoptedAsAnyOther"/>.
+    /// <c>ADOPT_RETURNED_WORKLIST_REVISION</c>: the refusal names revision 2 while the screen shows 1, and the vehicle files
+    /// the refusal under the 2 the server returned, not the 1 it sent (review L1 of 8005-agv-onboard-hmi#364: with the
+    /// double echoing the request's revision, this was never told apart).
+    /// </remarks>
     [Fact]
     [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-STALE-REVISION")]
     [Trait("IntegrationSlice", "FP-IS-02")]
     public Task AStaleWorklistRefusalIsShownAndANewPressIsANewRequest() =>
-        AssertRefusalIsShownAsync("WORKLIST_REVISION_STALE");
+        AssertRefusalIsShownAsync("WORKLIST_REVISION_STALE", currentWorklistRevision: 2);
 
     /// <summary><c>CV-CURRENT-STOP-DEPARTURE-NOT-ALLOWED</c>: as for a stale worklist.</summary>
     [Fact]
@@ -445,6 +454,64 @@ public sealed class CurrentStopDepartureG2Tests
         Assert.Equal(WireToGateCurrentStopDepartureText.AcceptedText, accepted.StatusText);
         Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
         Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// <c>CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED</c> (protocol#23, 8005-agv-onboard-hmi#362): at a machine pickup
+    /// the press echoes the worklist on screen, revision 1, while the server has already moved the stop to revision 2 -- an
+    /// empty worklist, nothing material changed -- and answers <c>ACCEPTED</c> naming revision 2. The vehicle adopts the
+    /// acceptance as it would any other (<c>ADOPT_ACCEPTED_DEPARTURE_ON_STALE_REVISION</c>): the request is not resent under
+    /// the newer revision, the departure is shown from the server's snapshots, and nothing moves locally. Whether a stale
+    /// revision is material is the server's call alone; the vehicle never compares revisions to decide a departure.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    public async Task AnAcceptanceOnAStaleRevisionWithoutMaterialChangeIsAdoptedAsAnyOther()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtMachineLoadsDoneAsync(
+            Payloads.LoadingPhase("CARGO_HOLDING_WAIT", cargoHoldingDeadlineAt: DateTimeOffset.UtcNow.AddMinutes(5)),
+            token,
+            server =>
+            {
+                server.RespondToCurrentStopDepartures = true;
+                server.CurrentStopDepartureCurrentWorklistRevision = 2;
+                server.SnapshotsAfterAcceptedDeparture =
+                [
+                    ("VehicleBusinessStateSnapshot", State(2, Payloads.LoadingPhase("CLOSED", closedReason: "OPERATOR_DEPARTED"))),
+                    ("UpcomingStopPlanSnapshot", Payloads.Plan(2, [Payloads.Leg(2, "TO_DROPOFF", "BUSINESS", DemandA, "GATE-01", "ACTIVE")]))
+                ];
+            });
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.LoadingClosedReasonCode == "OPERATOR_DEPARTED"
+                && ResultAcknowledgements(harness.Server).Length == 1
+                && !harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown),
+            "the departure to be shown and the entry to go once the plan moves on",
+            token);
+
+        // ECHO_DISPLAYED_WORKLIST_IN_REQUEST: the revision on screen, not the newer one the server holds.
+        JsonElement request = Assert.Single(harness.Server.CurrentStopDepartureRequests);
+        Assert.Equal(MachineStation, request.GetProperty("stationId").GetString());
+        Assert.Equal(1, request.GetProperty("worklistRevision").GetInt64());
+        Assert.Equal(OperationSession, request.GetProperty("operationSessionId").GetString());
+        AssertAcknowledgesTheSentResult(harness.Server, Assert.Single(ResultAcknowledgements(harness.Server)));
+
+        // JOURNAL_DEPARTURE_REQUEST_BEFORE_SENDING, and the acceptance on file under the server's current revision.
+        WireToGateRecoveryState state = await harness.Session.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(request.GetProperty("departureRequestId").GetString(), state.CurrentStopDeparture?.DepartureRequestId);
+        Assert.Equal(1, state.CurrentStopDeparture?.WorklistRevision);
+        Assert.Equal(WireToGateCurrentStopDepartureOutcome.Accepted, state.CurrentStopDeparture?.Result?.Outcome);
+        Assert.Equal(2, state.CurrentStopDeparture?.Result?.CurrentWorklistRevision);
+
+        Assert.Equal(LoadingPhaseText.OperatorDepartedText, harness.ViewModel.LoadingClosedReasonText);
+        // NEVER_DEPART_LOCALLY: nothing opened, nothing moved by the vehicle itself.
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
     }
 
@@ -965,7 +1032,7 @@ public sealed class CurrentStopDepartureG2Tests
         await WaitForPressableAsync(harness, token, revision: 2);
     }
 
-    private static async Task AssertRefusalIsShownAsync(string reasonCode)
+    private static async Task AssertRefusalIsShownAsync(string reasonCode, long? currentWorklistRevision = null)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartAtStagingAsync(
@@ -974,6 +1041,7 @@ public sealed class CurrentStopDepartureG2Tests
             {
                 server.RespondToCurrentStopDepartures = true;
                 server.RejectCurrentStopDeparturesWith = reasonCode;
+                server.CurrentStopDepartureCurrentWorklistRevision = currentWorklistRevision;
             });
         CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
 
@@ -993,6 +1061,14 @@ public sealed class CurrentStopDepartureG2Tests
         // Nothing changed: still loading at the staging stop, and the press is offered again.
         Assert.True(refused.CanPress);
         Assert.Equal("LOADING", harness.Session.CurrentJourney.VehicleBusinessState?.LoadingPhase?.State);
+        if (currentWorklistRevision is { } returned)
+        {
+            JsonElement sent = Assert.Single(harness.Server.CurrentStopDepartureRequests);
+            Assert.Equal(1, sent.GetProperty("worklistRevision").GetInt64());
+            WireToGateRecoveryState state = await harness.Session.Journal.ReadRecoveryStateAsync(token);
+            Assert.Equal(WireToGateCurrentStopDepartureOutcome.Rejected, state.CurrentStopDeparture?.Result?.Outcome);
+            Assert.Equal(returned, state.CurrentStopDeparture?.Result?.CurrentWorklistRevision);
+        }
 
         Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(refused.Prompt!, token));
         await harness.WaitUntilAsync(
