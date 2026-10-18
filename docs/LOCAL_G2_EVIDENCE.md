@@ -133,11 +133,12 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。现在绑定的是 5.0.0 候选：commit 13eca82ac199bd97c1ad49d036c70cb5b012250f
-（协议仓 `fp/v2-candidate` 上 `8005-agv-protocol#24` 的合并提交，树与其 head ce68f3d5 相同；为 `8005-agv-protocol#23`；在 `protocol-v4.0.0` 之上给闭合枚举 `TransportTaskType` 追加
+脚本逐字段核对 `$expected` 身份。现在绑定的是 5.0.0 候选：commit 18d4fb3495033624cab412a7ee784f675dfe4cc2
+（协议仓 `fp/v2-candidate` 上 `8005-agv-protocol#25` 的合并提交，树与其 head ede2060f 相同；为 `8005-agv-control-server#767`；在 `protocol-v4.0.0` 之上给闭合枚举 `TransportTaskType` 追加
 `WIRE_TO_FULL_INSPECTION`，焊线/键合机台送全检区；`PublicStationFunction` 不变；先由 `8005-agv-onboard-hmi#360` 绑定在 4e9f3df8，
 同一候选的第二次修订 `8005-agv-protocol#23` 新增向量 `CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED`、把旅程计划措辞改为剩余计划，
-schema、消息与错误码不变，由 `8005-agv-onboard-hmi#362` 改钉），
+schema、消息与错误码不变，由 `8005-agv-onboard-hmi#362` 改钉；第三次修订 `8005-agv-protocol#25` 只改 `docs/wire-notes.md`，
+副本里只有 manifest 变，由 `8005-agv-control-server#767` 两端同包改钉），
 `(profileId AGV_FULL_PRODUCT, protocolVersion 6)`，`releaseVersion 5.0.0`。此前绑定的是已发布的 `protocol-v4.0.0`
 （3fb214e5，`protocolVersion 5`），再之前是 `protocol-v3.0.0`（3f091cb2，`protocolVersion 4`）。
 
