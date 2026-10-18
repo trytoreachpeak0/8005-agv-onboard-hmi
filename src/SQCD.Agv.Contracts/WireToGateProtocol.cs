@@ -12,16 +12,20 @@ namespace SQCD.Agv.Contracts;
 /// <remarks>
 /// <para>
 /// <b>This names the <c>5.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>13eca82ac199bd97c1ad49d036c70cb5b012250f</c> on <c>fp/v2-candidate</c>, the merge of
-/// <c>8005-agv-protocol#24</c> (tree identical to its head <c>ce68f3d5</c>; for
-/// <c>8005-agv-protocol#23</c>): <c>protocol-v4.0.0</c> with one value appended to the closed
+/// <c>8005-agv-protocol</c> commit <c>18d4fb3495033624cab412a7ee784f675dfe4cc2</c> on <c>fp/v2-candidate</c>, the merge of
+/// <c>8005-agv-protocol#25</c> (tree identical to its head <c>ede2060f</c>; for
+/// <c>8005-agv-control-server#767</c>): <c>protocol-v4.0.0</c> with one value appended to the closed
 /// <c>TransportTaskType</c> enum, <c>WIRE_TO_FULL_INSPECTION</c> (wire bonding machine to the full inspection area),
 /// which is a breaking change and so a new major version; <c>PublicStationFunction</c> is unchanged. Bound first by
 /// 8005-agv-onboard-hmi#360 at <c>4e9f3df8</c> (<c>8005-agv-protocol#21</c>); the second revision of the same
 /// candidate, <c>8005-agv-protocol#23</c>, changes no schema, message or error code: it adds the vector
 /// <c>CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED</c> (a stale departure request with no material change is
 /// accepted) and words the journey plan as the remaining plan. Rebound here by 8005-agv-onboard-hmi#362, released
-/// together with the control server's 8005-agv-control-server#748. The tag
+/// together with the control server's 8005-agv-control-server#748. The third revision, <c>8005-agv-protocol#25</c>,
+/// corrects <c>docs/wire-notes.md</c> only (the remaining-plan rule holds for every plan except a clearance move, which
+/// keeps the <c>COMPLETED</c> charger leg it left and from which <c>WireToGateStationClearanceStation.Resolve</c> reads the
+/// charger from; a server may judge departure condition (4) more strictly), so only the vendored manifest changed.
+/// Rebound here by 8005-agv-onboard-hmi for 8005-agv-control-server#767, in one package with the control server. The tag
 /// <c>protocol-v5.0.0</c> does not exist yet, so <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI
 /// checks the protocol out by <see cref="Commit"/>, and evidence produced on this identity is
 /// <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit. The release, if it changes nothing, moves only
@@ -63,8 +67,8 @@ public static class WireToGateRelease
     public const string ReleaseVersion = "5.0.0";
     public const string Repository = "8005-agv-protocol";
     public const string Tag = "protocol-v5.0.0";
-    public const string Commit = "13eca82ac199bd97c1ad49d036c70cb5b012250f";
-    public const string ManifestSha256 = "128daae52758749d4d6f346231fdb336ca5d1079773bcab5430c20c53ce6b10b";
+    public const string Commit = "18d4fb3495033624cab412a7ee784f675dfe4cc2";
+    public const string ManifestSha256 = "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa";
     public const string SchemaBundleSha256 = "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933";
     public const string VectorsSha256 = "291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a";
     public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";

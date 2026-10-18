@@ -7,7 +7,7 @@
   "generatedAt": "2026-10-16T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "f1288ff3ac6a11c4de7a35cd1209ef7b6147884f5a207f8df1424e60ed1d1aca",
+  "fileTableSha256": "8e636d474beace829bf60671484c68435ab12196b46c7819ed36fb623c1008c1",
   "schemaBundleSha256": "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933",
   "examplesSha256": "b37e84b6da4bef79ee9cea7968432003bbc5035446033d654913d2b137a25ab5",
   "vectorsSha256": "291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a",
@@ -1107,8 +1107,8 @@
     {
       "path": "docs/wire-notes.md",
       "role": "docs",
-      "bytes": 14618,
-      "sha256": "ed27478d17422bfb3075ecda4e29bfa999ad7d10884e578912d3f5c7fdeefa7e"
+      "bytes": 15548,
+      "sha256": "5808889fbd7604aa990fc13eeeb381b321a5ce84708d3d68dd9e7f9890649fc8"
     },
     {
       "path": "errors/error-codes.json",
