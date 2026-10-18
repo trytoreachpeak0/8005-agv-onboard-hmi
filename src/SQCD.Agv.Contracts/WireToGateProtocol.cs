@@ -11,8 +11,9 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>5.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>18d4fb3495033624cab412a7ee784f675dfe4cc2</c> on <c>fp/v2-candidate</c>, the merge of
+/// <b>This names <c>protocol-v5.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>18d4fb3495033624cab412a7ee784f675dfe4cc2</c>, the commit the annotated tag
+/// <c>protocol-v5.0.0</c> (object <c>7b108ccb</c>) points at -- on <c>fp/v2-candidate</c> the merge of
 /// <c>8005-agv-protocol#25</c> (tree identical to its head <c>ede2060f</c>; for
 /// <c>8005-agv-control-server#767</c>): <c>protocol-v4.0.0</c> with one value appended to the closed
 /// <c>TransportTaskType</c> enum, <c>WIRE_TO_FULL_INSPECTION</c> (wire bonding machine to the full inspection area),
@@ -25,17 +26,20 @@ namespace SQCD.Agv.Contracts;
 /// corrects <c>docs/wire-notes.md</c> only (the remaining-plan rule holds for every plan except a clearance move, which
 /// keeps the <c>COMPLETED</c> charger leg it left and from which <c>WireToGateStationClearanceStation.Resolve</c> reads the
 /// charger from; a server may judge departure condition (4) more strictly), so only the vendored manifest changed.
-/// Rebound here by 8005-agv-onboard-hmi for 8005-agv-control-server#767, in one package with the control server. The tag
-/// <c>protocol-v5.0.0</c> does not exist yet, so <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI
-/// checks the protocol out by <see cref="Commit"/>, and evidence produced on this identity is
-/// <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit. The release, if it changes nothing, moves only
-/// <see cref="ApprovalStatus"/>.
+/// Rebound here by 8005-agv-onboard-hmi for 8005-agv-control-server#767, in one package with the control server. That
+/// commit was released unchanged on 2026-10-18 (<c>8005-agv-control-server#767</c>, tracked in <c>8005-agv-program#195</c>),
+/// with one approval in the external attestation (SHA-256 <c>31d4d732</c>) given by an AI agent the product owner
+/// authorized for that release. The release content is the candidate's byte for byte, so the nine identity values
+/// stayed and only <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>, as
+/// <c>protocol-v4.0.0</c> did (8005-agv-onboard-hmi#358). CI now checks the protocol out by <see cref="Tag"/>. Evidence
+/// produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch
+/// exit.
 /// </para>
 /// <para>
 /// <c>protocol-v4.0.0</c> (<c>3fb214e5</c>, <c>(AGV_FULL_PRODUCT, 5)</c>) was bound before this, and
 /// <c>protocol-v3.0.0</c> (<c>3f091cb2</c>, <c>(AGV_FULL_PRODUCT, 4)</c>) before that. The two ends have no version
 /// negotiation, so a vehicle on this identity and a control server still on v4 refuse each other's session; the
-/// control server moves in <c>8005-agv-control-server#737</c>, in the same package.
+/// control server moved in <c>8005-agv-control-server#737</c>, in the same package.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -71,7 +75,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa";
     public const string SchemaBundleSha256 = "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933";
     public const string VectorsSha256 = "291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -111,7 +115,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently the <c>5.0.0</c> candidate.
+/// <see cref="WireToGateRelease"/> -- currently <c>protocol-v5.0.0</c>.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>
