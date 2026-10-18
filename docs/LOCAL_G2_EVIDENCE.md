@@ -10,7 +10,7 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 不带 `-Slice` 时输出到 evidence/g2/<Tag>/<UTC时间>-<HMI commit>/；
 带 `-Slice` 时多一层切片目录：evidence/g2/<Tag>/FP-IS-NN/<UTC时间>-<HMI commit>/。
-`<Tag>` 取 `$expected.Tag`，现在是 `protocol-v5.0.0`（v5 候选，tag 尚未打出，见下面「身份校验」）。
+`<Tag>` 取 `$expected.Tag`，现在是 `protocol-v5.0.0`（2026-10-18 已发布，见下面「身份校验」）。
 两种都包含：
 
 - summary.json：精确协议身份、HMI commit、切片向量、命令退出码和外部门禁；
@@ -133,8 +133,8 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。现在绑定的是 5.0.0 候选：commit 18d4fb3495033624cab412a7ee784f675dfe4cc2
-（协议仓 `fp/v2-candidate` 上 `8005-agv-protocol#25` 的合并提交，树与其 head ede2060f 相同；为 `8005-agv-control-server#767`；在 `protocol-v4.0.0` 之上给闭合枚举 `TransportTaskType` 追加
+脚本逐字段核对 `$expected` 身份。现在绑定的是已发布的 `protocol-v5.0.0`（2026-10-18 发布，`8005-agv-control-server#767`）：commit 18d4fb3495033624cab412a7ee784f675dfe4cc2
+（发布内容与候选逐字节相同；候选期是协议仓 `fp/v2-candidate` 上 `8005-agv-protocol#25` 的合并提交，树与其 head ede2060f 相同；为 `8005-agv-control-server#767`；在 `protocol-v4.0.0` 之上给闭合枚举 `TransportTaskType` 追加
 `WIRE_TO_FULL_INSPECTION`，焊线/键合机台送全检区；`PublicStationFunction` 不变；先由 `8005-agv-onboard-hmi#360` 绑定在 4e9f3df8，
 同一候选的第二次修订 `8005-agv-protocol#23` 新增向量 `CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED`、把旅程计划措辞改为剩余计划，
 schema、消息与错误码不变，由 `8005-agv-onboard-hmi#362` 改钉；第三次修订 `8005-agv-protocol#25` 只改 `docs/wire-notes.md`，
@@ -142,9 +142,9 @@ schema、消息与错误码不变，由 `8005-agv-onboard-hmi#362` 改钉；第�
 `(profileId AGV_FULL_PRODUCT, protocolVersion 6)`，`releaseVersion 5.0.0`。此前绑定的是已发布的 `protocol-v4.0.0`
 （3fb214e5，`protocolVersion 5`），再之前是 `protocol-v3.0.0`（3f091cb2，`protocolVersion 4`）。
 
-`Tag` 写的 `protocol-v5.0.0` 尚未打出，`approvalStatus` 是 `SUPERSEDING_CANDIDATE`，本身份上产出的证据是
-`UNRELEASED_CANDIDATE`，不计入批次出口。脚本查「tag 存在则必须指向绑定的 commit」，tag 不存在时不判失败。
-同时确认当前 protocol HEAD 是绑定 commit 的后继提交，再执行 protocol G1。release manifest、Schema bundle 和
+`Tag` 写的 `protocol-v5.0.0` 已经打出：注释 tag 对象 `7b108ccb`，解引用到 18d4fb34。脚本查「tag 存在则必须指向绑定的
+commit」，并且因为 `approvalStatus` 是 `APPROVED_RELEASE`，还要求 tag 必须存在——所以本机跑 G2 前，先在协议克隆里
+`git fetch --tags`，否则直接判失败。同时确认当前 protocol HEAD 是绑定 commit 的后继提交，再执行 protocol G1。release manifest、Schema bundle 和
 vectors 哈希仍会逐项校验。工作区路径包含 # 时，脚本临时映射一个盘符运行 G1；协议仓库本身不会被修改。
 CI（`.github/workflows/test.yml`）按同一对常量选检出：`ApprovalStatus` 为 `APPROVED_RELEASE` 时按 `Tag` 检出，
 否则按 `Commit` 检出。
@@ -152,8 +152,9 @@ CI（`.github/workflows/test.yml`）按同一对常量选检出：`ApprovalStatu
 两端没有版本协商：车载端换到这个身份之后，与仍在 v4 上的服务端互相拒绝会话，所以要与
 `8005-agv-control-server#737` 同包换装。
 
-`protocol-v5.0.0` 发布之后，要像 `8005-agv-onboard-hmi#358` 对 v4 那样把声明从 `SUPERSEDING_CANDIDATE` 翻成
-`APPROVED_RELEASE`；翻转之后跑出的 G2 才绑定已发布协议、计入批次出口，翻转之前候选期的证据不计入。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
+`approvalStatus` 是 `APPROVED_RELEASE`：注释 tag 与外置批准 attestation 都已发布，照 `8005-agv-onboard-hmi#358` 对 v4 的先例，
+由 `8005-agv-control-server#767` 的车载端翻转 PR 把声明从 `SUPERSEDING_CANDIDATE` 翻过来。翻转之后在这个身份上跑出的 G2 绑定的是
+已发布协议，可以计入批次出口；翻转之前候选期跑出的 G2 证据里记的是 `SUPERSEDING_CANDIDATE`，仍是 `UNRELEASED_CANDIDATE`，不计入。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
 
 该证据只代表 OnboardHmi 本机 G2。summary.json 会明确保留
 controlServerG2=PENDING_EXTERNAL 和 g3=PENDING_JOINT，不能把本机结果当作
