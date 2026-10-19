@@ -90,7 +90,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <remarks>
     /// 每一刻都同时断「日志里仍有这次装货的待答结果」与「屏上没有任何恢复按钮」：说明行的另外两个前提照旧成立，消失只能是
     /// 因为会话。READY 那一刻用替身的 <c>AnswerReadyOverPendingFactsForTest</c>：真服务端对带着待答事实的车答
-    /// RECOVERY_REQUIRED，这里要的正是「服务端不再要求恢复、车上日志还没清」这一刻，与 cs#771 落地后的形状一样。
+    /// RECOVERY_REQUIRED，这里要的是「服务端不再要求恢复、车上日志还没清」这一刻：断的是车载端自己的防御。
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
@@ -161,9 +161,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.NoOnboardExitNotice is not null,
             "the business service to have the notice",
             token);
-        string expected = harness.Business.NoOnboardExitNotice!;
         await harness.WaitUntilAsync(
-            () => harness.OnUi(() => harness.ViewModel.NoOnboardExitNotice) == expected,
+            () => harness.OnUi(() => harness.ViewModel.NoOnboardExitNotice) == NoOnboardExitAfterFailedLoad,
             "the screen to show the notice with no further event",
             token);
         AssertNoRecoveryButtonShown(harness.ScreenState());
@@ -239,6 +238,39 @@ public sealed partial class MultiDemandJourneyG2Tests
             notice.Message);
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 日志里的仓位结果没有覆盖这次操作的每一仓：缺的那一仓说不出是什么状态，说明行照旧说「结果未知」，不说「没有完成」
+    /// （hmi#375 审查 S-6）。在锁存下 FAILED 的那次装货上，经测试接缝把日志里 2 号仓的结果拿掉、只留已完成的 1 号仓。
+    /// 只看「有没有一仓是 UNKNOWN」的判法在这里会说「没有完成」，这一条就红。
+    /// </summary>
+    /// <remarks>
+    /// 执行器正常收尾时会写全每一仓，所以这一刻是构造出来的：它守的是判据本身不把「缺一仓」当成「每一仓都读到了」。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ResultsThatDoNotCoverEverySlotAreStillCalledUnknown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(io, token);
+        await EndTheLoadFailedUnderALatchAsync(harness, io, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.NoOnboardExitNotice == NoOnboardExitAfterFailedLoad,
+            "the notice over the failed load",
+            token);
+
+        WireToGateRecoveryState? written = await harness.Business.UpdateCachedRecoveryStateForTestAsync(
+            state => state with { SlotResults = [.. state.SlotResults.Where(result => result.SlotNo == 1)] },
+            token);
+
+        WireToGateSlotExecutionResult kept = Assert.Single(Assert.NotNull(written).SlotResults);
+        Assert.Equal((1, "COMPLETED"), (kept.SlotNo, kept.Outcome));
+        Assert.Equal(AttemptA, written.UnsettledSlotOperationAttemptId);
+        Assert.Equal(NoOnboardExitAfterUnknownLoad, harness.Business.NoOnboardExitNotice);
     }
 
     private const string NoOnboardExitAfterFailedLoad =
