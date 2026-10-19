@@ -49,7 +49,7 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     private int _emptyClosesDone;
 
-    public bool IsConnected => true;
+    public bool IsConnected => CurrentSnapshot.IsConnected;
 
     /// <summary>
     /// Whether a read is stamped as observed now. The real module polls every few milliseconds, so its
@@ -295,6 +295,25 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                 true,
                 _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
                 then);
+        }
+    }
+
+    /// <summary>
+    /// The module stops answering the way the real client reports it: a fresh snapshot that is not connected, every slot
+    /// unknown (<c>IoSnapshot.Unknown</c>, as <c>ModbusTcpIoModuleClient</c> publishes after a failed read). Nothing here
+    /// brings it back.
+    /// </summary>
+    public void FailReads()
+    {
+        lock (_sync)
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            for (int index = 0; index < _lockers.Length; index++)
+            {
+                _lockers[index] = LockerSnapshot.Unknown(index, now);
+            }
+
+            CurrentSnapshot = IoSnapshot.Unknown(now);
         }
     }
 

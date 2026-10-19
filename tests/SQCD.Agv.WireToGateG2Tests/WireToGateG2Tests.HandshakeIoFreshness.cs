@@ -24,8 +24,13 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// These tests build their client with the vehicle's own freshness limit (<c>ioSnapshotMaxAgeMs: 1000</c>), not the
 /// thirty seconds the other G2 session tests give theirs, and with an IO module that keeps polling
 /// (<see cref="FakeIoModuleClient.KeepSnapshotFresh"/>). The server double holds the capability ack back with
-/// <see cref="FakeControlServer.BeforeCapabilitySnapshotAck"/>, which is also where a test changes the IO while the
-/// vehicle waits.
+/// <see cref="FakeControlServer.BeforeSnapshotAck"/>, which is also where a test changes the IO while the vehicle
+/// waits.
+/// </para>
+/// <para>
+/// No <c>IntegrationSlice</c> or <c>ProtocolVector</c> traits: when the vehicle reads its IO within the handshake belongs
+/// to no frozen vector, and <c>IntegrationSliceTraitArchitectureTests</c> requires a slice trait to be exactly the
+/// projection of the vectors a test declares (as in <c>SessionHeartbeatCadenceG2Tests</c>).
 /// </para>
 /// </remarks>
 public sealed partial class WireToGateG2Tests
@@ -41,7 +46,6 @@ public sealed partial class WireToGateG2Tests
     /// put into slot 2 during the wait shows there, while the capability snapshot sent before it still has the slot empty.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-00")]
     public async Task AHandshakeWhoseCapabilityAckIsSlowerThanTheIoFreshnessLimitReportsTheIoOfTheMomentItSends()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -49,10 +53,13 @@ public sealed partial class WireToGateG2Tests
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            BeforeCapabilitySnapshotAck = async _ =>
+            BeforeSnapshotAck = async (messageType, _) =>
             {
-                io.SetCargoPresent(1, true);
-                await Task.Delay(SlowCapabilityAck, testToken);
+                if (messageType == "CapabilitySnapshot")
+                {
+                    io.SetCargoPresent(1, true);
+                    await Task.Delay(SlowCapabilityAck, testToken);
+                }
             }
         };
         ConcurrentQueue<string> diagnostics = new();
@@ -90,7 +97,6 @@ public sealed partial class WireToGateG2Tests
     /// snapshot, so the reading it carries is the latest the handshake has.
     /// </remarks>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-00")]
     public async Task AHandshakeRecoveryReportNamesTheUnlockOutputsEnergisedWhenItSends()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -98,10 +104,13 @@ public sealed partial class WireToGateG2Tests
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            BeforeCapabilitySnapshotAck = async _ =>
+            BeforeSnapshotAck = async (messageType, _) =>
             {
-                io.SetUnlockOutputActive(3);
-                await Task.Delay(SlowCapabilityAck, testToken);
+                if (messageType == "CapabilitySnapshot")
+                {
+                    io.SetUnlockOutputActive(3);
+                    await Task.Delay(SlowCapabilityAck, testToken);
+                }
             }
         };
         ConcurrentQueue<string> diagnostics = new();
@@ -123,7 +132,6 @@ public sealed partial class WireToGateG2Tests
     /// reports the same: nothing unknown over IO that reads normally.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-00")]
     public async Task ASecondHandshakeOfTheSameClientWithASlowCapabilityAckReportsNothingUnknown()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -131,7 +139,7 @@ public sealed partial class WireToGateG2Tests
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            BeforeCapabilitySnapshotAck = connection => connection == 2
+            BeforeSnapshotAck = (messageType, connection) => messageType == "CapabilitySnapshot" && connection == 2
                 ? Task.Delay(SlowCapabilityAck, testToken)
                 : Task.CompletedTask
         };
@@ -169,7 +177,6 @@ public sealed partial class WireToGateG2Tests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    [Trait("IntegrationSlice", "FP-IS-00")]
     public async Task AnIoFailureDuringTheCapabilityAckWaitIsStillReportedAsUnknown(bool moduleGoesQuiet)
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -177,8 +184,13 @@ public sealed partial class WireToGateG2Tests
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            BeforeCapabilitySnapshotAck = _ =>
+            BeforeSnapshotAck = (messageType, _) =>
             {
+                if (messageType != "CapabilitySnapshot")
+                {
+                    return Task.CompletedTask;
+                }
+
                 if (moduleGoesQuiet)
                 {
                     io.KeepSnapshotFresh = false;
@@ -220,7 +232,6 @@ public sealed partial class WireToGateG2Tests
     /// reads normally.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-00")]
     public async Task ACapabilityAckPastTheMessageTimeoutFailsThatHandshakeAndTheNextReportsNothingUnknown()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -229,9 +240,11 @@ public sealed partial class WireToGateG2Tests
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            BeforeCapabilitySnapshotAck = connection => connection == 1
-                ? releaseFirstAck.Task
-                : Task.Delay(SlowCapabilityAck, testToken)
+            BeforeSnapshotAck = (messageType, connection) => messageType != "CapabilitySnapshot"
+                ? Task.CompletedTask
+                : connection == 1
+                    ? releaseFirstAck.Task
+                    : Task.Delay(SlowCapabilityAck, testToken)
         };
         ConcurrentQueue<string> diagnostics = new();
         await using WireToGateSessionClient client = HandshakeFreshnessClient(server, io, diagnostics);
@@ -254,6 +267,130 @@ public sealed partial class WireToGateG2Tests
             !safety.ReasonCodes.Contains("SLOT_STATE_UNKNOWN") && !safety.UnknownPresent,
             $"the handshake after the timeout reported [{string.Join(",", safety.ReasonCodes)}]");
         Assert.Equal(WireToGateSessionReadiness.Ready, client.Current.Readiness);
+    }
+
+    /// <summary>
+    /// The Modbus client's own shape of a failed read arrives while the vehicle waits: a fresh snapshot that is not
+    /// connected, every slot unknown (<c>IoSnapshot.Unknown</c>, <c>ModbusTcpIoModuleClient</c>). The handshake snapshot
+    /// says <c>SLOT_STATE_UNKNOWN</c> and all eight slots are <c>UNKNOWN</c> -- fresh as the stamp is, nothing in it was read.
+    /// </summary>
+    [Fact]
+    public async Task AModbusReadFailureDuringTheCapabilityAckWaitReportsEverySlotUnknown()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            BeforeSnapshotAck = (messageType, _) =>
+            {
+                if (messageType == "CapabilitySnapshot")
+                {
+                    io.FailReads();
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+        ConcurrentQueue<string> diagnostics = new();
+        await using WireToGateSessionClient client = HandshakeFreshnessClient(server, io, diagnostics);
+
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string capabilityLine = server.ReceivedEnvelopes.Single(item => item.MessageType == "CapabilitySnapshot").WireLine;
+        string snapshotLine = server.ReceivedEnvelopes.Single(item => item.MessageType == "SafetyStateSnapshot").WireLine;
+        WireToGateSafetySummaryPayload safety = SafetyOf(snapshotLine);
+        Assert.Contains("SLOT_STATE_UNKNOWN", safety.ReasonCodes);
+        Assert.True(safety.UnknownPresent);
+        Assert.False(safety.DepartureSafe);
+        Assert.All(
+            Enumerable.Range(1, 8),
+            slot =>
+            {
+                Assert.Equal("OPERABLE", SlotStateOf(capabilityLine, slot, "operability"));
+                Assert.Equal("UNKNOWN", SlotStateOf(snapshotLine, slot, "operability"));
+                Assert.Equal("UNKNOWN", SlotStateOf(snapshotLine, slot, "lockState"));
+            });
+        string logged = Assert.Single(diagnostics, line => line.StartsWith("握手安全快照：", StringComparison.Ordinal));
+        Assert.Contains("ioConnected=False", logged, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The recovery report takes its own reading, not the safety snapshot's: an unlock output that comes on after the
+    /// safety snapshot went out -- while its ack is on the way -- is among the report's <c>activeUnlockSlots</c>, and the
+    /// safety snapshot before it still has the output reset.
+    /// </summary>
+    [Fact]
+    public async Task AHandshakeRecoveryReportReadsTheIoAgainAfterTheSafetySnapshot()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            BeforeSnapshotAck = (messageType, _) =>
+            {
+                if (messageType == "SafetyStateSnapshot")
+                {
+                    io.SetUnlockOutputActive(5);
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+        ConcurrentQueue<string> diagnostics = new();
+        await using WireToGateSessionClient client = HandshakeFreshnessClient(server, io, diagnostics);
+
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string snapshotLine = server.ReceivedEnvelopes.Single(item => item.MessageType == "SafetyStateSnapshot").WireLine;
+        Assert.Equal("RESET", SlotStateOf(snapshotLine, 6, "unlockOutputState"));
+        string reportLine = server.ReceivedEnvelopes.Single(item => item.MessageType == "RecoveryStateReport").WireLine;
+        Assert.Equal([6], ActiveUnlockSlotsOf(reportLine));
+    }
+
+    /// <summary>
+    /// The two mid-session safety reports go on the vehicle's log too, reason codes included: a requested
+    /// <c>SafetyStateSnapshot</c> with the reading it was judged on, a <c>SafetyStateChanged</c> with the summary the
+    /// business service gave it.
+    /// </summary>
+    [Fact]
+    public async Task MidSessionSafetyReportsAreLoggedWithTheirReasonCodes()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
+        ConcurrentQueue<string> diagnostics = new();
+        await using WireToGateSessionClient client = HandshakeFreshnessClient(server, io, diagnostics);
+        await client.ConnectAndRecoverAsync(testToken);
+        long generation = client.Current.SessionGeneration!.Value;
+
+        io.SetUnreadable(2);
+        long snapshotVersion = client.Current.SafetyStateVersion + 1;
+        Assert.True(await client.PublishSafetyStateSnapshotAsync(snapshotVersion, testToken));
+        string snapshotLogged = Assert.Single(
+            diagnostics,
+            line => line.StartsWith("会话中途安全快照：", StringComparison.Ordinal));
+        Assert.Contains($"generation={generation}，", snapshotLogged, StringComparison.Ordinal);
+        Assert.Contains($"safetyStateVersion={snapshotVersion}，", snapshotLogged, StringComparison.Ordinal);
+        Assert.Contains("unknownPresent=True", snapshotLogged, StringComparison.Ordinal);
+        Assert.Contains("SLOT_STATE_UNKNOWN", snapshotLogged, StringComparison.Ordinal);
+        Assert.Contains("ioConnected=True", snapshotLogged, StringComparison.Ordinal);
+
+        long changeVersion = snapshotVersion + 1;
+        await client.SendSafetyStateChangedAsync(
+            changeVersion,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(false, true, false, true, false, ["LOCK_NOT_CLOSED"]),
+            [3],
+            testToken);
+        string changeLogged = Assert.Single(
+            diagnostics,
+            line => line.StartsWith("安全状态变化：", StringComparison.Ordinal));
+        Assert.Contains($"generation={generation}，", changeLogged, StringComparison.Ordinal);
+        Assert.Contains($"safetyStateVersion={changeVersion}，", changeLogged, StringComparison.Ordinal);
+        Assert.Contains("departureSafe=False", changeLogged, StringComparison.Ordinal);
+        Assert.Contains("reasonCodes=[LOCK_NOT_CLOSED]", changeLogged, StringComparison.Ordinal);
     }
 
     private static WireToGateSessionClient HandshakeFreshnessClient(
