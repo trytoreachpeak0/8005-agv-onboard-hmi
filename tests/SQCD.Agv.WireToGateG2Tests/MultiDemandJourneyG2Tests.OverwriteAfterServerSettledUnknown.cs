@@ -35,6 +35,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     private const int SlotOfB = 4;
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterTheServerSettlesAnUnknownLoadACommandOverAShutDoorOverwritesTheRecordAndItIsNoLongerReported()
@@ -57,6 +58,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterTheServerSettlesAnUnknownLoadACommandOverADoorNotProvenShutIsRefusedAndTheRecordStays()
@@ -88,6 +90,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// answered READY, refuses B while slot 2 is not proven shut, and runs B over the record once it is.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterARestartTheServerSettledUnknownLoadIsStillRefusedOverADoorInDoubtAndOverwrittenOnceItIsShut()
