@@ -57,9 +57,16 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// and the executor refuses to operate on a snapshot older than <c>IoSnapshotMaxAge</c>. A test
     /// that spends seconds between actions -- waiting out a <c>DurableAck</c>, say -- would otherwise
     /// fail on staleness that no vehicle would ever see. Off by default: a test that means to prove
-    /// what happens when readings stop must keep its snapshot where it left it.
+    /// what happens when readings stop must keep its snapshot where it left it. Turning it off mid-test
+    /// is the module going quiet: the readings keep the stamp <see cref="MakeStale"/> gives them.
     /// </summary>
-    public bool KeepSnapshotFresh { get; init; }
+    public bool KeepSnapshotFresh
+    {
+        get => Volatile.Read(ref _keepSnapshotFresh);
+        set => Volatile.Write(ref _keepSnapshotFresh, value);
+    }
+
+    private bool _keepSnapshotFresh;
 
     private IoSnapshot _snapshot = null!;
 

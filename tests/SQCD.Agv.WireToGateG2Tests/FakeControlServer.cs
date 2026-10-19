@@ -1078,6 +1078,13 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public TimeSpan HeartbeatAckDelay { get; set; }
 
     /// <summary>
+    /// When set, awaited on the read loop before this double writes the <c>SnapshotAppliedAck</c> of a
+    /// <c>CapabilitySnapshot</c>, with the index of the connection it arrived on: a slow link, the ack reaching the vehicle
+    /// only once the task completes. The test can change the IO while the vehicle waits (8005-agv-onboard-hmi#373).
+    /// </summary>
+    public Func<int, Task>? BeforeCapabilitySnapshotAck { get; set; }
+
+    /// <summary>
     /// Holds back the <c>DurableAck</c> of the next <paramref name="messageType"/> this double receives -- one whose
     /// payload <paramref name="payloadMatches"/>, when given -- until the test releases it; acks after it go out at once
     /// as usual. Supported for <c>OperationProgress</c>, <c>SafetyStateChanged</c> and
@@ -2750,6 +2757,11 @@ public sealed partial class FakeControlServer : IAsyncDisposable
             && Interlocked.Decrement(ref _midSessionSafetySnapshotAcksToDrop) >= 0)
         {
             return;
+        }
+
+        if (messageType == "CapabilitySnapshot" && BeforeCapabilitySnapshotAck is { } beforeAck)
+        {
+            await beforeAck(context.ConnectionIndex).ConfigureAwait(false);
         }
 
         var ackPayload = new
