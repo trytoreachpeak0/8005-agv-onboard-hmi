@@ -49,7 +49,7 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     private int _emptyClosesDone;
 
-    public bool IsConnected => true;
+    public bool IsConnected => CurrentSnapshot.IsConnected;
 
     /// <summary>
     /// Whether a read is stamped as observed now. The real module polls every few milliseconds, so its
@@ -57,9 +57,16 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// and the executor refuses to operate on a snapshot older than <c>IoSnapshotMaxAge</c>. A test
     /// that spends seconds between actions -- waiting out a <c>DurableAck</c>, say -- would otherwise
     /// fail on staleness that no vehicle would ever see. Off by default: a test that means to prove
-    /// what happens when readings stop must keep its snapshot where it left it.
+    /// what happens when readings stop must keep its snapshot where it left it. Turning it off mid-test
+    /// is the module going quiet: the readings keep the stamp <see cref="MakeStale"/> gives them.
     /// </summary>
-    public bool KeepSnapshotFresh { get; init; }
+    public bool KeepSnapshotFresh
+    {
+        get => Volatile.Read(ref _keepSnapshotFresh);
+        set => Volatile.Write(ref _keepSnapshotFresh, value);
+    }
+
+    private bool _keepSnapshotFresh;
 
     private IoSnapshot _snapshot = null!;
 
@@ -288,6 +295,25 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                 true,
                 _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
                 then);
+        }
+    }
+
+    /// <summary>
+    /// The module stops answering the way the real client reports it: a fresh snapshot that is not connected, every slot
+    /// unknown (<c>IoSnapshot.Unknown</c>, as <c>ModbusTcpIoModuleClient</c> publishes after a failed read). Nothing here
+    /// brings it back.
+    /// </summary>
+    public void FailReads()
+    {
+        lock (_sync)
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            for (int index = 0; index < _lockers.Length; index++)
+            {
+                _lockers[index] = LockerSnapshot.Unknown(index, now);
+            }
+
+            CurrentSnapshot = IoSnapshot.Unknown(now);
         }
     }
 

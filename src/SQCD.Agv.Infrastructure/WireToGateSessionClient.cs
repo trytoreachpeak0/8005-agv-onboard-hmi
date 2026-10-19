@@ -854,6 +854,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         // The generation this change goes out under, read before the send: the acknowledgement's continuation can run
         // after a reconnect has published the next one, whose handshake may keep this version with its own summary.
         long? sentGeneration = Volatile.Read(ref _current).SessionGeneration;
+        RecordSafetySummary(
+            "安全状态变化",
+            sentGeneration ?? Volatile.Read(ref _lastSessionGeneration),
+            safetyStateVersion,
+            safety,
+            null);
         string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
@@ -1034,8 +1040,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     .ConfigureAwait(false);
             }
 
-            IoSnapshot io = _ioModule.CurrentSnapshot;
-            ProtocolSlotState[] slotStates = CreateSlotStates(io);
+            // Each snapshot below reads the IO as it goes out: the capability snapshot here, the safety snapshot and the
+            // recovery report again after a round trip each. A reading held across the capability ack is judged against the
+            // clock of after it, and on a slow link that is past the freshness limit -- the safety summary then says
+            // SLOT_STATE_UNKNOWN over a module that never failed a read, and the server stops a moving vehicle
+            // (8005-agv-onboard-hmi#373, agv01 10-19). The two snapshots may then differ where the IO changed in between;
+            // the server does not compare them, and dispatch takes a slot only where both have it free (control-server
+            // OnboardDispatchFactsReader.SlotAvailable).
+            ProtocolSlotState[] capabilitySlotStates = CreateSlotStates(_ioModule.CurrentSnapshot);
             await SendSnapshotAndRequireAckAsync(
                 "CapabilitySnapshot",
                 "CAPABILITY",
@@ -1049,7 +1061,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     // 报**本机生效配置**的指纹，不是从配置项现算的那个：激活成功之后车装着的是哪
                     // 一版，只有生效配置存储说了算。从配置项现算会让每次激活之后两端立刻对不上。
                     _activationCoordinator.ActiveConfiguration.Fingerprint,
-                    slotStates,
+                    capabilitySlotStates,
                     1),
                 cancellationToken).ConfigureAwait(false);
 
@@ -1059,11 +1071,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
             // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
             // 开始，那个号在这一代里还没对应任何内容。
+            IoSnapshot io = _ioModule.CurrentSnapshot;
             WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
             long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
             long safetyStateVersion = resentSafetyStateChange
                 ? checked(acceptedSafetyStateVersion + 1)
                 : acceptedSafetyStateVersion;
+            RecordSafetySummary("握手安全快照", generation, safetyStateVersion, safety, io);
             RememberSafety(safetyStateVersion, safety);
             await SendSnapshotAndRequireAckAsync(
                 "SafetyStateSnapshot",
@@ -1074,7 +1088,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     safetyStateVersion,
                     _clock.Now.ToUniversalTime(),
                     safety,
-                    slotStates),
+                    CreateSlotStates(io)),
                 cancellationToken).ConfigureAwait(false);
             // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
             AdvanceSafetyStateVersion(safetyStateVersion);
@@ -1086,7 +1100,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
             await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =
-                await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+                await SendRecoveryStateReportAsync(generation, cancellationToken).ConfigureAwait(false);
             // 这几份报告从来没收到过 DurableAck。这里标 Acknowledged 的意思是不再欠服务端这一份，与
             // ComputeContentSha256Async 本来就把恢复状态报告排除在待确认业务报文之外一致。
             foreach (WireToGateDurableMessage superseded in supersededReports)
@@ -2509,6 +2523,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 DateTimeOffset observedAt = _clock.Now.ToUniversalTime();
                 WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
                 sent = safety;
+                RecordSafetySummary(
+                    "会话中途安全快照",
+                    Volatile.Read(ref _lastSessionGeneration),
+                    safetyStateVersion,
+                    safety,
+                    io);
                 RememberSafety(safetyStateVersion, safety);
                 return (safetyStateVersion, new SafetyStateSnapshotPayload(
                     safetyStateVersion,
@@ -2669,7 +2689,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </remarks>
     private async Task<IReadOnlyList<WireToGateDurableMessage>> SendRecoveryStateReportAsync(
         long generation,
-        IoSnapshot io,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState recovery = await _journal.ReadRecoveryStateAsync(cancellationToken)
@@ -2691,6 +2710,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         string journalSha256 = await _journal.ComputeContentSha256Async(cancellationToken).ConfigureAwait(false);
+        // The outputs energised now, not when the handshake began: two round trips have passed since (onboard-hmi#373).
+        IoSnapshot io = _ioModule.CurrentSnapshot;
         int[] observedActiveSlots = io.Lockers
             .Where(locker => locker.UnlockOutputRaw is true)
             .Select(locker => locker.PhysicalNumber)
@@ -5074,6 +5095,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             + $"safetyStateVersion={snapshot.SafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
     }
+
+    /// <summary>
+    /// Puts a safety summary the vehicle is about to send on its log, reason codes included: after the 10-19 stop the
+    /// handshake's summary could only be worked out backwards from the code (onboard-hmi#373). Log only, never shown.
+    /// <paramref name="io"/> is the reading the summary was judged on, where this client took it; a change the business
+    /// service evaluated comes without one.
+    /// </summary>
+    private void RecordSafetySummary(
+        string what,
+        long generation,
+        long safetyStateVersion,
+        WireToGateSafetySummaryPayload safety,
+        IoSnapshot? io) =>
+        RecordDiagnostic(
+            $"{what}：generation={generation.ToString(CultureInfo.InvariantCulture)}，"
+            + $"safetyStateVersion={safetyStateVersion.ToString(CultureInfo.InvariantCulture)}，"
+            + $"departureSafe={safety.DepartureSafe}，unknownPresent={safety.UnknownPresent}，"
+            + $"reasonCodes=[{string.Join(",", safety.ReasonCodes)}]"
+            + (io is null
+                ? "。"
+                : $"，ioConnected={io.IsConnected}，ioObservedAt={io.ObservedAt.ToString("O", CultureInfo.InvariantCulture)}。"));
 
     private void RecordDiagnostic(string line) =>
         DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
