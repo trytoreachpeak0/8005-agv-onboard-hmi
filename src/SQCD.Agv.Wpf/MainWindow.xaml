@@ -384,13 +384,15 @@
                     <!--
                         结果未知、车上没有出口（8005-agv-onboard-hmi#370）：一次仓位操作以未知结果收尾、已交服务端处理，而车上此刻
                         一个恢复入口都没有（出厂时恢复开关关着就是这样）。这一行只是说明，不是按钮：告诉操作员车上没有可按的，
-                        联系系统维护人员在服务端处理。没有时 Collapsed。UIA 按 AutomationId NoOnboardExitNotice 找它。
+                        联系系统维护人员在服务端处理。没有时 Collapsed。UIA 按 AutomationId NoOnboardExitNotice 找它，ItemStatus 给
+                        操作与结果（LOAD:UNKNOWN、LOAD:NOT_COMPLETED 这样，8005-agv-onboard-hmi#375）。
                     -->
                     <TextBlock Margin="0,8,0,0"
                                FontSize="14"
                                FontWeight="Bold"
                                Foreground="{StaticResource DangerBrush}"
                                AutomationProperties.AutomationId="NoOnboardExitNotice"
+                               AutomationProperties.ItemStatus="{Binding NoOnboardExitNoticeStatus}"
                                Text="{Binding NoOnboardExitNotice}"
                                TextWrapping="Wrap"
                                Visibility="{Binding HasNoOnboardExitNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />

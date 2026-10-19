@@ -123,6 +123,7 @@ internal static class HmiScreenBindings
         new("StationDepartureCountdown", "StationDepartureCountdownTier", "HasStationDepartureCountdown"),
         new("SublotRejectionReason", "SublotRejectionReasonCode", "HasSublotRejection"),
         new("DoorHoldNotice", "DoorHoldSlots", "HasDoorHold"),
+        new("NoOnboardExitNotice", "NoOnboardExitNoticeStatus", "HasNoOnboardExitNotice"),
         new("StationClearanceStatus", "StationClearance.Status", "StationClearance.HasStatus"),
         new("UnableToChargeStatus", "UnableToCharge.Status", "UnableToCharge.HasStatus"),
         new("CargoHoldingCountdown", "CargoHoldingCountdownStatus", "HasCargoHoldingCountdown"),

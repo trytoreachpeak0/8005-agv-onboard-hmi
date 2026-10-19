@@ -866,7 +866,7 @@ public sealed partial class WireToGateBusinessService
                 && OperationWithResultAwaitingServer(state) is { OperationType: OperationType.Load } reported
                 && string.Equals(pressedSubject, $"load:{reported.SlotOperationAttemptId}", StringComparison.Ordinal))
             {
-                return AnswerLoadResultHandedOver(pressedSubject);
+                return AnswerLoadResultHandedOver(pressedSubject, ResultKnown(state, reported));
             }
 
             return AnswerNothingToCancel(
@@ -902,7 +902,7 @@ public sealed partial class WireToGateBusinessService
     /// latch shuts entries, never this.
     /// </para>
     /// </remarks>
-    public string? NoOnboardExitNotice
+    public WireToGateNoOnboardExit? NoOnboardExit
     {
         get
         {
@@ -911,10 +911,28 @@ public sealed partial class WireToGateBusinessService
                 && state.RecoveryVector is null
                 && OperationWithResultAwaitingServer(state) is { } operation
                 && !OffersAnyRecoveryEntry()
-                    ? WireToGateNoOnboardExitText.Notice(operation.OperationType)
+                    ? new WireToGateNoOnboardExit(operation.OperationType, ResultKnown(state, operation))
                     : null;
         }
     }
+
+    /// <summary>The text of <see cref="NoOnboardExit"/>, or <c>null</c>.</summary>
+    public string? NoOnboardExitNotice => NoOnboardExit?.Text;
+
+    /// <summary>
+    /// Whether the journal holds a result for every slot of <paramref name="operation"/> and none is <c>UNKNOWN</c>
+    /// (onboard-hmi#375): the reading <see cref="WireToGateNoOnboardExit.ResultKnown"/> stands on.
+    /// </summary>
+    /// <remarks>
+    /// Read off the slot results the executor journals with the operation's last checkpoint, not off the outcome it sent:
+    /// the journal does not keep that, and a restart must say the same as the process that sent it. Every FAILED result is
+    /// slots read and none in doubt; an UNKNOWN one has a slot in doubt, except a first run refused by another door before
+    /// any of its own was opened, where nothing of this operation was touched -- 「没有完成」 is then also what is true.
+    /// </remarks>
+    private static bool ResultKnown(WireToGateRecoveryState state, WireToGateRecoveryOperationContext operation) =>
+        operation.Slots.Count > 0
+        && operation.Slots.All(slot => state.SlotResults.Any(result => result.SlotNo == slot))
+        && state.SlotResults.All(result => !string.Equals(result.Outcome, "UNKNOWN", StringComparison.Ordinal));
 
     /// <summary>
     /// The unsettled operation whose own result is on file waiting for the server, or <c>null</c>. A completed one settles
@@ -979,7 +997,7 @@ public sealed partial class WireToGateBusinessService
     /// <c>true</c> as <see cref="AnswerNothingToCancel"/>, worded so it does not ask for a press that cannot work
     /// (onboard-hmi#370).
     /// </summary>
-    private bool AnswerLoadResultHandedOver(string pressedSubject)
+    private bool AnswerLoadResultHandedOver(string pressedSubject, bool resultKnown)
     {
         _logger.Write(
             LogSeverity.Information,
@@ -987,7 +1005,7 @@ public sealed partial class WireToGateBusinessService
             $"取消装货确认时，该装货的结果已交服务端，未发申请、未开仓门：按下时的对象={pressedSubject}，确认时的对象=none。");
         PublishOperatorResponse(
             LoadCancellationNothingToCancelKind,
-            WireToGateNoOnboardExitText.LoadCancellationAfterResultHandedOver);
+            WireToGateNoOnboardExitText.LoadCancellationAfterResultHandedOver(resultKnown));
         return true;
     }
 
@@ -4572,7 +4590,25 @@ public sealed partial class WireToGateBusinessService
     {
         Volatile.Write(ref _lastRecoveryState, state);
         ReviewHeldRecoveryCommand(state);
+        if (RecoveryStateCached is { } handler)
+        {
+            // Handed to the thread pool: this runs inside the journal's step, and a subscriber that refreshed the screen
+            // here would do it under the journal's lock (onboard-hmi#375). Out of order is harmless -- a subscriber
+            // reads the cache, which by then holds the latest state, not the one that raised it.
+            _ = Task.Run(() => handler(this, EventArgs.Empty));
+        }
     }
+
+    /// <summary>
+    /// Raised, on the thread pool, after every write of the cached recovery state the entry gates and
+    /// <see cref="NoOnboardExit"/> read. Its subscriber reads the value it cares about afresh.
+    /// </summary>
+    /// <remarks>
+    /// The 「车上没有出口」 line used to be recomputed only on the session, journey, IO and operator-event paths, so a
+    /// result written to the journal with no event after it -- a FAILED load under a latch -- left the line empty on screen
+    /// while this service already had it (onboard-hmi#375, review S1 of PR #371).
+    /// </remarks>
+    public event EventHandler? RecoveryStateCached;
 
     /// <summary>
     /// The operation this recovery is about, or null when there is none.

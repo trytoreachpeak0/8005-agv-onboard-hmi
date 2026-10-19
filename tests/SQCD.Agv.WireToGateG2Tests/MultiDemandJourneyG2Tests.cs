@@ -526,7 +526,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             // The forced isolation's record form and the repair release share one wiring (8005-agv-onboard-hmi#219).
             ForcedIsolationWiring.Configure(viewModel, business);
             // The line saying the vehicle has no exit while an unknown result waits for the server (8005-agv-onboard-hmi#370).
-            NoOnboardExitNoticeWiring.Configure(viewModel, business);
+            // Its refresh on every cached recovery state goes through this harness's stand-in UI thread (8005-agv-onboard-hmi#375).
+            NoOnboardExitNoticeWiring.Configure(viewModel, business, harness.OnUiThread);
             await viewModel.InitializeAsync();
 
             try
