@@ -267,7 +267,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             state => state with { SlotResults = [.. state.SlotResults.Where(result => result.SlotNo == 1)] },
             token);
 
-        WireToGateSlotExecutionResult kept = Assert.Single(Assert.NotNull(written).SlotResults);
+        Assert.NotNull(written);
+        WireToGateSlotExecutionResult kept = Assert.Single(written.SlotResults);
         Assert.Equal((1, "COMPLETED"), (kept.SlotNo, kept.Outcome));
         Assert.Equal(AttemptA, written.UnsettledSlotOperationAttemptId);
         Assert.Equal(NoOnboardExitAfterUnknownLoad, harness.Business.NoOnboardExitNotice);
