@@ -35,8 +35,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     private const int SlotOfB = 4;
 
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterTheServerSettlesAnUnknownLoadACommandOverAShutDoorOverwritesTheRecordAndItIsNoLongerReported()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -57,8 +57,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterTheServerSettlesAnUnknownLoadACommandOverADoorNotProvenShutIsRefusedAndTheRecordStays()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -88,8 +88,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// answered READY, refuses B while slot 2 is not proven shut, and runs B over the record once it is.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AfterARestartTheServerSettledUnknownLoadIsStillRefusedOverADoorInDoubtAndOverwrittenOnceItIsShut()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
