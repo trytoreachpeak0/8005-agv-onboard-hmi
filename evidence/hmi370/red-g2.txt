@@ -1,0 +1,7 @@
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownLoadWithTheSwitchOffSaysTheVehicleHasNoExitEvenAfterTheReasonChanges [6 s]
+   Timed out after 5s waiting for: the screen to say the vehicle has no exit of its own. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APressConfirmedAfterTheLoadEndedUnknownSendsNothing [308 ms]
+Expected: "这次装货的结果未知，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。请联系系统"···
+Actual:   "按下确认时，要取消的对象已经变了，这次取消没有执行，也没有开任何仓门。如仍需取消，请重新按「取消装货"···
+           ↑ (pos 0)
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

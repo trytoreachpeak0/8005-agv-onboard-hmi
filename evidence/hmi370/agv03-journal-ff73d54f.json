@@ -1,0 +1,317 @@
+{
+  "outbox": [
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:PREPARING:::2026-10-19T06:35:29.0300975+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:35:29.0339565+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "c2e339cf-30d8-7c57-8ac5-9f2f109fbf2f",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:35:29.0322949+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "PREPARING",
+          "activeUnlockSlots": [],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:35:29.0300975+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:UNLOCKING:5::2026-10-19T06:35:29.1103032+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:35:29.1135155+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "bb5ed094-a7bd-aa56-b89e-b27365db1b12",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:35:29.1134452+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "UNLOCKING",
+          "activeUnlockSlots": [
+            5
+          ],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:35:29.1103032+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:WAITING_OPERATOR:5::2026-10-19T06:35:30.1079446+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:35:30.1105690+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "03cda54b-03cd-4254-b11c-582e1cec16f7",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:35:30.1104982+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "WAITING_OPERATOR",
+          "activeUnlockSlots": [
+            5
+          ],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:35:30.1079446+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:UNLOCKING:5::2026-10-19T06:37:03.9948933+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:37:03.9981490+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "b0f67464-baa4-3055-aa6e-dc9e5674ca80",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:37:03.9980798+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "UNLOCKING",
+          "activeUnlockSlots": [
+            5
+          ],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:37:03.9948933+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:WAITING_OPERATOR:5::2026-10-19T06:37:05.0074889+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:37:05.0102966+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "d2b8044e-5a40-8654-a579-2f367b58e4c8",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:37:05.0102269+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "WAITING_OPERATOR",
+          "activeUnlockSlots": [
+            5
+          ],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:37:05.0074889+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:UNLOCKING:5::2026-10-19T06:37:06.5710927+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:37:06.5739266+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "ba00384e-7cd4-a059-ae12-9279a05aa0c2",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:37:06.5738596+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "UNLOCKING",
+          "activeUnlockSlots": [
+            5
+          ],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:37:06.5710927+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-progress:ff73d54f-be28-e255-86f4-1f3508c8a16a:SAFE_FINISH:::2026-10-19T06:37:09.7027870+00:00",
+      "MessageType": "OperationProgress",
+      "CreatedAt": "2026-10-19T06:37:09.7055679+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationProgress",
+        "messageId": "a25545c1-4cd5-d15b-a50e-e158312703de",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:37:09.7054961+00:00",
+        "payload": {
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "phase": "SAFE_FINISH",
+          "activeUnlockSlots": [],
+          "completedSlots": [],
+          "observedAt": "2026-10-19T06:37:09.702787+00:00"
+        }
+      }
+    },
+    {
+      "DeduplicationKey": "operation-result:ff73d54f-be28-e255-86f4-1f3508c8a16a",
+      "MessageType": "OperationResult",
+      "CreatedAt": "2026-10-19T06:37:09.7864995+00:00",
+      "Acknowledged": 1,
+      "AbandonedReasonCode": null,
+      "WireLine": {
+        "protocolVersion": 6,
+        "profileId": "AGV_FULL_PRODUCT",
+        "protocolReleaseVersion": "5.0.0",
+        "protocolReleaseManifestSha256": "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa",
+        "messageType": "OperationResult",
+        "messageId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+        "correlationId": null,
+        "agvId": "老厂前线新多仓位3",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:37:09.7833202+00:00",
+        "payload": {
+          "demandId": "5ccbc28c-9cce-43ee-8dac-548d2b766ffa",
+          "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "operationType": "LOAD",
+          "overallOutcome": "UNKNOWN",
+          "slotResults": [
+            {
+              "slotNo": 5,
+              "outcome": "UNKNOWN",
+              "finalPhysicalState": "EMPTY",
+              "lockState": "LOCKED",
+              "unlockOutputState": "RESET",
+              "reasonCodes": [
+                "ACTION_NOT_ALLOWED_IN_STATE"
+              ]
+            },
+            {
+              "slotNo": 6,
+              "outcome": "NOT_STARTED",
+              "finalPhysicalState": "EMPTY",
+              "lockState": "LOCKED",
+              "unlockOutputState": "RESET",
+              "reasonCodes": []
+            }
+          ],
+          "observedAt": "2026-10-19T14:37:09.747855+08:00",
+          "journalCheckpoint": "SAFE_FINISH_REACHED",
+          "resultContentSha256": "5264eb41744980a67de4e211cd8c3191ac3f86b68013ada9a719081f292f7bd3"
+        }
+      }
+    }
+  ],
+  "recoveryState": {
+    "UpdatedAt": "2026-10-19T06:37:09.7609963+00:00",
+    "Content": {
+      "unsettledSlotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+      "provenRecoveryCheckpoint": 3,
+      "activeUnlockSlots": [],
+      "forcedRecoveryGeneration": 0,
+      "pendingResults": [
+        {
+          "messageType": "OperationResult",
+          "messageId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "businessId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+          "contentSha256": "5264eb41744980a67de4e211cd8c3191ac3f86b68013ada9a719081f292f7bd3"
+        }
+      ],
+      "operationContext": {
+        "messageId": "0e13e1eb-a20f-e75f-80fa-e6b78bc5b0c1",
+        "correlationId": "4723a52c-09e4-4f28-9be0-106c3d65cf8e",
+        "sessionGeneration": 41,
+        "sentAt": "2026-10-19T06:35:28.9471283+00:00",
+        "demandId": "5ccbc28c-9cce-43ee-8dac-548d2b766ffa",
+        "operationSessionId": "96789e4c-98ea-b65d-a511-9aa089b45e23",
+        "slotOperationAttemptId": "ff73d54f-be28-e255-86f4-1f3508c8a16a",
+        "operationType": 0,
+        "slots": [
+          5,
+          6
+        ],
+        "expectedBasketCount": 2,
+        "expectedOccupied": true,
+        "commandContentSha256": "d8720fdc131481d11057e3e2b94f06ba380241322c576f5a6caf15ec143ac845"
+      },
+      "completedSlots": [],
+      "slotResults": [
+        {
+          "slotNo": 5,
+          "outcome": "UNKNOWN",
+          "finalPhysicalState": "EMPTY",
+          "lockState": "LOCKED",
+          "unlockOutputState": "RESET",
+          "reasonCodes": [
+            "ACTION_NOT_ALLOWED_IN_STATE"
+          ]
+        },
+        {
+          "slotNo": 6,
+          "outcome": "NOT_STARTED",
+          "finalPhysicalState": "EMPTY",
+          "lockState": "LOCKED",
+          "unlockOutputState": "RESET",
+          "reasonCodes": []
+        }
+      ],
+      "exceptionRecoverySessionId": null,
+      "recoveryActionId": null,
+      "recoverySessionRequestId": null,
+      "recoveryActionRequestId": null,
+      "recoveryReason": null,
+      "recoveryOperatorId": null,
+      "recoveryOperatorVerifiedAt": null,
+      "recoveryVector": null,
+      "recoveryResultObservedAt": null,
+      "lastCompletedLoadOperationContext": null,
+      "loadsOnBoard": [],
+      "pendingLoadCancellation": null,
+      "forcedIsolation": null,
+      "slotFaultDeclaration": null,
+      "repairRelease": null,
+      "takenOverSlotOperationAttemptId": null,
+      "currentStopDeparture": null,
+      "stagingPickupStationIds": null
+    }
+  }
+}
