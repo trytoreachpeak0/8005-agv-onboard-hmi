@@ -40,10 +40,13 @@ public sealed partial class RecoveryVectorG2Tests
 
         harness.Server.SettleOperationOnServer(AttemptId);
         await harness.Session.Client.DisconnectAsync();
-        WireToGateSessionSnapshot reconnected = await harness.Session.Client.ConnectAndRecoverAsync(token);
-        Assert.True(
-            reconnected.Readiness == WireToGateSessionReadiness.Ready,
-            $"precondition: the server answers READY once it settled the load, got {reconnected.Readiness} [{string.Join(",", reconnected.ReasonCodes)}]");
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        // The seeded load's result is still in the outbox, so the handshake reports it pending; READY follows once the
+        // replayed result arrives and the server, which settled the operation, only acknowledges it.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
+            "the server to answer READY once it settled the load",
+            token);
         using (JsonDocument report = JsonDocument.Parse(harness.Server.ReceivedEnvelopes
                    .Last(envelope => envelope.MessageType == "RecoveryStateReport").WireLine))
         {
@@ -59,7 +62,10 @@ public sealed partial class RecoveryVectorG2Tests
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Logger.Entries.Any(entry =>
                 entry.Message.StartsWith("拒收SlotOperationCommand：上一次恢复的结果被服务端拒收", StringComparison.Ordinal)
-                && entry.Message.Contains(newAttemptId, StringComparison.Ordinal)),
+                && entry.Message.Contains(newAttemptId, StringComparison.Ordinal))
+                // This refusal is logged before it is sent (WireToGateBusinessService.ConflictedRecovery.cs).
+                && harness.ResultsOfType("SlotOperationCommandRejected").Any(line =>
+                    line.Contains(newAttemptId, StringComparison.Ordinal)),
             "the new command to be refused while the refused recovery awaits its check",
             token);
 
