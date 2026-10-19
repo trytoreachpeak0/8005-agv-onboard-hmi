@@ -878,6 +878,12 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
+    /// What the screen says while an operation's unknown result waits for the server and the vehicle offers no exit of its
+    /// own, or <c>null</c> (8005-agv-onboard-hmi#370).
+    /// </summary>
+    public string? NoOnboardExitNotice => _session is null ? null : null; // Stub: the judgement lands with the fix.
+
+    /// <summary>
     /// The operator event for a load cancellation press whose subject is no longer the one on screen when it was pressed.
     /// </summary>
     internal const string LoadCancellationNothingToCancelKind = "LOAD_CANCELLATION_NOTHING_TO_CANCEL";

@@ -171,6 +171,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private Func<WireToGateConflictedRecoveryView?>? _conflictedRecoveryView;
     private Func<bool>? _canCloseConflictedRecoveryGate;
     private Func<CancellationToken, Task<bool>>? _conflictedRecoveryCloser;
+    private string _noOnboardExitNotice = string.Empty;
+    private Func<string?>? _noOnboardExitNoticeSource;
     private UnableToChargeDisplay _unableToCharge = UnableToChargeDisplay.Empty;
     private Func<WireToGateUnableToChargeView>? _unableToChargeView;
     private Func<WireToGateUnableToChargePrompt, CancellationToken, Task<bool>>? _unableToChargeConfirmer;
@@ -809,6 +811,8 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshUnableToChargeCore();
         // 人工核对后结束被拒收的恢复，同样不在那九个里，不看锁存（见 RefreshConflictedRecoveryCore）。
         RefreshConflictedRecoveryCore();
+        // 车上没有出口的说明只是一行字，不是入口，不看锁存（见 RefreshNoOnboardExitNoticeCore）。
+        RefreshNoOnboardExitNoticeCore();
     }
 
     /// <summary>
@@ -2160,6 +2164,41 @@ public sealed partial class MainViewModel : ViewModelBase
         CanCloseConflictedRecovery = view is not null && _canCloseConflictedRecoveryGate?.Invoke() == true;
     }
 
+    // ---- 结果未知、车上没有出口时的说明（8005-agv-onboard-hmi#370） ----
+
+    /// <summary>
+    /// 一次仓位操作的结果未知、已交服务端处理，而车上此刻一个恢复入口都没有时，屏上说清楚「车上没有出口，联系系统维护人员」；
+    /// 其余时候是空串。判断在业务服务（<c>WireToGateBusinessService.NoOnboardExitNotice</c>），这里只照着显示。
+    /// </summary>
+    public string NoOnboardExitNotice
+    {
+        get => _noOnboardExitNotice;
+        private set
+        {
+            if (SetProperty(ref _noOnboardExitNotice, value))
+            {
+                OnPropertyChanged(nameof(HasNoOnboardExitNotice));
+            }
+        }
+    }
+
+    /// <summary>是否显示车上没有出口的说明。</summary>
+    public bool HasNoOnboardExitNotice => _noOnboardExitNotice.Length > 0;
+
+    /// <remarks>接线本身在 <c>NoOnboardExitNoticeWiring</c>，G2 夹具调的是同一个方法。</remarks>
+    internal void ConfigureNoOnboardExitNotice(Func<string?> notice)
+    {
+        _noOnboardExitNoticeSource = notice ?? throw new ArgumentNullException(nameof(notice));
+        RunOnUiThread(RefreshNoOnboardExitNoticeCore);
+    }
+
+    /// <remarks>
+    /// 不是入口，锁存期间照常刷新：它说的是「车上没有可按的」，锁存只会让这句话更真。两条刷新路径都调它，
+    /// 与 <see cref="RefreshConflictedRecoveryCore"/> 写在一处。
+    /// </remarks>
+    private void RefreshNoOnboardExitNoticeCore() =>
+        NoOnboardExitNotice = _noOnboardExitNoticeSource?.Invoke() ?? string.Empty;
+
     // ---- 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239） ----
 
     public HeldRecoveryCommandDisplay HeldRecoveryCommand
@@ -2567,6 +2606,8 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshHeldRecoveryCommandCore();
         // 人工核对后结束被拒收的恢复同理（见 RefreshConflictedRecoveryCore）。
         RefreshConflictedRecoveryCore();
+        // 车上没有出口的说明同理（见 RefreshNoOnboardExitNoticeCore）。
+        RefreshNoOnboardExitNoticeCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
