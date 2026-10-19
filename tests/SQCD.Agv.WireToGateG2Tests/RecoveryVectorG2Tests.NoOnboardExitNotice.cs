@@ -25,6 +25,13 @@ public sealed partial class RecoveryVectorG2Tests
             armedUnloadOverSettledLoad: true,
             resumeAfterRepairEnabled: false);
 
+        // 中断结算由执行器直接写日志，不经过业务服务的缓存，写完也不重读（hmi#375 实现时发现，已报调度，不在本票范围：
+        // 补这次重读会改变恢复入口的判定）。这里用测试接缝读一次，让缓存跟上日志，本条只断卸货的措辞。
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Journal.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().PendingResults.Count > 0,
+            "the unload's result to be on file waiting for the server",
+            token);
+        await harness.Business.RefreshCachedRecoveryStateForTestAsync(token);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Business.NoOnboardExitNotice is not null,
             "the notice over the unload's result waiting for the server",
