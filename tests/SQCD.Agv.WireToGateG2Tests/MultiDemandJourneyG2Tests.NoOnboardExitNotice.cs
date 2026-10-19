@@ -1,8 +1,8 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
-using SQCD.Agv.Wpf.ViewModels;
 using SQCD.Agv.Wpf.ScreenState;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
