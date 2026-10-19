@@ -1,0 +1,3 @@
+green-g2.txt:Passed!  - Failed:     0, Passed:    50, Skipped:     0, Total:    50, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+unit.txt:Passed!  - Failed:     0, Passed:   303, Skipped:     0, Total:   303, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+g2class.txt:Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 3 m 42 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -215,6 +215,10 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <remarks>
     /// 这一格入口早就灭了（结果在路上，服务端对 <c>RecoveryRequired</c> 的操作不授权取消，onboard-hmi#188），但修之前按键路径
     /// 不看结果，确认之后照样把申请发出去。服务端这里配成拒绝，免得修之前的那次授权真去开门。
+    /// <para>
+    /// 提醒的文字也断（onboard-hmi#370，2026-10-19 agv03 5 号仓）：修之前它说「如仍需取消，请重新按「取消装货」」，而那个入口
+    /// 此时已经灰了、结果出来之后再也不会亮——屏上叫人去按一个按不动的按钮。
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -252,7 +256,15 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.True(answered);
-        Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        WireToGateOperatorEvent notice = Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        // The notice does not send the operator back to an entry that is shut for good (onboard-hmi#370, agv03 2026-10-19):
+        // the result is the server's now, and nothing on the vehicle can cancel it.
+        Assert.Equal(
+            "这次装货的结果未知，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
+            + "请联系系统维护人员在服务端处理。",
+            notice.Message);
+        Assert.DoesNotContain("重新按", notice.Message, StringComparison.Ordinal);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
         Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
         Assert.Equal(2, io.UnlockCount);
         Assert.Empty(harness.UiErrors);

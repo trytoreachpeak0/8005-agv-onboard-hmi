@@ -860,6 +860,15 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
             }
 
+            // Gone because the load's own result went to the server while the dialog was open (onboard-hmi#370, agv03
+            // 2026-10-19): the entry is shut over that load for good, so the notice does not send the operator back to it.
+            if (confirmedSubject is null
+                && OperationWithResultAwaitingServer(state) is { OperationType: OperationType.Load } reported
+                && string.Equals(pressedSubject, $"load:{reported.SlotOperationAttemptId}", StringComparison.Ordinal))
+            {
+                return AnswerLoadResultHandedOver(pressedSubject);
+            }
+
             return AnswerNothingToCancel(
                 $"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}",
                 rowPress);
@@ -876,6 +885,62 @@ public sealed partial class WireToGateBusinessService
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// What the screen says while an operation's unknown result waits for the server and the vehicle offers no exit of its
+    /// own, or <c>null</c> (8005-agv-onboard-hmi#370).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shown while the session requires recovery for any reason: a vehicle moved off its stop by hand is answered
+    /// <c>DEPARTURE_UNSAFE</c> instead of <c>SESSION_RECOVERY_REQUIRED</c>, and the unknown result is still the server's to
+    /// settle (agv03 2026-10-19 15:21). So it is judged on the journal, not on the reason code.
+    /// </para>
+    /// <para>
+    /// Off whenever any recovery entry is offered -- with the switch on and the proof set, compensation is the vehicle's own
+    /// exit -- and while a recovery vector is on file, which the entries above are about. It is a line, not an entry: the
+    /// latch shuts entries, never this.
+    /// </para>
+    /// </remarks>
+    public string? NoOnboardExitNotice
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
+                && state.RecoveryVector is null
+                && OperationWithResultAwaitingServer(state) is { } operation
+                && !OffersAnyRecoveryEntry()
+                    ? WireToGateNoOnboardExitText.Notice(operation.OperationType)
+                    : null;
+        }
+    }
+
+    /// <summary>
+    /// The unsettled operation whose own result is on file waiting for the server, or <c>null</c>. A completed one settles
+    /// the attempt, so what is left here is a result that is not completed: UNKNOWN, refused or failed.
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? OperationWithResultAwaitingServer(WireToGateRecoveryState state) =>
+        state.OperationContext is { } context
+        && string.Equals(state.UnsettledSlotOperationAttemptId, context.SlotOperationAttemptId, StringComparison.Ordinal)
+        && state.PendingResults.Any(pending =>
+            string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
+            && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal))
+            ? context
+            : null;
+
+    /// <summary>Whether any recovery entry of the window is offered by this service now.</summary>
+    private bool OffersAnyRecoveryEntry() =>
+        CanRequestResumeAfterRepair
+        || CanRequestLoadCancellation
+        || CanRequestLoadCompensation
+        || CanRequestLoadCorrection
+        || CanRequestFaultCargoHandoff
+        || CanRequestForcedMechanicalRecovery
+        || CanConfirmForcedMechanicalRecovery
+        || CanSubmitHardwareRecoveryRecord
+        || CanRequestHardwareRepairRelease
+        || ConflictedRecoveryView is not null;
 
     /// <summary>
     /// The operator event for a load cancellation press whose subject is no longer the one on screen when it was pressed.
@@ -906,6 +971,23 @@ public sealed partial class WireToGateBusinessService
             "按下确认时，要取消的对象已经变了，这次取消没有执行，也没有开任何仓门。"
             + $"如仍需取消，请重新按{(rowPress ? WireToGateLoadCancellationText.RowPressPhrase : $"「{LoadCancellationCaptionHere()}」")}，"
             + "按屏上当前显示为准。");
+        return true;
+    }
+
+    /// <summary>
+    /// Answers a load cancellation confirmed after the load's own result went to the server: the same event and the same
+    /// <c>true</c> as <see cref="AnswerNothingToCancel"/>, worded so it does not ask for a press that cannot work
+    /// (onboard-hmi#370).
+    /// </summary>
+    private bool AnswerLoadResultHandedOver(string pressedSubject)
+    {
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"取消装货确认时，该装货的结果已交服务端，未发申请、未开仓门：按下时的对象={pressedSubject}，确认时的对象=none。");
+        PublishOperatorResponse(
+            LoadCancellationNothingToCancelKind,
+            WireToGateNoOnboardExitText.LoadCancellationAfterResultHandedOver);
         return true;
     }
 

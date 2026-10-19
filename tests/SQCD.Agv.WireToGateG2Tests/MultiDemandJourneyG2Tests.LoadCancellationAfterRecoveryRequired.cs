@@ -110,6 +110,9 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         Assert.False(harness.ViewModel.CanRequestLoadCancellation);
         Assert.False(harness.Business.CanRequestLoadCancellation);
+        // With the switch on, compensation is the vehicle's own exit: the line saying there is none stays off (onboard-hmi#370).
+        Assert.False(harness.OnUi(() => harness.ViewModel.HasNoOnboardExitNotice));
+        Assert.Null(harness.Business.NoOnboardExitNotice);
         Assert.Empty(harness.UiErrors);
 
         // The screen-state snapshot of a session that requires recovery (onboard-hmi#313): the banner says so and came

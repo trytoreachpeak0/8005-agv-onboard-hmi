@@ -525,6 +525,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             HeldRecoveryCommandWiring.Configure(viewModel, business);
             // The forced isolation's record form and the repair release share one wiring (8005-agv-onboard-hmi#219).
             ForcedIsolationWiring.Configure(viewModel, business);
+            // The line saying the vehicle has no exit while an unknown result waits for the server (8005-agv-onboard-hmi#370).
+            NoOnboardExitNoticeWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

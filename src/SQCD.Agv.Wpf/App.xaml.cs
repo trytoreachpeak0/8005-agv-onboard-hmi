@@ -326,6 +326,8 @@ public partial class App : System.Windows.Application, IDisposable
                 HeldRecoveryCommandWiring.Configure(viewModel, _wireToGateBusiness);
                 // 服务端拒收恢复结果后，维护人员现场核对、人工结束那份恢复的入口（8005-agv-onboard-hmi#254）。
                 ConflictedRecoveryWiring.Configure(viewModel, _wireToGateBusiness);
+                // 结果未知、车上没有出口时的说明（8005-agv-onboard-hmi#370）。接线在 NoOnboardExitNoticeWiring 里，G2 夹具调的是同一个方法。
+                NoOnboardExitNoticeWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();
