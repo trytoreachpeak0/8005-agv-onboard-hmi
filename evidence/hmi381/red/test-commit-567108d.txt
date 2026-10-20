@@ -1,0 +1,5 @@
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnloadAllTargetSlotsRequiresEverySlotToReachEmpty [131 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "COMPLETED"
+Actual:   "FAILED"
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 147 ms - SQCD.Agv.UnitTests.dll (net8.0)

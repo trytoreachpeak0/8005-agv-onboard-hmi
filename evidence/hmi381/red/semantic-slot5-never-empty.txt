@@ -1,0 +1,18 @@
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnloadAllTargetSlotsRequiresEverySlotToReachEmpty [30 s]
+   System.OperationCanceledException : The operation was canceled.
+     at System.Threading.CancellationToken.ThrowOperationCanceledException()
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 30 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+diff --git a/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs b/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
+index 556cd62..d88b33b 100644
+--- a/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
++++ b/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
+@@ -2306,7 +2306,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
+                         UpdateLocker(slotIndex, current => current with
+                         {
+                             LockFeedbackRaw = true,
+-                            LightCurtainRaw = _finalCargo ? false : true,
++                            LightCurtainRaw = _finalCargo || slotIndex == 4 ? false : true,
+                             ObservedAt = Now
+                         });
+                     }
