@@ -1,0 +1,38 @@
+ed604fc, filter FullyQualifiedName~AWaitThatRunsOutNames (3 tests), each line one run
+full cores x10 (before the pool-sizing change) and x5 (after):
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 17 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 17 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 17 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 17 s - SQ
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 18 s - SQ
+affinity 0xF (4 cores) x5, before the pool-sizing change (stall variant red 4/5):
+run 1 
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True) [5 s]
+run 2 
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True) [5 s]
+run 3 
+run 4 
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True) [6 s]
+run 5 
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True) [5 s]
+affinity 0xF (4 cores) x5 and 0x1 (1 core) x5, after:
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3
+     Passed: 3

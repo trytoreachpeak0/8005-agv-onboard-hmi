@@ -1,0 +1,142 @@
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: False) [5 s]
+  Standard Output Messages:
+ Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult. UI errors: []
+ Stuck on: OperationProgress 479bfabd-ae66-0e5d-bd78-9142b748542c (PREPARING), which this double has not acknowledged (no DurableAck); the vehicle waits up to 30s for its DurableAck.
+ Wait: started 20:58:14.245, timed out 20:58:19.253.
+ Thread pool: 7 threads, 0 work items queued.
+ Read loops of this double:
+   connection 1: waiting in ReadLineAsync since 20:58:14.289
+ Owed by the vehicle's outbox (not acknowledged, not given up):
+   OperationProgress 479bfabd-ae66-0e5d-bd78-9142b748542c (PREPARING) on file 20:58:14.279
+ Sent by the vehicle, last 10:
+   OperationProgress 26d82136-de9d-bd5a-8d8b-63afab91fc54 (PREPARING) sent 20:58:14.010 -> DurableAck written 20:58:14.019
+   OperationProgress f46b59db-e4e1-4f56-ae8f-93533281d9fe (UNLOCKING) sent 20:58:14.041 -> DurableAck written 20:58:14.051
+   OperationProgress 9b4d2e61-3e42-c255-b105-e76cbb310814 (WAITING_OPERATOR) sent 20:58:14.064 -> DurableAck written 20:58:14.073
+   OperationProgress 467d163c-48fe-0a5b-871c-61b431427429 (VERIFYING) sent 20:58:14.096 -> DurableAck written 20:58:14.106
+   OperationProgress f4a60e8d-2796-e45e-98b6-e948ba94290c (SAFE_FINISH) sent 20:58:14.128 -> DurableAck written 20:58:14.138
+   OperationResult 44444444-0000-4444-8444-00000000000b (COMPLETED) sent 20:58:14.150 -> DurableAck written 20:58:14.160
+   SafetyStateChanged f8456a89-cfaa-845e-b62e-32aa8aea9651 sent 20:58:14.188 -> DurableAck written 20:58:14.199
+   ExceptionRecoverySessionRequested 0f89e649-cb9a-4417-8b47-1f69dffd8dc3 sent 20:58:14.222
+   RecoveryActionSubmitted aa2f240f-9e8a-444a-8b89-e960c1b87451 sent 20:58:14.239
+   OperationProgress 479bfabd-ae66-0e5d-bd78-9142b748542c (PREPARING) sent 20:58:14.279 -> no DurableAck
+ Sent by this double, last 10:
+   DurableAck fa449cb3-b9f9-4ea2-ae39-898f7846408a (OperationProgress) written 20:58:14.051
+   DurableAck ad9d5836-9751-43ef-9964-0bc8db1e6076 (OperationProgress) written 20:58:14.073
+   DurableAck 70840117-f68b-43ee-b966-7f18c835afca (OperationProgress) written 20:58:14.106
+   DurableAck 1a06c850-98fd-4f0f-a555-c9c969fb68b3 (OperationProgress) written 20:58:14.138
+   DurableAck ba457d86-cdfd-42dc-954e-c749a160b92b (OperationResult) written 20:58:14.160
+   SessionReadiness 433c1cf2-915f-4840-81cf-e7c654c04cb2 (RECOVERY_REQUIRED) written 20:58:14.187
+   DurableAck 409a1142-1fc2-4d21-9602-693cd79beecd (SafetyStateChanged) written 20:58:14.199
+   ExceptionRecoverySessionOpened a615cca8-2372-4644-bed7-f91ed85db5a2 written 20:58:14.227
+   RecoveryActionAccepted 471796e1-e8ae-4039-b275-29bc46ab894e written 20:58:14.241
+   FaultCargoRecoveryCommand 85b90b2d-6aa4-4c44-8fb9-20202516112c written 20:58:14.243
+ Vehicle log, last entries:
+   20:58:13.539 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:13.633 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:13.643 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-20T20:58:13.4802666+00:00。
+   20:58:13.685 Information WireToGateSessionClient: 收到SessionReadiness：messageId=0a29ae41-03cc-4e9b-a8e3-627c17ab7a88，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+   20:58:13.685 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+   20:58:13.691 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:13.761 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+   20:58:13.761 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+   20:58:13.767 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+   20:58:14.187 Information WireToGateSessionClient: 收到SessionReadiness：messageId=433c1cf2-915f-4840-81cf-e7c654c04cb2，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+   20:58:14.187 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+   20:58:14.187 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:14.188 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a；Load/bbbbbbbb-0000-4000-8000-00000000000b/44444444-0000-4444-8444-00000000000b（车上已装的需求，待选择），recoveryVector=none，recoverySession=none，faultCargoHandoff=True。
+   20:58:14.209 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True) [5 s]
+  Standard Output Messages:
+ Timed out after 5s (+331ms given back for process stalls) waiting for: the control server to receive FaultCargoRecoveryResult. UI errors: []
+ Stuck on: OperationProgress b293331d-9aa6-c653-951d-4988ce7213e3 (PREPARING), which this double has not acknowledged (no DurableAck); the vehicle waits up to 30s for its DurableAck.
+ Wait: started 20:58:19.926, timed out 20:58:25.261.
+ Thread pool: 34 threads, 0 work items queued.
+ Read loops of this double:
+   connection 1: waiting in ReadLineAsync since 20:58:19.965
+ Owed by the vehicle's outbox (not acknowledged, not given up):
+   OperationProgress b293331d-9aa6-c653-951d-4988ce7213e3 (PREPARING) on file 20:58:19.955
+ Sent by the vehicle, last 10:
+   OperationProgress e0c87313-6959-6a5e-8a59-58c09076e346 (PREPARING) sent 20:58:19.690 -> DurableAck written 20:58:19.700
+   OperationProgress a5044ee9-d43a-2e52-8c4a-db2a31a1cdca (UNLOCKING) sent 20:58:19.723 -> DurableAck written 20:58:19.733
+   OperationProgress 67223b1a-1c65-8e52-b866-ab5afd89fc7d (WAITING_OPERATOR) sent 20:58:19.749 -> DurableAck written 20:58:19.759
+   OperationProgress f1e183d8-05d4-505b-9299-a05587645fec (VERIFYING) sent 20:58:19.785 -> DurableAck written 20:58:19.795
+   OperationProgress 02f7d3d6-1833-e15e-a1c3-5f09dacd1d74 (SAFE_FINISH) sent 20:58:19.819 -> DurableAck written 20:58:19.830
+   OperationResult 44444444-0000-4444-8444-00000000000b (COMPLETED) sent 20:58:19.845 -> DurableAck written 20:58:19.856
+   SafetyStateChanged 7e131156-12df-a65e-a379-e76d352300c1 sent 20:58:19.881 -> DurableAck written 20:58:19.893
+   ExceptionRecoverySessionRequested 12c345fb-90d2-4fe0-a446-2604777897fb sent 20:58:19.914
+   RecoveryActionSubmitted c05dcde0-18ab-4f33-b1b5-6beeb766526c sent 20:58:19.925
+   OperationProgress b293331d-9aa6-c653-951d-4988ce7213e3 (PREPARING) sent 20:58:19.955 -> no DurableAck
+ Sent by this double, last 10:
+   DurableAck c0fdffea-4a2b-4189-b532-47a7dfb0f155 (OperationProgress) written 20:58:19.733
+   DurableAck c3d1bbf3-cd29-4b7d-99d7-8bad26f6ebb7 (OperationProgress) written 20:58:19.759
+   DurableAck e8076fdc-1405-4cf2-b7c8-9a009e5487ad (OperationProgress) written 20:58:19.795
+   DurableAck 6dc02ced-b34f-4b8f-907b-bbba17827723 (OperationProgress) written 20:58:19.830
+   DurableAck db64a604-9304-44d5-9411-c78b40bf70c0 (OperationResult) written 20:58:19.856
+   SessionReadiness af6281b6-cf32-43b2-aeb4-f2ccbbf9f9f6 (RECOVERY_REQUIRED) written 20:58:19.878
+   DurableAck 25d91596-748e-477b-9485-6cf16177477b (SafetyStateChanged) written 20:58:19.893
+   ExceptionRecoverySessionOpened 2357c7a7-9d1b-4cfa-adad-13d1051a1846 written 20:58:19.914
+   RecoveryActionAccepted 52f6bcee-7311-40d3-bad9-a56a7fe014fd written 20:58:19.925
+   FaultCargoRecoveryCommand 7c70ea07-c1bc-427c-8963-be68c2ac2904 written 20:58:19.926
+ Vehicle log, last entries:
+   20:58:19.318 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:19.356 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:19.358 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-20T20:58:19.3171895+00:00。
+   20:58:19.385 Information WireToGateSessionClient: 收到SessionReadiness：messageId=830508cd-acf1-48ec-a788-e419643ac41d，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+   20:58:19.385 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+   20:58:19.385 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:19.451 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+   20:58:19.451 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+   20:58:19.454 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+   20:58:19.878 Information WireToGateSessionClient: 收到SessionReadiness：messageId=af6281b6-cf32-43b2-aeb4-f2ccbbf9f9f6，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+   20:58:19.878 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+   20:58:19.878 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:19.879 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/bbbbbbbb-0000-4000-8000-00000000000b/44444444-0000-4444-8444-00000000000b（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=True。
+   20:58:19.904 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesAMessageTheDoubleHasNotRead [5 s]
+  Standard Output Messages:
+ Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult. UI errors: []
+ Stuck on: OperationProgress 3bfb1d54-16b5-4651-87a4-2efa731868d5 (WAITING_OPERATOR), on file in the vehicle's outbox since 20:58:25.965 but not read by this double (read loops: connection 1 waiting in ReadLineAsync since 20:58:25.952); the vehicle waits up to 30s for its DurableAck.
+ Wait: started 20:58:25.920, timed out 20:58:30.922.
+ Thread pool: 34 threads, 0 work items queued.
+ Read loops of this double:
+   connection 1: waiting in ReadLineAsync since 20:58:25.952
+ Owed by the vehicle's outbox (not acknowledged, not given up):
+   OperationProgress 3bfb1d54-16b5-4651-87a4-2efa731868d5 (WAITING_OPERATOR) on file 20:58:25.965
+ Sent by the vehicle, last 10:
+   OperationProgress 0719a590-d37e-2652-8815-1fda0f4c71b3 (UNLOCKING) sent 20:58:25.668 -> DurableAck written 20:58:25.680
+   OperationProgress e46ca739-84d3-675d-a3b8-4d190031d24b (WAITING_OPERATOR) sent 20:58:25.693 -> DurableAck written 20:58:25.703
+   OperationProgress fd1a64ff-8338-eb5e-80e9-a966f9f0bab0 (VERIFYING) sent 20:58:25.728 -> DurableAck written 20:58:25.739
+   OperationProgress 058748e4-1b10-6652-b0c7-a570784e348c (SAFE_FINISH) sent 20:58:25.761 -> DurableAck written 20:58:25.773
+   OperationResult 44444444-0000-4444-8444-00000000000b (COMPLETED) sent 20:58:25.786 -> DurableAck written 20:58:25.796
+   SafetyStateChanged edae2917-6a82-8e57-9187-286f65728406 sent 20:58:25.820 -> DurableAck written 20:58:25.832
+   ExceptionRecoverySessionRequested 3c976d87-916c-4868-9244-1ef22a928b41 sent 20:58:25.853
+   RecoveryActionSubmitted d3bbf6b4-7ddb-42c4-9bfd-a84742eca34d sent 20:58:25.865
+   OperationProgress 6d5ee2b6-58eb-5650-8804-870631b06760 (PREPARING) sent 20:58:25.893 -> DurableAck written 20:58:25.920
+   OperationProgress f4451e7c-874e-4651-a81c-8837b874e8ba (UNLOCKING) sent 20:58:25.941 -> DurableAck written 20:58:25.952
+ Sent by this double, last 10:
+   DurableAck 148ebe41-468b-4722-b381-3ddafd6f89bd (OperationProgress) written 20:58:25.739
+   DurableAck aafae2e7-c7dd-4e6a-9147-6a02ee968f7f (OperationProgress) written 20:58:25.773
+   DurableAck 32f24cc1-744c-4890-a540-376ae0629bf5 (OperationResult) written 20:58:25.796
+   SessionReadiness b0873f9e-a19b-420e-ab7c-8f4343929495 (RECOVERY_REQUIRED) written 20:58:25.818
+   DurableAck 3bf04137-7aea-4136-8492-b09daa6900f6 (SafetyStateChanged) written 20:58:25.832
+   ExceptionRecoverySessionOpened 8b679a0b-c2a3-4d69-99ed-7f113bffaf72 written 20:58:25.853
+   RecoveryActionAccepted ae1f21b9-32c5-4461-b897-5c420d6eba7e written 20:58:25.865
+   FaultCargoRecoveryCommand 4871a7bd-deec-42ba-a3ce-2361dd4e6315 written 20:58:25.866
+   DurableAck 52e18de0-cda1-43a3-a2fc-1483d7c464bd (OperationProgress) written 20:58:25.920
+   DurableAck 1ec3be44-4a35-4d0f-bf5a-6ce558c52a8e (OperationProgress) written 20:58:25.952
+ Vehicle log, last entries:
+   20:58:25.270 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:25.313 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+   20:58:25.320 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-20T20:58:25.2694247+00:00。
+   20:58:25.342 Information WireToGateSessionClient: 收到SessionReadiness：messageId=b9fe4697-59be-41bc-9bdb-49981a336458，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+   20:58:25.342 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+   20:58:25.342 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:25.399 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+   20:58:25.400 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+   20:58:25.403 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+   20:58:25.818 Information WireToGateSessionClient: 收到SessionReadiness：messageId=b0873f9e-a19b-420e-ab7c-8f4343929495，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+   20:58:25.818 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+   20:58:25.819 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+   20:58:25.819 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/bbbbbbbb-0000-4000-8000-00000000000b/44444444-0000-4444-8444-00000000000b（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=True。
+   20:58:25.843 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+[xUnit.net 00:00:39.64]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = '42bd13c250aefa9c6e74c0d16f6c033d1e7e6558006f68be9f74c863e175d0d1')
