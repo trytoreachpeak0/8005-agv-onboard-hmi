@@ -95,7 +95,6 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         await using TestFixture fixture = await TestFixture.CreateAsync(
             initialCargo: true,
             finalCargo: false,
-            clock: new FrozenClock(DateTimeOffset.UtcNow),
             cancellationToken: token);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Unload,
@@ -2166,7 +2165,6 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         public static async Task<TestFixture> CreateAsync(
             bool initialCargo = false,
             bool finalCargo = true,
-            IClock? clock = null,
             CancellationToken cancellationToken = default)
         {
             string directory = Path.Combine(
@@ -2176,12 +2174,16 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             Directory.CreateDirectory(directory);
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
             await journal.InitializeAsync(cancellationToken);
-            SimulationIo io = new(initialCargo, finalCargo);
+            // One frozen clock for the executor and the simulated IO (8005-agv-onboard-hmi#381). The simulation
+            // refreshes a reading only when it is called, so on the wall clock a reading aged while the executor
+            // worked between two calls, and a stall there past IoSnapshotMaxAge read as an unknown slot.
+            FrozenClock clock = new(DateTimeOffset.UtcNow);
+            SimulationIo io = new(initialCargo, finalCargo, clock);
             List<WireToGateJournalOverwrite> overwrites = [];
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
-                clock ?? new SystemClock(),
+                clock,
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
@@ -2210,6 +2212,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     {
         private readonly LockerSnapshot[] _lockers;
         private readonly bool _finalCargo;
+        private readonly IClock? _clock;
         private readonly object _sync = new();
 
         public bool IsConnected => true;
@@ -2222,9 +2225,15 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
         public event EventHandler<ValueChangedEventArgs<IoSnapshot>>? SnapshotChanged;
 
-        public SimulationIo(bool initialCargo = false, bool finalCargo = true)
+        /// <param name="clock">
+        /// The executor's clock, when the test gives it one: every reading and every wait deadline is taken
+        /// from it, so a reading is exactly as old as the executor thinks (8005-agv-onboard-hmi#381). On a
+        /// frozen clock a wait never times out; it returns on its predicate or ends on cancellation.
+        /// </param>
+        public SimulationIo(bool initialCargo = false, bool finalCargo = true, IClock? clock = null)
         {
             _finalCargo = finalCargo;
+            _clock = clock;
             _lockers = Enumerable.Range(0, 8)
                 .Select(index => new LockerSnapshot(
                     index,
@@ -2232,11 +2241,13 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                     false,
                     true,
                     initialCargo ? false : true,
-                    DateTimeOffset.UtcNow))
+                    Now))
                 .ToArray();
-            CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), DateTimeOffset.UtcNow);
+            CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), Now);
             _ = ConnectionChanged;
         }
+
+        private DateTimeOffset Now => _clock?.Now ?? DateTimeOffset.UtcNow;
 
         public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
@@ -2255,7 +2266,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                 {
                     LockFeedbackRaw = false,
                     UnlockOutputRaw = true,
-                    ObservedAt = DateTimeOffset.UtcNow
+                    ObservedAt = Now
                 });
             }
 
@@ -2269,8 +2280,8 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             TimeSpan stableWindow,
             CancellationToken cancellationToken)
         {
-            DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
-            while (DateTimeOffset.UtcNow < deadline)
+            DateTimeOffset deadline = Now + timeout;
+            while (Now < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 LockerSnapshot locker;
@@ -2287,7 +2298,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                         UpdateLocker(slotIndex, current => current with
                         {
                             UnlockOutputRaw = false,
-                            ObservedAt = DateTimeOffset.UtcNow
+                            ObservedAt = Now
                         });
                     }
                     else if (locker.LockFeedbackRaw is false && locker.UnlockOutputRaw is false)
@@ -2296,7 +2307,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                         {
                             LockFeedbackRaw = true,
                             LightCurtainRaw = _finalCargo ? false : true,
-                            ObservedAt = DateTimeOffset.UtcNow
+                            ObservedAt = Now
                         });
                     }
                 }
@@ -2316,9 +2327,9 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                 CurrentSnapshot = new IoSnapshot(
                     false,
                     Enumerable.Range(0, 8)
-                        .Select(index => LockerSnapshot.Unknown(index, DateTimeOffset.UtcNow))
+                        .Select(index => LockerSnapshot.Unknown(index, Now))
                         .ToArray(),
-                    DateTimeOffset.UtcNow);
+                    Now);
             }
         }
 
@@ -2331,7 +2342,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                 {
                     LockFeedbackRaw = true,
                     UnlockOutputRaw = false,
-                    ObservedAt = DateTimeOffset.UtcNow
+                    ObservedAt = Now
                 });
             }
         }
@@ -2341,7 +2352,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         {
             lock (_sync)
             {
-                DateTimeOffset then = DateTimeOffset.UtcNow - age;
+                DateTimeOffset then = Now - age;
                 CurrentSnapshot = new IoSnapshot(
                     true,
                     _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
@@ -2352,7 +2363,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         private void UpdateLocker(int slotIndex, Func<LockerSnapshot, LockerSnapshot> update)
         {
             _lockers[slotIndex] = update(_lockers[slotIndex]);
-            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset now = Now;
             CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), now);
             SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(CurrentSnapshot));
         }
