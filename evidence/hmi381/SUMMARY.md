@@ -30,7 +30,7 @@
 
 ## 修法
 
-`TestFixture` 给执行器和 `SimulationIo` 同一个冻结时钟（`FrozenClock`），假 IO 的时间戳与等待截止都取这个时钟。
+`TestFixture` 给执行器和 `SimulationIo` 同一个手动时钟（`ManualClock`，只在测试调用 `Advance` 时走），假 IO 的时间戳与等待截止都取这个时钟。
 快照年龄恒为 0，与机器忙不忙无关；`MakeStale` 一类造旧快照的用例按同一时钟往回减，仍然成立。没有放宽任何预算。
 卸货用例另加 30 s 上限，仓位永远到不了 EMPTY 时判红而不是挂住。
 
@@ -38,11 +38,15 @@
 
 - `red/test-commit-567108d.txt`：测试提交（执行器用冻结时钟、假 IO 仍用挂钟）上红，`Expected "COMPLETED", Actual "FAILED"`。
 - `red/semantic-slot5-never-empty.txt`：改后变异假 IO，让 5 号仓关门后仍有货（永远到不了 EMPTY），用例在 30 s 上限处红；变异已还原。
+- `red/freshness-check-bypassed.txt`：新用例 `AReadingOlderThanTheSnapshotBudgetBetweenTwoSlotsStillStopsTheNextPulse`
+  在第 1 仓完成后（`VERIFYING` 进度）把手动时钟拨过预算 1 ms，2 号仓开锁前判 `NOT_STARTED[SLOT_STATE_UNKNOWN]`、整单 UNKNOWN、
+  只开锁 1 次；正好拨满预算则照常完成、开锁 8 次。临时把执行器 `IsFresh` 的新鲜度判断绕掉，拨过预算那组变成
+  `Expected "UNKNOWN", Actual "COMPLETED"`；变异已还原。证明手动时钟没把这道新鲜度检查从测试里绕过去。
 
 ## 绿证据
 
 - `green/amplified-after-fix.txt`：同一诊断改用冻结时钟，预算 1000／30／10／1 ms 各 20/20 绿。
 - `green/loop20-after-fix.txt`：卸货用例与孪生用例（Load、Unload 两组）原样循环 20 轮，20/20 绿。
-- 整类 `WireToGateSlotOperationExecutorTests` 86 条绿；`dotnet format --verify-no-changes` exit 0。
-- 本机 `scripts/run-w2g-g2.ps1 -Slice FP-IS-04`（提交 `fd6742c`，协议 `protocol-v5.0.0` `18d4fb3`）：Status PASS；
-  `ArchitectureTests` 203 条绿。
+- 提交 `00cf456`：整类 `WireToGateSlotOperationExecutorTests` 加 `ArchitectureTests` 共 291 条绿；`dotnet format --verify-no-changes` exit 0。
+- 本机 `scripts/run-w2g-g2.ps1 -Slice FP-IS-04`（提交 `fd6742c`，协议 `protocol-v5.0.0` `18d4fb3`）：Status PASS。
+- 按片 CI FP-IS-04：run 39450081681（head `bb17532`，边界用例之前）success。
