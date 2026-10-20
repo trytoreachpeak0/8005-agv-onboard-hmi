@@ -70,15 +70,33 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         }
     }
 
+    /// <summary>
+    /// Eight slots, unloaded one after another, each only once it reads EMPTY.
+    /// </summary>
+    /// <remarks>
+    /// The executor and the simulated IO read one frozen clock (8005-agv-onboard-hmi#381). The simulation
+    /// refreshes its snapshot only when it is called, so on the wall clock the snapshot aged while the
+    /// executor wrote its checkpoint between two slots; a stall of more than <c>IoSnapshotMaxAge</c> there
+    /// failed the one-door check before the next pulse as SLOT_STATE_UNKNOWN, and the run ended UNKNOWN. A
+    /// real IO module polls on its own and its snapshot does not age that way. On the frozen clock every
+    /// reading is as old as the executor's now, whatever the machine does between two calls.
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-04")]
     [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
+        // Bounded, so a slot that never reaches EMPTY -- reopened without end -- fails the test instead of
+        // hanging the run.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken token = bounded.Token;
         await using TestFixture fixture = await TestFixture.CreateAsync(
             initialCargo: true,
             finalCargo: false,
-            cancellationToken: TestContext.Current.CancellationToken);
+            clock: new FrozenClock(DateTimeOffset.UtcNow),
+            cancellationToken: token);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Unload,
             [1, 2, 3, 4, 5, 6, 7, 8],
@@ -88,7 +106,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             await fixture.Executor.ExecuteAsync(
                 command,
                 null,
-                TestContext.Current.CancellationToken);
+                token);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
         Assert.Equal(8, fixture.Io.UnlockCount);
@@ -2148,6 +2166,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         public static async Task<TestFixture> CreateAsync(
             bool initialCargo = false,
             bool finalCargo = true,
+            IClock? clock = null,
             CancellationToken cancellationToken = default)
         {
             string directory = Path.Combine(
@@ -2162,7 +2181,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
-                new SystemClock(),
+                clock ?? new SystemClock(),
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
@@ -2179,6 +2198,12 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             await Executor.DisposeAsync();
             await Journal.DisposeAsync();
         }
+    }
+
+    /// <summary>A clock that stands still, so no reading ages while the machine is busy elsewhere.</summary>
+    private sealed class FrozenClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset Now { get; } = now;
     }
 
     private sealed class SimulationIo : IIoModuleClient
