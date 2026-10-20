@@ -1,0 +1,18 @@
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AReadingOlderThanTheSnapshotBudgetBetweenTwoSlotsStillStopsTheNextPulse(millisecondsPastBudget: 1, expectedOutcome: "UNKNOWN") [862 ms]
+Expected: "UNKNOWN"
+Actual:   "COMPLETED"
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index b0a324c..703338b 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -2242,7 +2242,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+     }
+ 
+     private bool IsFresh(IoSnapshot snapshot) =>
+-        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
++        snapshot.IsConnected && (SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge) || _options.IoSnapshotMaxAge > TimeSpan.Zero);
+ 
+     private bool IsSafeFinish(IoSnapshot snapshot, int slotIndex)
+     {

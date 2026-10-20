@@ -27,14 +27,15 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         CancellationToken token = TestContext.Current.CancellationToken;
         string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        SimulationIo io = new();
+        ManualClock clock = new(DateTimeOffset.UtcNow);
+        await using SimulationIo io = new(clock);
         bool latched = false;
         await using SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
         await journal.InitializeAsync(token);
         await using WireToGateSlotOperationExecutor executor = new(
             io,
             journal,
-            new SystemClock(),
+            clock,
             new WireToGateSlotOperationExecutorOptions(
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(1),

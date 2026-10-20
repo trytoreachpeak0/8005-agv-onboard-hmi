@@ -1,0 +1,94 @@
+maxAge=10 round=0 outcome=FAILED elapsedMs=19 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[SLOT_STATE_UNKNOWN] 4:NOT_STARTED[SLOT_STATE_UNKNOWN] 5:NOT_STARTED[SLOT_STATE_UNKNOWN] 6:NOT_STARTED[SLOT_STATE_UNKNOWN] 7:NOT_STARTED[SLOT_STATE_UNKNOWN] 8:NOT_STARTED[SLOT_STATE_UNKNOWN]
+maxAge=10 round=1 outcome=UNKNOWN elapsedMs=56 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=2 outcome=UNKNOWN elapsedMs=39 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=3 outcome=UNKNOWN elapsedMs=46 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=4 outcome=UNKNOWN elapsedMs=33 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=5 outcome=UNKNOWN elapsedMs=33 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=6 outcome=UNKNOWN elapsedMs=35 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=7 outcome=UNKNOWN elapsedMs=35 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=8 outcome=UNKNOWN elapsedMs=32 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=9 outcome=UNKNOWN elapsedMs=37 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=10 outcome=UNKNOWN elapsedMs=33 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=11 outcome=UNKNOWN elapsedMs=34 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=12 outcome=UNKNOWN elapsedMs=42 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=13 outcome=UNKNOWN elapsedMs=32 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=14 outcome=UNKNOWN elapsedMs=34 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=15 outcome=UNKNOWN elapsedMs=32 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=16 outcome=UNKNOWN elapsedMs=62 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=17 outcome=UNKNOWN elapsedMs=51 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=18 outcome=UNKNOWN elapsedMs=54 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 round=19 outcome=UNKNOWN elapsedMs=48 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=10 red=20/20
+maxAge=100 round=0 outcome=COMPLETED elapsedMs=483 maxAgeAtUnlockMs=50.4 unlocks=8 notCompleted=
+maxAge=100 round=1 outcome=COMPLETED elapsedMs=494 maxAgeAtUnlockMs=59.4 unlocks=8 notCompleted=
+maxAge=100 round=2 outcome=COMPLETED elapsedMs=508 maxAgeAtUnlockMs=55.3 unlocks=8 notCompleted=
+maxAge=100 round=3 outcome=COMPLETED elapsedMs=513 maxAgeAtUnlockMs=54.9 unlocks=8 notCompleted=
+maxAge=100 round=4 outcome=COMPLETED elapsedMs=406 maxAgeAtUnlockMs=44.6 unlocks=8 notCompleted=
+maxAge=100 round=5 outcome=COMPLETED elapsedMs=404 maxAgeAtUnlockMs=42.0 unlocks=8 notCompleted=
+maxAge=100 round=6 outcome=COMPLETED elapsedMs=848 maxAgeAtUnlockMs=44.4 unlocks=8 notCompleted=
+maxAge=100 round=7 outcome=COMPLETED elapsedMs=407 maxAgeAtUnlockMs=45.9 unlocks=8 notCompleted=
+maxAge=100 round=8 outcome=COMPLETED elapsedMs=409 maxAgeAtUnlockMs=47.5 unlocks=8 notCompleted=
+maxAge=100 round=9 outcome=COMPLETED elapsedMs=397 maxAgeAtUnlockMs=42.0 unlocks=8 notCompleted=
+maxAge=100 round=10 outcome=COMPLETED elapsedMs=442 maxAgeAtUnlockMs=51.7 unlocks=8 notCompleted=
+maxAge=100 round=11 outcome=COMPLETED elapsedMs=398 maxAgeAtUnlockMs=45.5 unlocks=8 notCompleted=
+maxAge=100 round=12 outcome=COMPLETED elapsedMs=382 maxAgeAtUnlockMs=44.8 unlocks=8 notCompleted=
+maxAge=100 round=13 outcome=COMPLETED elapsedMs=398 maxAgeAtUnlockMs=48.3 unlocks=8 notCompleted=
+maxAge=100 round=14 outcome=COMPLETED elapsedMs=517 maxAgeAtUnlockMs=70.3 unlocks=8 notCompleted=
+maxAge=100 round=15 outcome=COMPLETED elapsedMs=450 maxAgeAtUnlockMs=50.5 unlocks=8 notCompleted=
+maxAge=100 round=16 outcome=COMPLETED elapsedMs=416 maxAgeAtUnlockMs=45.8 unlocks=8 notCompleted=
+maxAge=100 round=17 outcome=COMPLETED elapsedMs=422 maxAgeAtUnlockMs=47.7 unlocks=8 notCompleted=
+maxAge=100 round=18 outcome=UNKNOWN elapsedMs=244 maxAgeAtUnlockMs=42.6 unlocks=2 notCompleted=3:NOT_STARTED[SLOT_STATE_UNKNOWN] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=100 round=19 outcome=COMPLETED elapsedMs=409 maxAgeAtUnlockMs=45.7 unlocks=8 notCompleted=
+maxAge=100 red=1/20
+maxAge=1000 round=0 outcome=COMPLETED elapsedMs=407 maxAgeAtUnlockMs=41.4 unlocks=8 notCompleted=
+maxAge=1000 round=1 outcome=COMPLETED elapsedMs=424 maxAgeAtUnlockMs=46.3 unlocks=8 notCompleted=
+maxAge=1000 round=2 outcome=COMPLETED elapsedMs=471 maxAgeAtUnlockMs=79.8 unlocks=8 notCompleted=
+maxAge=1000 round=3 outcome=COMPLETED elapsedMs=563 maxAgeAtUnlockMs=73.8 unlocks=8 notCompleted=
+maxAge=1000 round=4 outcome=COMPLETED elapsedMs=885 maxAgeAtUnlockMs=119.5 unlocks=8 notCompleted=
+maxAge=1000 round=5 outcome=COMPLETED elapsedMs=598 maxAgeAtUnlockMs=89.4 unlocks=8 notCompleted=
+maxAge=1000 round=6 outcome=COMPLETED elapsedMs=633 maxAgeAtUnlockMs=84.3 unlocks=8 notCompleted=
+maxAge=1000 round=7 outcome=COMPLETED elapsedMs=703 maxAgeAtUnlockMs=103.0 unlocks=8 notCompleted=
+maxAge=1000 round=8 outcome=COMPLETED elapsedMs=405 maxAgeAtUnlockMs=39.5 unlocks=8 notCompleted=
+maxAge=1000 round=9 outcome=COMPLETED elapsedMs=403 maxAgeAtUnlockMs=46.9 unlocks=8 notCompleted=
+maxAge=1000 round=10 outcome=COMPLETED elapsedMs=388 maxAgeAtUnlockMs=46.6 unlocks=8 notCompleted=
+maxAge=1000 round=11 outcome=COMPLETED elapsedMs=415 maxAgeAtUnlockMs=41.0 unlocks=8 notCompleted=
+maxAge=1000 round=12 outcome=COMPLETED elapsedMs=421 maxAgeAtUnlockMs=47.0 unlocks=8 notCompleted=
+maxAge=1000 round=13 outcome=COMPLETED elapsedMs=372 maxAgeAtUnlockMs=43.5 unlocks=8 notCompleted=
+maxAge=1000 round=14 outcome=COMPLETED elapsedMs=421 maxAgeAtUnlockMs=48.4 unlocks=8 notCompleted=
+maxAge=1000 round=15 outcome=COMPLETED elapsedMs=405 maxAgeAtUnlockMs=42.6 unlocks=8 notCompleted=
+maxAge=1000 round=16 outcome=COMPLETED elapsedMs=400 maxAgeAtUnlockMs=47.3 unlocks=8 notCompleted=
+maxAge=1000 round=17 outcome=COMPLETED elapsedMs=415 maxAgeAtUnlockMs=53.0 unlocks=8 notCompleted=
+maxAge=1000 round=18 outcome=COMPLETED elapsedMs=452 maxAgeAtUnlockMs=60.9 unlocks=8 notCompleted=
+maxAge=1000 round=19 outcome=COMPLETED elapsedMs=456 maxAgeAtUnlockMs=48.3 unlocks=8 notCompleted=
+maxAge=1000 round=20 outcome=COMPLETED elapsedMs=1018 maxAgeAtUnlockMs=494.9 unlocks=8 notCompleted=
+maxAge=1000 round=21 outcome=COMPLETED elapsedMs=454 maxAgeAtUnlockMs=53.8 unlocks=8 notCompleted=
+maxAge=1000 round=22 outcome=COMPLETED elapsedMs=399 maxAgeAtUnlockMs=41.0 unlocks=8 notCompleted=
+maxAge=1000 round=23 outcome=COMPLETED elapsedMs=420 maxAgeAtUnlockMs=50.1 unlocks=8 notCompleted=
+maxAge=1000 round=24 outcome=COMPLETED elapsedMs=400 maxAgeAtUnlockMs=40.6 unlocks=8 notCompleted=
+maxAge=1000 round=25 outcome=COMPLETED elapsedMs=386 maxAgeAtUnlockMs=42.4 unlocks=8 notCompleted=
+maxAge=1000 round=26 outcome=COMPLETED elapsedMs=414 maxAgeAtUnlockMs=46.1 unlocks=8 notCompleted=
+maxAge=1000 round=27 outcome=COMPLETED elapsedMs=392 maxAgeAtUnlockMs=37.5 unlocks=8 notCompleted=
+maxAge=1000 round=28 outcome=COMPLETED elapsedMs=393 maxAgeAtUnlockMs=46.4 unlocks=8 notCompleted=
+maxAge=1000 round=29 outcome=COMPLETED elapsedMs=402 maxAgeAtUnlockMs=43.6 unlocks=8 notCompleted=
+maxAge=1000 red=0/30
+maxAge=30 round=0 outcome=UNKNOWN elapsedMs=77 maxAgeAtUnlockMs=23.4 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=1 outcome=UNKNOWN elapsedMs=75 maxAgeAtUnlockMs=20.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=2 outcome=UNKNOWN elapsedMs=79 maxAgeAtUnlockMs=21.1 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=3 outcome=UNKNOWN elapsedMs=49 maxAgeAtUnlockMs=0.0 unlocks=0 notCompleted=1:NOT_STARTED[SLOT_STATE_UNKNOWN] 2:NOT_STARTED[] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=4 outcome=UNKNOWN elapsedMs=76 maxAgeAtUnlockMs=21.2 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=5 outcome=UNKNOWN elapsedMs=236 maxAgeAtUnlockMs=19.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=6 outcome=UNKNOWN elapsedMs=77 maxAgeAtUnlockMs=22.4 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=7 outcome=UNKNOWN elapsedMs=78 maxAgeAtUnlockMs=22.4 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=8 outcome=UNKNOWN elapsedMs=86 maxAgeAtUnlockMs=25.2 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=9 outcome=UNKNOWN elapsedMs=77 maxAgeAtUnlockMs=22.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=10 outcome=UNKNOWN elapsedMs=83 maxAgeAtUnlockMs=28.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=11 outcome=UNKNOWN elapsedMs=75 maxAgeAtUnlockMs=22.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=12 outcome=UNKNOWN elapsedMs=74 maxAgeAtUnlockMs=23.9 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=13 outcome=UNKNOWN elapsedMs=86 maxAgeAtUnlockMs=19.7 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=14 outcome=UNKNOWN elapsedMs=73 maxAgeAtUnlockMs=19.8 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=15 outcome=UNKNOWN elapsedMs=74 maxAgeAtUnlockMs=18.9 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=16 outcome=UNKNOWN elapsedMs=67 maxAgeAtUnlockMs=19.0 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=17 outcome=UNKNOWN elapsedMs=76 maxAgeAtUnlockMs=19.5 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=18 outcome=UNKNOWN elapsedMs=76 maxAgeAtUnlockMs=21.2 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 round=19 outcome=UNKNOWN elapsedMs=79 maxAgeAtUnlockMs=19.2 unlocks=1 notCompleted=2:NOT_STARTED[SLOT_STATE_UNKNOWN] 3:NOT_STARTED[] 4:NOT_STARTED[] 5:NOT_STARTED[] 6:NOT_STARTED[] 7:NOT_STARTED[] 8:NOT_STARTED[]
+maxAge=30 red=20/20

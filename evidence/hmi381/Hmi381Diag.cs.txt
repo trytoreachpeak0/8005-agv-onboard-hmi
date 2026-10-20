@@ -1,0 +1,75 @@
+using System.Diagnostics;
+using System.Text;
+using SQCD.Agv.Application;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+
+namespace SQCD.Agv.UnitTests;
+
+// hmi#381 diagnostic only, not committed.
+public sealed partial class WireToGateSlotOperationExecutorTests
+{
+    [Theory]
+    [InlineData(1000, 20)]
+    [InlineData(1, 20)]
+    
+    [InlineData(30, 20)]
+    [InlineData(10, 20)]
+    public async Task Hmi381Diag(int maxAgeMs, int rounds)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        StringBuilder log = new();
+        int red = 0;
+        for (int round = 0; round < rounds; round++)
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            await using SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
+            await journal.InitializeAsync(token);
+            FrozenClock clock = new(DateTimeOffset.UtcNow);
+            SimulationIo io = new(true, false, clock);
+            await using WireToGateSlotOperationExecutor executor = new(
+                io,
+                journal,
+                clock,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromMilliseconds(1),
+                    TimeSpan.FromMilliseconds(maxAgeMs)),
+                () => true);
+            List<double> ages = [];
+            Stopwatch watch = Stopwatch.StartNew();
+            WireToGateOperationExecutionResult result = await executor.ExecuteAsync(
+                CreateCommand(OperationType.Unload, [1, 2, 3, 4, 5, 6, 7, 8], expectedOccupied: false),
+                (report, _) =>
+                {
+                    if (report.Phase == "UNLOCKING")
+                    {
+                        ages.Add((clock.Now - io.CurrentSnapshot.ObservedAt).TotalMilliseconds);
+                    }
+
+                    return Task.CompletedTask;
+                },
+                token);
+            watch.Stop();
+            if (result.OverallOutcome != "COMPLETED")
+            {
+                red++;
+            }
+
+            string slots = string.Join(
+                " ",
+                result.SlotResults.Where(slot => slot.Outcome != "COMPLETED")
+                    .Select(slot => $"{slot.SlotNo}:{slot.Outcome}[{string.Join(",", slot.ReasonCodes)}]"));
+            log.AppendLine(FormattableString.Invariant(
+                $"maxAge={maxAgeMs} round={round} outcome={result.OverallOutcome} elapsedMs={watch.ElapsedMilliseconds} maxAgeAtUnlockMs={(ages.Count == 0 ? 0 : ages.Max()):0.0} unlocks={ages.Count} notCompleted={slots}"));
+        }
+
+        log.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"maxAge={maxAgeMs} red={red}/{rounds}");
+        File.AppendAllText(
+            Environment.GetEnvironmentVariable("HMI381_DIAG_OUT") ?? Path.Combine(Path.GetTempPath(), "hmi381-diag.txt"),
+            log.ToString());
+    }
+}
