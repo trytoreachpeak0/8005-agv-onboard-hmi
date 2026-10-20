@@ -50,3 +50,19 @@
 - 提交 `00cf456`：整类 `WireToGateSlotOperationExecutorTests` 加 `ArchitectureTests` 共 291 条绿；`dotnet format --verify-no-changes` exit 0。
 - 本机 `scripts/run-w2g-g2.ps1 -Slice FP-IS-04`（提交 `fd6742c`，协议 `protocol-v5.0.0` `18d4fb3`）：Status PASS。
 - 按片 CI FP-IS-04：run 39450081681（head `bb17532`，边界用例之前）success。
+
+## 审查后的返工（S1～S3，提交 `2b3e3db`）
+
+- S1：另外三条自己搭 `SimulationIo`、走挂钟的用例（`LoadUsesOnlyServerFrozenSlotsAndJournalsBeforePulses`、
+  `APhysicallyUnknownSlotIsStillRefusedAfterARestart`、`ALatchArrivingWhileTheUnlockingProgressIsSentStopsThePulse`）改用手动时钟；
+  `SimulationIo` 的时钟参数改成必填，不再有挂钟分支。
+- S2：手动时钟下假 IO 的等待不会自己超时。30 s 上限放在 `SimulationIo` 的等待里（`WaitBound`，持有一个链接的 CTS），
+  到点抛 `OperationCanceledException`（不是 `TimeoutException`：执行器会把后者报成 UNKNOWN，期待 UNKNOWN 的用例会误判通过）。
+  放在假 IO 而不是 `TestFixture` 的令牌上，是因为各用例传给执行器的令牌不统一，夹具的令牌管不到；放在假 IO 里一次覆盖
+  经夹具的用例和 S1 那三条。原先两条用例各自写的 30 s 上限删掉。
+  红证据 `red/wait-bound-slot5-never-empty.txt`：让 5 号仓永远到不了 EMPTY，卸货用例与孪生用例（Unload）都在 30 s 处红，
+  `SimulationIo: slot 5 did not satisfy a wait within 30 s.`；变异已还原。
+- S3：注释撇号。
+- 本机：整类加 `ArchitectureTests` 291 条绿；`dotnet format --verify-no-changes` exit 0。
+- 审查提的产品侧观察（不在本票）：真机 Modbus 单次响应变慢（约 450 ms 以上）或进程内约 1 s 的线程池饥饿时，
+  开锁前同样会判 `SLOT_STATE_UNKNOWN`，属于安全侧失败，由调度另行处理。

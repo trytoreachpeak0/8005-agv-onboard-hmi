@@ -1,0 +1,21 @@
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnloadAllTargetSlotsRequiresEverySlotToReachEmpty [30 s]
+   System.OperationCanceledException : SimulationIo: slot 5 did not satisfy a wait within 30 s.
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 30 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(operationType: Unload) [30 s]
+   System.OperationCanceledException : SimulationIo: slot 5 did not satisfy a wait within 30 s.
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 30 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+diff --git a/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs b/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
+index 8475e63..e784db1 100644
+--- a/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
++++ b/tests/SQCD.Agv.UnitTests/WireToGateSlotOperationExecutorTests.cs
+@@ -2416,7 +2416,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
+                         UpdateLocker(slotIndex, current => current with
+                         {
+                             LockFeedbackRaw = true,
+-                            LightCurtainRaw = _finalCargo ? false : true,
++                            LightCurtainRaw = _finalCargo || slotIndex == 4 ? false : true,
+                             ObservedAt = Now
+                         });
+                     }
