@@ -145,14 +145,32 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// After <paramref name="after"/>, occupies twice as many pool threads as there are processors for 800 ms, so the next
+    /// poll of a wait is scheduled late, well past <see cref="StallAwareDeadline.StallThreshold"/>.
+    /// </summary>
+    private static async Task StallThePoolOnceAsync(TimeSpan after, CancellationToken token)
+    {
+        await Task.Delay(after, token);
+        await Task.WhenAll(Enumerable.Range(0, Environment.ProcessorCount * 2)
+            .Select(_ => Task.Run(() => Thread.Sleep(800), token)));
+    }
+
+    /// <summary>
     /// The progress acks of a fault cargo handoff are held back by the double, so the handoff's result never comes. The
     /// wait for it still fails in its own time, and its message names the message the vehicle is stuck on, says the
     /// double never acknowledged it, and carries the vehicle's log and the wire as the double saw them.
     /// </summary>
-    [Fact]
+    /// <remarks>
+    /// With <paramref name="stallTheThreadPool"/>, every pool thread is kept busy for a moment once the wait has started,
+    /// so a poll comes back late and the deadline gives time back: the message then says so between "5s" and "waiting
+    /// for" (8005-agv-onboard-hmi#383 review M1, the reviewer's own injection), and what it asserts must hold either way.
+    /// </remarks>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
-    public async Task AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn()
+    public async Task AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(bool stallTheThreadPool)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
@@ -179,12 +197,18 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.True(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
 
             Stopwatch elapsed = Stopwatch.StartNew();
+            Task stall = stallTheThreadPool ? StallThePoolOnceAsync(TimeSpan.FromSeconds(1), token) : Task.CompletedTask;
             FailException failure = await Assert.ThrowsAsync<FailException>(() => harness.WaitUntilAsync(
                 () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "FaultCargoRecoveryResult"),
                 "the control server to receive FaultCargoRecoveryResult",
                 token));
             elapsed.Stop();
+            await stall;
             TestContext.Current.TestOutputHelper?.WriteLine(failure.Message);
+            if (stallTheThreadPool)
+            {
+                Assert.Contains("given back for process stalls", failure.Message);
+            }
 
             // In its own time: the five seconds, and at most what a stall gives back on top.
             Assert.True(
