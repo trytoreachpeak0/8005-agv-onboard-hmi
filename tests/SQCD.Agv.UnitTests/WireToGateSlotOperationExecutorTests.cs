@@ -74,11 +74,11 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// Eight slots, unloaded one after another, each only once it reads EMPTY.
     /// </summary>
     /// <remarks>
-    /// The executor and the simulated IO read one frozen clock (8005-agv-onboard-hmi#381). The simulation
+    /// The executor and the simulated IO read one manual clock (8005-agv-onboard-hmi#381). The simulation
     /// refreshes its snapshot only when it is called, so on the wall clock the snapshot aged while the
     /// executor wrote its checkpoint between two slots; a stall of more than <c>IoSnapshotMaxAge</c> there
     /// failed the one-door check before the next pulse as SLOT_STATE_UNKNOWN, and the run ended UNKNOWN. A
-    /// real IO module polls on its own and its snapshot does not age that way. On the frozen clock every
+    /// real IO module polls on its own and its snapshot does not age that way. On that clock every
     /// reading is as old as the executor's now, whatever the machine does between two calls.
     /// </remarks>
     [Fact]
@@ -115,6 +115,73 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             Assert.Equal("LOCKED", slot.LockState);
             Assert.Equal("RESET", slot.UnlockOutputState);
         });
+    }
+
+    /// <summary>
+    /// The manual clock does not take the freshness check out of the unload-all run: a reading that has
+    /// aged past <c>IoSnapshotMaxAge</c> between two slots still stops the next pulse (8005-agv-onboard-hmi#381).
+    /// </summary>
+    /// <remarks>
+    /// The clock is moved once, after the first slot reached EMPTY and before the second is checked --
+    /// the window the wall clock used to open by accident. Exactly the budget is still fresh and the run
+    /// completes; one millisecond more and the second slot is refused as SLOT_STATE_UNKNOWN before any pulse,
+    /// the shape of the CI failure, made deterministic.
+    /// </remarks>
+    [Theory]
+    [InlineData(0, "COMPLETED")]
+    [InlineData(1, "UNKNOWN")]
+    [Trait("IntegrationSlice", "FP-IS-04")]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
+    public async Task AReadingOlderThanTheSnapshotBudgetBetweenTwoSlotsStillStopsTheNextPulse(
+        int millisecondsPastBudget,
+        string expectedOutcome)
+    {
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken token = bounded.Token;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: true,
+            finalCargo: false,
+            cancellationToken: token);
+        bool advanced = false;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Unload, [1, 2, 3, 4, 5, 6, 7, 8], expectedOccupied: false),
+            (progress, _) =>
+            {
+                // VERIFYING goes out after a slot is written COMPLETED and before the next slot's checks.
+                if (progress.Phase == "VERIFYING" && !advanced)
+                {
+                    advanced = true;
+                    fixture.Clock.Advance(
+                        TestFixture.IoSnapshotMaxAge + TimeSpan.FromMilliseconds(millisecondsPastBudget));
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.True(advanced);
+        Assert.Equal(expectedOutcome, result.OverallOutcome);
+        if (expectedOutcome == "COMPLETED")
+        {
+            Assert.Equal(8, fixture.Io.UnlockCount);
+            return;
+        }
+
+        Assert.Equal(1, fixture.Io.UnlockCount);
+        Assert.Equal(
+            [
+                (1, "COMPLETED", ""),
+                (2, "NOT_STARTED", "SLOT_STATE_UNKNOWN"),
+                (3, "NOT_STARTED", "")
+            ],
+            result.SlotResults
+                .OrderBy(slot => slot.SlotNo)
+                .Take(3)
+                .Select(slot => (slot.SlotNo, slot.Outcome, string.Join(",", slot.ReasonCodes))));
+        Assert.All(result.SlotResults.Skip(2), slot => Assert.Equal("NOT_STARTED", slot.Outcome));
     }
 
     /// <summary>
@@ -2141,12 +2208,17 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
     private sealed class TestFixture : IAsyncDisposable
     {
+        /// <summary>The executors IoSnapshotMaxAge, as configured below.</summary>
+        public static readonly TimeSpan IoSnapshotMaxAge = TimeSpan.FromSeconds(1);
+
         private TestFixture(
+            ManualClock clock,
             SimulationIo io,
             SqliteWireToGateJournal journal,
             WireToGateSlotOperationExecutor executor,
             List<WireToGateJournalOverwrite> overwrites)
         {
+            Clock = clock;
             Io = io;
             Journal = journal;
             Executor = executor;
@@ -2155,6 +2227,11 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
         /// <summary>Every journal a new operation replaced, as the executor told it (onboard-hmi#267).</summary>
         public List<WireToGateJournalOverwrite> Overwrites { get; }
+
+        /// <summary>
+        /// The one clock the executor and the simulated IO read. It moves only when the test moves it.
+        /// </summary>
+        public ManualClock Clock { get; }
 
         public SimulationIo Io { get; }
 
@@ -2174,10 +2251,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             Directory.CreateDirectory(directory);
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
             await journal.InitializeAsync(cancellationToken);
-            // One frozen clock for the executor and the simulated IO (8005-agv-onboard-hmi#381). The simulation
+            // One manual clock for the executor and the simulated IO (8005-agv-onboard-hmi#381). The simulation
             // refreshes a reading only when it is called, so on the wall clock a reading aged while the executor
             // worked between two calls, and a stall there past IoSnapshotMaxAge read as an unknown slot.
-            FrozenClock clock = new(DateTimeOffset.UtcNow);
+            ManualClock clock = new(DateTimeOffset.UtcNow);
             SimulationIo io = new(initialCargo, finalCargo, clock);
             List<WireToGateJournalOverwrite> overwrites = [];
             WireToGateSlotOperationExecutor executor = new(
@@ -2189,10 +2266,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
-                    TimeSpan.FromSeconds(1)),
+                    IoSnapshotMaxAge),
                 () => true,
                 journalOverwritten: overwrites.Add);
-            return new TestFixture(io, journal, executor, overwrites);
+            return new TestFixture(clock, io, journal, executor, overwrites);
         }
 
         public async ValueTask DisposeAsync()
@@ -2202,10 +2279,17 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         }
     }
 
-    /// <summary>A clock that stands still, so no reading ages while the machine is busy elsewhere.</summary>
-    private sealed class FrozenClock(DateTimeOffset now) : IClock
+    /// <summary>
+    /// A clock that moves only when <see cref="Advance"/> is called, so no reading ages while the machine is
+    /// busy elsewhere.
+    /// </summary>
+    private sealed class ManualClock(DateTimeOffset start) : IClock
     {
-        public DateTimeOffset Now { get; } = now;
+        private long _ticks = start.UtcTicks;
+
+        public DateTimeOffset Now => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
     }
 
     private sealed class SimulationIo : IIoModuleClient
@@ -2228,7 +2312,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         /// <param name="clock">
         /// The executor's clock, when the test gives it one: every reading and every wait deadline is taken
         /// from it, so a reading is exactly as old as the executor thinks (8005-agv-onboard-hmi#381). On a
-        /// frozen clock a wait never times out; it returns on its predicate or ends on cancellation.
+        /// clock nobody advances a wait never times out; it returns on its predicate or ends on cancellation.
         /// </param>
         public SimulationIo(bool initialCargo = false, bool finalCargo = true, IClock? clock = null)
         {
