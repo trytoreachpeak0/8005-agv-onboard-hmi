@@ -1992,6 +1992,20 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         /// </summary>
         public readonly SemaphoreSlim WriteGate = new(1, 1);
 
+        /// <summary>
+        /// What this connection's read loop is doing and since when: idle in <c>ReadLineAsync</c>, or handling a message it
+        /// read. For the message of a wait that ran out (8005-agv-onboard-hmi#383 review S1): a message stuck behind the one
+        /// being handled is not in <see cref="ReceivedEnvelopes"/> yet, so only this can say the loop is where it stopped.
+        /// </summary>
+        public (string State, DateTimeOffset Since) ReadLoop
+        {
+            get => Volatile.Read(ref _readLoop).ToValueTuple();
+            set => Volatile.Write(ref _readLoop, value.ToTuple());
+        }
+
+        // A reference, so the state and its time are read and written together.
+        private Tuple<string, DateTimeOffset> _readLoop = Tuple.Create("not started", DateTimeOffset.UtcNow);
+
         public void Dispose() => WriteGate.Dispose();
     }
 
@@ -2044,6 +2058,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                 AcceptedSafetyStateVersion = acceptedSafetyStateVersion
             };
             RecordConnection(connectionIndex, context.ReceivedOrder);
+            _readLoops[connectionIndex] = context;
             _ = Task.Run(() => HandleConnectionAsync(connectionIndex, context, stoppingToken), stoppingToken);
         }
     }
@@ -2164,9 +2179,11 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                context.ReadLoop = ("waiting in ReadLineAsync", DateTimeOffset.UtcNow);
                 string? line = await context.Reader.ReadLineAsync(stoppingToken).ConfigureAwait(false);
                 if (line is null)
                 {
+                    context.ReadLoop = ("ended: the vehicle closed the connection", DateTimeOffset.UtcNow);
                     return;
                 }
 
@@ -2174,6 +2191,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                 JsonElement root = document.RootElement;
                 string messageType = root.GetProperty("messageType").GetString()!;
                 string messageId = root.GetProperty("messageId").GetString()!;
+                context.ReadLoop = ($"handling {messageType} {messageId}", DateTimeOffset.UtcNow);
                 RecordMessage(connectionIndex, context.ReceivedOrder, messageType, messageId, line);
 
                 if (!string.Equals(messageType, "SessionHello", StringComparison.Ordinal)
@@ -4390,6 +4408,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
         Record(context, envelope, wireLine);
         await WriteLineAsync(context, wireLine).ConfigureAwait(false);
+        _writtenAt[envelope.MessageId] = DateTimeOffset.UtcNow;
     }
 
     private async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
@@ -4508,7 +4527,26 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         string wireLine = WireToGateProtocolSerializer.Serialize(envelope);
         Record(context, envelope, wireLine);
         await WriteLineAsync(context, wireLine).ConfigureAwait(false);
+        _writtenAt[envelope.MessageId] = DateTimeOffset.UtcNow;
     }
+
+    private readonly ConcurrentDictionary<int, ConnectionContext> _readLoops = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _writtenAt = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// When this double finished writing the envelope <paramref name="messageId"/> to the wire; null while it has not. Not
+    /// its <c>sentAt</c>, which is stamped when the envelope is built: a held or delayed ack, or one queued behind the
+    /// connection's write gate, is built long before it goes out (8005-agv-onboard-hmi#383 review S2).
+    /// </summary>
+    public DateTimeOffset? WrittenAt(string messageId) =>
+        _writtenAt.TryGetValue(messageId, out DateTimeOffset at) ? at : null;
+
+    /// <summary>Each connection's read loop as <see cref="ConnectionContext.ReadLoop"/> last saw it, oldest connection first.</summary>
+    public IReadOnlyList<(int Connection, string State, DateTimeOffset Since)> ReadLoops() =>
+    [
+        .. _readLoops.OrderBy(item => item.Key)
+            .Select(item => (item.Key, item.Value.ReadLoop.State, item.Value.ReadLoop.Since))
+    ];
 
     private void Record(ConnectionContext context, WireToGateEnvelope envelope, string wireLine)
     {
