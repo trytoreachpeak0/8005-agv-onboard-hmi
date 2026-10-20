@@ -1,0 +1,5 @@
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn [5 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "Timed out after 5s waiting for: the control server"···
+Not found: "Stuck on: OperationProgress 5edd6efa-3281-6d5b-84b"···
