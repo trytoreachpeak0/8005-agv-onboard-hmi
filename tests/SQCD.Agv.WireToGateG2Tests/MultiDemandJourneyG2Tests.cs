@@ -738,13 +738,21 @@ public sealed partial class MultiDemandJourneyG2Tests
             CancellationToken cancellationToken)
         {
             StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
+            DateTimeOffset startedAt = DateTimeOffset.UtcNow;
             while (!predicate())
             {
                 if (deadline.HasExpired)
                 {
                     string errors = string.Join(" | ", UiErrors.Select(error => error.Message));
                     Assert.Fail(
-                        $"Timed out after {deadline.Describe()} waiting for: {expectation}. UI errors: [{errors}]");
+                        $"Timed out after {deadline.Describe()} waiting for: {expectation}. UI errors: [{errors}]"
+                        + await DescribeWaitFailureSceneAsync(
+                            Server,
+                            Logger,
+                            Session.Journal,
+                            Session.Client.MessageTimeout,
+                            startedAt,
+                            DateTimeOffset.UtcNow));
                 }
 
                 await deadline.PollAsync(cancellationToken);

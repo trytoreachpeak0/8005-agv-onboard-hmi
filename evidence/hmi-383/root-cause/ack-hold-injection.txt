@@ -1,0 +1,7 @@
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Hmi383ProbeHandoffWithProgressAcksHeld(mode: 2) [21 s]
+ PROBE mode=2 result after 20009ms
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Hmi383ProbeHandoffWithProgressAcksHeld(mode: 3) [20 s]
+ PROBE mode=3 result after 20003ms
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Hmi383ProbeHandoffWithProgressAcksHeld(mode: 0) [2 s]
+ PROBE mode=0 result after 2069ms
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Hmi383ProbeHandoffWithProgressAcksHeld(mode: 1) [5 s]

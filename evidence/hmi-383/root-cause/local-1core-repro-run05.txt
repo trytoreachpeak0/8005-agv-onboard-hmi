@@ -1,0 +1,46 @@
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverASettledLoadKeepsItsDemandOnBoard [10 s]
+  Error Message:
+   Timed out after 5s (+16ms given back for process stalls) waiting for: the control server to receive FaultCargoRecoveryResult. UI errors: [] DIAG now=17:19:52.649 stalled=00:00:00.0162067 polls=282 maxPoll=266ms tp=5/0
+17:19:42.764 T4 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。  
+17:19:42.975 T9 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。  
+17:19:42.987 T9 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-20T17:19:42.6874892+00:00。  
+17:19:43.433 T9 Information WireToGateSessionClient: 收到SessionReadiness：messageId=fdf8ca20-0225-4346-a450-7c333d388b94，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。  
+17:19:43.434 T9 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。  
+17:19:43.441 T9 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。  
+17:19:43.742 T9 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。  
+17:19:43.744 T9 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。  
+17:19:43.799 T10 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。  
+17:19:47.323 T10 Information WireToGateSessionClient: 收到SessionReadiness：messageId=30c5c20f-696e-4c10-81a7-a2fd2d830323，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。  
+17:19:47.323 T10 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。  
+17:19:47.324 T10 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a；Load/bbbbbbbb-0000-4000-8000-00000000000b/44444444-0000-4444-8444-00000000000b（车上已装的需求，待选择），recoveryVector=none，recoveryS
+17:19:47.328 T9 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。  
+17:19:47.406 T9 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。  
+ENVELOPES: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationResult, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, Oper
+  Stack Trace:
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ DIAGWAIT 17:19:43.633 123ms stalled=0 polls=1 maxPoll=123ms :: the worklist on a ready session
+ DIAGWAIT 17:19:46.800 3162ms stalled=0 polls=18 maxPoll=24ms :: the load of aaaaaaaa-0000-4000-8000-00000000000a to be recorded
+ DIAGWAIT 17:19:47.322 519ms stalled=0 polls=17 maxPoll=18ms :: the load of bbbbbbbb-0000-4000-8000-00000000000b to be recorded
+ DIAGWAIT 17:19:47.332 9ms stalled=0 polls=1 maxPoll=9ms :: the session held for recovery
+ DIAGWAIT 17:19:47.333 1ms stalled=0 polls=0 maxPoll=0ms :: the loads on board listed as [子批 SUBLOT-A / 1号仓; 子批 SUBLOT-B / 5号仓], with the handoff entry on screen
+ DIAGWAIT 17:19:47.619 159ms stalled=0 polls=5 maxPoll=11ms :: the handoff to fence slot 1 in the active unlock set
+ DIAGWAIT 17:19:52.650 5031ms stalled=16 polls=282 maxPoll=266ms :: the control server to receive FaultCargoRecoveryResult
+
+
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AClearingAfterTheJourneyOffersNoCorrectionOrCompensationOverItsLoads [1 s]
+      1 ENVELOPES: SessionHello
+      1 CapabilitySnapshot
+      1 SafetyStateSnapshot
+      1 OnboardAlarmSnapshot
+      1 RecoveryStateReport
+      1 SafetyStateChanged
+      3 SnapshotAppliedAck
+      5 OperationProgress
+      1 OperationResult
+      5 OperationProgress
+      1 OperationResult
+      1 SafetyStateChanged
+      1 ExceptionRecoverySessionRequested
+      1 RecoveryActionSubmitted
+      3 OperationProgress

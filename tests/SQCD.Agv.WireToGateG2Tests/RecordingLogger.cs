@@ -61,6 +61,25 @@ internal sealed class RecordingLogger : IAppLogger
         }
     }
 
+    /// <summary>
+    /// The last <paramref name="count"/> entries with the time each was written, oldest first: for the message of a wait
+    /// that ran out, which has to show whether the vehicle was still doing anything (8005-agv-onboard-hmi#383).
+    /// </summary>
+    public IReadOnlyList<string> Tail(int count)
+    {
+        lock (_entries)
+        {
+            int start = Math.Max(0, _entries.Count - count);
+            return
+            [
+                .. Enumerable.Range(start, _entries.Count - start).Select(index =>
+                    $"{_writtenAt[index]:HH:mm:ss.fff} {_entries[index].Severity} {_entries[index].Source}: {_entries[index].Message}")
+            ];
+        }
+    }
+
+    private readonly List<DateTimeOffset> _writtenAt = [];
+
     private string? _holdPrefix;
     private readonly TaskCompletionSource _holdReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _holdEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -94,6 +113,7 @@ internal sealed class RecordingLogger : IAppLogger
         lock (_entries)
         {
             _entries.Add((severity, source, message));
+            _writtenAt.Add(DateTimeOffset.UtcNow);
             _categories.Add((category, message));
             if (exception is not null)
             {

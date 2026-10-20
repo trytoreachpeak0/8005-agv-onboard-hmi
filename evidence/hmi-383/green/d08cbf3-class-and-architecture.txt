@@ -1,0 +1,2 @@
+Passed!  - Failed:     0, Passed:   202, Skipped:     0, Total:   202, Duration: 4 m 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+filter: FullyQualifiedName~MultiDemandJourneyG2Tests|FullyQualifiedName~ArchitectureTests; dotnet format SQCD_8005AGV.sln --verify-no-changes exit=0
