@@ -16,13 +16,14 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string journalPath = Path.Combine(directory, "journal.db");
-        SimulationIo io = new();
+        ManualClock clock = new(DateTimeOffset.UtcNow);
+        await using SimulationIo io = new(clock);
         await using SqliteWireToGateJournal journal = new(journalPath);
         await journal.InitializeAsync(TestContext.Current.CancellationToken);
         WireToGateSlotOperationExecutor executor = new(
             io,
             journal,
-            new SystemClock(),
+            clock,
             new WireToGateSlotOperationExecutorOptions(
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(1),
@@ -86,12 +87,8 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
-        // Bounded, so a slot that never reaches EMPTY -- reopened without end -- fails the test instead of
-        // hanging the run.
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
-            TestContext.Current.CancellationToken);
-        bounded.CancelAfter(TimeSpan.FromSeconds(30));
-        CancellationToken token = bounded.Token;
+        // A slot that never reaches EMPTY -- reopened without end -- fails within SimulationIo.WaitBound.
+        CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(
             initialCargo: true,
             finalCargo: false,
@@ -136,10 +133,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         int millisecondsPastBudget,
         string expectedOutcome)
     {
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
-            TestContext.Current.CancellationToken);
-        bounded.CancelAfter(TimeSpan.FromSeconds(30));
-        CancellationToken token = bounded.Token;
+        CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(
             initialCargo: true,
             finalCargo: false,
@@ -1413,13 +1407,14 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                 token);
         }
 
-        SimulationIo io = new();
+        ManualClock clock = new(DateTimeOffset.UtcNow);
+        await using SimulationIo io = new(clock);
         await using SqliteWireToGateJournal journal = new(journalPath);
         await journal.InitializeAsync(token);
         await using WireToGateSlotOperationExecutor executor = new(
             io,
             journal,
-            new SystemClock(),
+            clock,
             new WireToGateSlotOperationExecutorOptions(
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(1),
@@ -2208,7 +2203,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
     private sealed class TestFixture : IAsyncDisposable
     {
-        /// <summary>The executors IoSnapshotMaxAge, as configured below.</summary>
+        /// <summary>The executor's IoSnapshotMaxAge, as configured below.</summary>
         public static readonly TimeSpan IoSnapshotMaxAge = TimeSpan.FromSeconds(1);
 
         private TestFixture(
@@ -2255,7 +2250,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             // refreshes a reading only when it is called, so on the wall clock a reading aged while the executor
             // worked between two calls, and a stall there past IoSnapshotMaxAge read as an unknown slot.
             ManualClock clock = new(DateTimeOffset.UtcNow);
-            SimulationIo io = new(initialCargo, finalCargo, clock);
+            SimulationIo io = new(clock, initialCargo, finalCargo);
             List<WireToGateJournalOverwrite> overwrites = [];
             WireToGateSlotOperationExecutor executor = new(
                 io,
@@ -2276,6 +2271,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         {
             await Executor.DisposeAsync();
             await Journal.DisposeAsync();
+            await Io.DisposeAsync();
         }
     }
 
@@ -2294,9 +2290,17 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
     private sealed class SimulationIo : IIoModuleClient
     {
+        /// <summary>
+        /// How long a wait may go unsatisfied before the simulation ends it. On the manual clock no wait
+        /// times out by itself, so an executor waiting for a reading that never comes would otherwise hang
+        /// the run until the CI job's own timeout instead of failing the test.
+        /// </summary>
+        public static readonly TimeSpan WaitBound = TimeSpan.FromSeconds(30);
+
         private readonly LockerSnapshot[] _lockers;
         private readonly bool _finalCargo;
-        private readonly IClock? _clock;
+        private readonly IClock _clock;
+        private readonly CancellationTokenSource _bound = new(WaitBound);
         private readonly object _sync = new();
 
         public bool IsConnected => true;
@@ -2310,11 +2314,11 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         public event EventHandler<ValueChangedEventArgs<IoSnapshot>>? SnapshotChanged;
 
         /// <param name="clock">
-        /// The executor's clock, when the test gives it one: every reading and every wait deadline is taken
-        /// from it, so a reading is exactly as old as the executor thinks (8005-agv-onboard-hmi#381). On a
-        /// clock nobody advances a wait never times out; it returns on its predicate or ends on cancellation.
+        /// The executor's clock: every reading and every wait deadline is taken from it, so a reading is
+        /// exactly as old as the executor thinks (8005-agv-onboard-hmi#381). On a clock nobody advances a wait
+        /// never times out; it returns on its predicate, or ends on cancellation or after <see cref="WaitBound"/>.
         /// </param>
-        public SimulationIo(bool initialCargo = false, bool finalCargo = true, IClock? clock = null)
+        public SimulationIo(IClock clock, bool initialCargo = false, bool finalCargo = true)
         {
             _finalCargo = finalCargo;
             _clock = clock;
@@ -2331,7 +2335,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             _ = ConnectionChanged;
         }
 
-        private DateTimeOffset Now => _clock?.Now ?? DateTimeOffset.UtcNow;
+        private DateTimeOffset Now => _clock.Now;
 
         public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
@@ -2362,6 +2366,28 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             Func<LockerSnapshot, bool> predicate,
             TimeSpan timeout,
             TimeSpan stableWindow,
+            CancellationToken cancellationToken)
+        {
+            using CancellationTokenSource linked =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _bound.Token);
+            try
+            {
+                return await WaitUntilAsync(slotIndex, predicate, timeout, linked.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Cancelled, not timed out: the executor turns a TimeoutException into an UNKNOWN result, which a
+                // test expecting UNKNOWN would take for a pass.
+                throw new OperationCanceledException(
+                    FormattableString.Invariant(
+                        $"SimulationIo: slot {slotIndex + 1} did not satisfy a wait within {WaitBound.TotalSeconds:0} s."));
+            }
+        }
+
+        private async Task<LockerSnapshot> WaitUntilAsync(
+            int slotIndex,
+            Func<LockerSnapshot, bool> predicate,
+            TimeSpan timeout,
             CancellationToken cancellationToken)
         {
             DateTimeOffset deadline = Now + timeout;
@@ -2402,7 +2428,11 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             throw new TimeoutException();
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            _bound.Dispose();
+            return ValueTask.CompletedTask;
+        }
 
         public void SetUnknown()
         {
