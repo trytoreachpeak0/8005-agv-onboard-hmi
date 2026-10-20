@@ -282,6 +282,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// <summary>What the vehicle logged, for a test whose assertion is about which failure was caught.</summary>
         public RecordingLogger Logger { get; private init; } = null!;
 
+        /// <summary>How long this vehicle waits for a <c>DurableAck</c> before it gives the message up, for a wait's failure.</summary>
+        public TimeSpan MessageTimeout { get; private init; }
+
         /// <summary>What <c>App.OnDispatcherUnhandledException</c> would have caught on the UI thread.</summary>
         public IReadOnlyList<Exception> UiErrors
         {
@@ -454,7 +457,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
                 // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
                 fatalFaultLatched: () => controller.IsFatalFaultLatched);
-            Harness harness = new(server, io, journalPath, session, business, controller, viewModel) { Logger = logger };
+            Harness harness = new(server, io, journalPath, session, business, controller, viewModel) { Logger = logger, MessageTimeout = messageTimeout ?? TimeSpan.FromSeconds(2) };
             // As the App wires it (8005-agv-onboard-hmi#197).
             controller.StateChanged += (_, _) => business.RefreshSafetyAfterFatalFaultLatchChange();
 
@@ -744,7 +747,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 {
                     string errors = string.Join(" | ", UiErrors.Select(error => error.Message));
                     Assert.Fail(
-                        $"Timed out after {deadline.Describe()} waiting for: {expectation}. UI errors: [{errors}]");
+                        $"Timed out after {deadline.Describe()} waiting for: {expectation}. UI errors: [{errors}]"
+                        + DescribeWaitFailureScene(Server, Logger, MessageTimeout));
                 }
 
                 await deadline.PollAsync(cancellationToken);
