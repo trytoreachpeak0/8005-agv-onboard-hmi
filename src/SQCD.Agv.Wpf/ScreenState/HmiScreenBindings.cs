@@ -64,7 +64,8 @@ internal static class HmiScreenBindings
             "HeldRecoveryCommand.CanDecline",
             "DeclineHeldRecoveryCommand"),
         Click("OnRetryPendingResultClick", "重新上报结果", "CanRetryPendingResult", "CanRetryPendingResult"),
-        Click("OnReopenOperationClick", "重新打开仓门", "CanReopenOperation", "CanReopenOperation"),
+        // v2: the slot held shut over the opposite occupancy (8005-agv-onboard-hmi#385); MVP: the controller's reopen.
+        Click("OnReopenOperationClick", "重新开门", "CanReopenOperation", "CanReopenOperation", "ReopenOperation"),
         Click("OnCancelOperationClick", "取消本次操作", "CanCancelOperation", "CanCancelOperation"),
         Click("OnSafetyReviewClick", "启动安全复核", "CanSafetyReview", "CanSafetyReview"),
         Click("OnClearFatalFaultClick", "复位严重安全故障", "CanClearFatalFault", "CanClearFatalFault"),
@@ -124,6 +125,7 @@ internal static class HmiScreenBindings
         new("SublotRejectionReason", "SublotRejectionReasonCode", "HasSublotRejection"),
         new("DoorHoldNotice", "DoorHoldSlots", "HasDoorHold"),
         new("NoOnboardExitNotice", "NoOnboardExitNoticeStatus", "HasNoOnboardExitNotice"),
+        new("ReopenOperation", "ReopenWaitStatus", "CanReopenOperation"),
         new("StationClearanceStatus", "StationClearance.Status", "StationClearance.HasStatus"),
         new("UnableToChargeStatus", "UnableToCharge.Status", "UnableToCharge.HasStatus"),
         new("CargoHoldingCountdown", "CargoHoldingCountdownStatus", "HasCargoHoldingCountdown"),

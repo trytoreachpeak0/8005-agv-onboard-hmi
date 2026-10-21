@@ -118,15 +118,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = ModalDialogs.Show(
-            $"即将重新打开{_viewModel.RecoverySlotName}。\n\n请确认仓门附近无人遮挡，并准备继续完成装卸。是否继续？",
-            "重新打开仓门",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning,
-            MessageBoxResult.No);
-        if (confirmation != MessageBoxResult.Yes)
+        // v2: one press, no dialog. It is the reopen the vehicle used to make by itself after every such close, asked for
+        // now by the person standing at that door (8005-agv-onboard-hmi#385); the MVP's reopen keeps its confirmation.
+        if (!_viewModel.ReopensWireToGateSlot)
         {
-            return;
+            MessageBoxResult confirmation = ModalDialogs.Show(
+                $"即将重新打开{_viewModel.RecoverySlotName}。\n\n请确认仓门附近无人遮挡，并准备继续完成装卸。是否继续？",
+                "重新打开仓门",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                return;
+            }
         }
 
         bool accepted = await _viewModel.RequestReopenCurrentOperationAsync();

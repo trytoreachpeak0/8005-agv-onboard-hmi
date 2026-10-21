@@ -1,0 +1,8 @@
+Test run for C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Results File: C:/work/8005-scratch/hmi385/green/green.trx
+
+Passed!  - Failed:     0, Passed:    50, Skipped:     0, Total:    50, Duration: 42 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

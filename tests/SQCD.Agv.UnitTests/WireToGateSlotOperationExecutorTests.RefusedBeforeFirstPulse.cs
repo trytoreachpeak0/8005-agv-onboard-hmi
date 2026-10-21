@@ -62,7 +62,11 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             command,
             (progress, _) =>
             {
-                if (!shut && progress.Phase == "WAITING_OPERATOR")
+                if (PressReopenWhenAsked(fixture.Executor, command, progress))
+                {
+                    // Slot 5 is open by now: the press is refused by the one-door rule.
+                }
+                else if (!shut && progress.Phase == "WAITING_OPERATOR")
                 {
                     shut = true;
                     fixture.Io.OpenDoor(4);

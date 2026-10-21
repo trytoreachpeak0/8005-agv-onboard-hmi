@@ -42,8 +42,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// 验收第 1 条：期限过后空关多次仍重开，结果里没有 <c>FAILED</c>、没有 <c>OPERATOR_TIMEOUT</c>；
-    /// 验收第 2 条的一半：每一轮提示都是期限后的文案。
+    /// 验收第 1 条：期限过后空关多次，每次按「重新开门」仍重开（8005-agv-onboard-hmi#385 起空关后等人按，不再自动开），
+    /// 结果里没有 <c>FAILED</c>、没有 <c>OPERATOR_TIMEOUT</c>；验收第 2 条的一半：门开着的每一轮提示都是期限后的文案，
+    /// 门空关着等按键的每一轮也说出取消这条出路。
     /// </summary>
     /// <remarks>
     /// 「先红」那一格：批次5-20（onboard-hmi#72）合入后执行器本来就没有期限，重开次数与结果那两格在当前代码上
@@ -58,10 +59,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using Harness harness = await Harness.StartAsync(
             new FakeIoModuleClient { SimulateOperatorLoad = true, EmptyClosesBeforeLoad = 3 },
             token);
+        await using ReopenPresser presser = ReopenPresser.Start(harness.Business, token);
 
         await harness.WaitForEventAsync("OPERATION_COMPLETED", token);
 
         Assert.Equal(4, harness.Io.UnlockCount);
+        Assert.Equal(3, presser.Presses);
         JsonElement result = harness.SingleResult("OperationResult");
         Assert.Equal("COMPLETED", result.GetProperty("overallOutcome").GetString());
         Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope =>
@@ -69,11 +72,15 @@ public sealed partial class StationDeadlineExpiredG2Tests
             || envelope.WireLine.Contains("\"FAILED\"", StringComparison.Ordinal));
 
         string[] waiting = harness.ProgressMessages(WireToGateHmiOperationStage.WaitingOperator);
-        Assert.Equal(4, waiting.Length);
-        Assert.All(waiting, prompt => Assert.StartsWith(ExpiredPrompt, prompt, StringComparison.Ordinal));
-        Assert.Equal(ExpiredPrompt, waiting[0]);
-        Assert.EndsWith("（第2次提示）", waiting[1], StringComparison.Ordinal);
-        Assert.EndsWith("（第4次提示）", waiting[3], StringComparison.Ordinal);
+        string[] heldShut = [.. waiting.Where(prompt => prompt.StartsWith("1号仓关门时没有放入篮子。", StringComparison.Ordinal))];
+        string[] open = [.. waiting.Where(prompt => !heldShut.Contains(prompt))];
+        Assert.Equal(3, heldShut.Length);
+        Assert.All(heldShut, prompt => Assert.Contains("不装了请按「取消装货」", prompt, StringComparison.Ordinal));
+        Assert.Equal(4, open.Length);
+        Assert.All(open, prompt => Assert.StartsWith(ExpiredPrompt, prompt, StringComparison.Ordinal));
+        Assert.Equal(ExpiredPrompt, open[0]);
+        Assert.EndsWith("（第3次提示）", open[1], StringComparison.Ordinal);
+        Assert.EndsWith("（第7次提示）", open[3], StringComparison.Ordinal);
     }
 
     /// <summary>

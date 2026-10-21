@@ -1,0 +1,4 @@
+m1-pending-cancellation: test exit 1 (expected non-zero)
+m2-unreadable-while-held: test exit 1 (expected non-zero)
+m3-shut-and-reset-stable-window: test exit 1 (expected non-zero)
+m4-pulse-after-safety-hold: test exit 1 (expected non-zero)

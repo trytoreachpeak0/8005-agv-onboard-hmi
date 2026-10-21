@@ -25,7 +25,7 @@ public enum WireToGatePromptCause
     /// <summary>The slot's first unlock and the first wait for the operator.</summary>
     FirstOpen,
 
-    /// <summary>The door was shut over the opposite occupancy and the slot is opened again.</summary>
+    /// <summary>The operator pressed 「重新开门」 over a door shut on the opposite occupancy, and the slot is opened again.</summary>
     OppositeReopen,
 
     /// <summary>OperationTimeout passed with the door still open; only the prompt repeats.</summary>
@@ -35,8 +35,45 @@ public enum WireToGatePromptCause
     /// The slot is to be reopened, but the vehicle safety fact does not allow an unlock pulse (an
     /// emergency stop, or a safety projection that cannot be trusted). Nothing is pulsed until it does.
     /// </summary>
-    ReopenHeldBySafety
+    ReopenHeldBySafety,
+
+    /// <summary>
+    /// The door was shut over the opposite occupancy -- a load with nothing put in, an unload with the basket left in.
+    /// The slot stays shut and locked, and nothing is pulsed until the operator presses 「重新开门」
+    /// (<see cref="WireToGateOperatorSlotRequest.Reopen"/>) or a load is cancelled (8005-agv-onboard-hmi#385, CP-0019).
+    /// </summary>
+    ShutOverOpposite,
+
+    /// <summary>
+    /// A pressed reopen's lock did not release, or released and fell back inside the stable window, while the slot read
+    /// shut, locked, its output reset and its occupancy known: the door was held or shut again as it opened. Back to
+    /// waiting for the press, as <see cref="ShutOverOpposite"/> (8005-agv-onboard-hmi#385).
+    /// </summary>
+    ReopenNotReleased
 }
+
+/// <summary>
+/// What the operator can ask of the slot an executor holds shut over the opposite occupancy
+/// (<see cref="WireToGatePromptCause.ShutOverOpposite"/>, <see cref="WireToGatePromptCause.ReopenNotReleased"/>).
+/// </summary>
+/// <remarks>
+/// One channel for every such request, so a later one -- the multi-basket load's 「剩下的不装」
+/// (8005-agv-onboard-hmi#388) -- is another value here and another branch where the wait returns, not another channel.
+/// </remarks>
+public enum WireToGateOperatorSlotRequest
+{
+    /// <summary>「重新开门」: one more unlock pulse on the same slot of the same operation, with no limit on how many.</summary>
+    Reopen
+}
+
+/// <summary>
+/// The slot a running operation is holding shut for an operator request, and why; see
+/// <see cref="WireToGateSlotOperationExecutor.OperatorRequestWait"/>.
+/// </summary>
+public sealed record WireToGateOperatorRequestWait(
+    string SlotOperationAttemptId,
+    int PhysicalSlot,
+    WireToGatePromptCause Cause);
 
 /// <summary>
 /// One progress report from an executor. <paramref name="PromptRound"/> counts the rounds of waiting
@@ -134,7 +171,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private ActiveOperation? _activeOperation;
 
     /// <param name="reopenPermitted">
-    /// Asked before every automatic reopen pulse. Nothing on this vehicle reads the emergency stop
+    /// Asked before every reopen pulse. Nothing on this vehicle reads the emergency stop
     /// directly, and nothing in this repository establishes that an emergency stop cuts the unlock
     /// output in hardware, so the executor asks the vehicle safety fact instead: false while the
     /// vehicle is not proven stopped -- RIoT reporting an emergency state that is not OK makes the
@@ -273,6 +310,72 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         /// <summary>The slot a declaration was applied to. Written only under <see cref="_declarationGate"/>.</summary>
         public int? DeclaredSlot { get; set; }
+
+        /// <summary>
+        /// The slot held shut for an operator request and the request's answer, while the run waits for it; read and
+        /// written only under a lock on this object.
+        /// </summary>
+        public PendingOperatorRequest? OperatorRequest { get; set; }
+    }
+
+    /// <summary>A slot held shut for an operator request, and the answer the request completes.</summary>
+    private sealed record PendingOperatorRequest(
+        WireToGateOperatorRequestWait Wait,
+        TaskCompletionSource<WireToGateOperatorSlotRequest> Answer);
+
+    /// <summary>
+    /// The slot the running operation holds shut over the opposite occupancy, waiting for the operator's
+    /// 「重新开门」, or <c>null</c> when it waits for no request (8005-agv-onboard-hmi#385).
+    /// </summary>
+    public WireToGateOperatorRequestWait? OperatorRequestWait
+    {
+        get
+        {
+            ActiveOperation? active = Volatile.Read(ref _activeOperation);
+            if (active is null)
+            {
+                return null;
+            }
+
+            lock (active)
+            {
+                return active.OperatorRequest?.Wait;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hands the operator's <paramref name="request"/> to the run holding <paramref name="physicalSlot"/> of
+    /// <paramref name="slotOperationAttemptId"/> shut for one. True when that run took it; false, and nothing
+    /// happens, when no run waits for a request on that slot -- including a second press of the same wait, which the
+    /// first one has already answered.
+    /// </summary>
+    /// <remarks>
+    /// Only hands it over. Whatever the request leads to -- the safety hold, the one-door check, the latch and the
+    /// declaration gate in front of a pulse -- is the run's, as for every other pulse.
+    /// </remarks>
+    public bool SubmitOperatorRequest(
+        string slotOperationAttemptId,
+        int physicalSlot,
+        WireToGateOperatorSlotRequest request)
+    {
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
+        if (active is null
+            || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (active)
+        {
+            if (active.OperatorRequest is not { } pending || pending.Wait.PhysicalSlot != physicalSlot)
+            {
+                return false;
+            }
+
+            active.OperatorRequest = null;
+            return pending.Answer.TrySetResult(request);
+        }
     }
 
     /// <summary>
@@ -1357,7 +1460,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 exception is IOException
                     or TimeoutException
                     or InvalidDataException
-                    or RefusedBeforeFirstPulseException)
+                    or RefusedBeforeFirstPulseException
+                    or SlotFeedbackFailedException)
             {
                 // Only the three conditions of ADR-cross-0058 decision 2 reach this branch: the slot
                 // state cannot be read, the lock feedback is not valid, or the unlock output cannot be
@@ -1609,18 +1713,40 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
-    /// Drives one slot to its target state (ADR-cross-0058 decision 1). A door shut over the opposite
-    /// occupancy -- loading without putting a basket in, unloading without taking it out -- gets a
-    /// fresh unlock pulse and another prompt: not a failure, not recovery, and no retry limit
-    /// (ADR-cross-0040). A door that stays open meets neither condition, and every
-    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/> it only prompts again
-    /// (decision 3). Returns the reading that satisfied <see cref="IsFinalState"/>; throws only for
-    /// the decision 2 conditions, which the caller turns into UNKNOWN.
+    /// Drives one slot to its target state (ADR-cross-0058 decision 1, as CP-0019 rewrote it). A door shut over the
+    /// opposite occupancy -- loading without putting a basket in, unloading without taking it out -- is not a failure
+    /// and not recovery: the slot stays shut and locked, nothing is pulsed, and the operator is asked to press
+    /// 「重新开门」 (<see cref="WireToGatePromptCause.ShutOverOpposite"/>), or to cancel a load. Each press is one more
+    /// pulse, with no limit on how many (ADR-cross-0040). A door that stays open meets neither condition, and every
+    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/> it only prompts again (decision 3); so
+    /// does the wait for the press. Returns the reading that satisfied <see cref="IsFinalState"/>; throws only for the
+    /// decision 2 conditions, which the caller turns into UNKNOWN.
     /// </summary>
     /// <remarks>
-    /// With no deadline any more, a reopen can come long after the command did, so every reopen pulse
-    /// first asks the vehicle safety fact. While it says no, the slot is held: the door is shut and
-    /// locked, nothing is pulsed, and the operator is told why on the prompt cadence.
+    /// <para>
+    /// <b>Why it no longer reopens by itself</b> (8005-agv-onboard-hmi#385). The automatic reopen came about 0.4 s
+    /// after the door was read shut, while the person who shut it was often still at it: on 2026-10-19 (agv03) the lock
+    /// released for 0.24 s and caught again, on 2026-10-21 (agv02) it did not release at all. Either way the wait for the
+    /// lock to read released ran out, and that was read as feedback that cannot be trusted -- UNKNOWN, and the vehicle
+    /// stood until a recovery, once for five hours.
+    /// </para>
+    /// <para>
+    /// <b>A pressed reopen that does not open is not decision 2 either.</b> When the lock does not hold released for the
+    /// stable window, the slot is asked once more: read, locked, output reset, held for the stable window within
+    /// <see cref="WireToGateSlotOperationExecutorOptions.UnlockOutputResetTimeout"/>. Then the door is simply shut again
+    /// over a known occupancy, and the run waits for the press (<see cref="WireToGatePromptCause.ReopenNotReleased"/>).
+    /// Only a slot that cannot be read, an output that does not reset, or a lock that will not settle either way is
+    /// decision 2. The first pulse of a slot keeps decision 2 as it was: it is the server's command over a slot the
+    /// precheck found shut, and nobody has been at that door yet.
+    /// </para>
+    /// <para>
+    /// With no deadline, a press can come long after the command did, so every reopen pulse first asks the vehicle
+    /// safety fact. While it says no, the slot is held: the door is shut and locked, nothing is pulsed, and the operator
+    /// is told why on the prompt cadence. When it allows a pulse again, the run goes back to waiting for a press rather
+    /// than pulsing on the one it held: an emergency stop can last long, and the person who pressed may have gone, so a
+    /// door that sprang open by itself when the stop cleared would be the automatic reopen CP-0019 removed (review M3 of
+    /// PR #390).
+    /// </para>
     /// </remarks>
     private async Task<LockerSnapshot> DriveSlotToTargetStateAsync(
         WireToGateSlotOperationCommand command,
@@ -1640,14 +1766,42 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         for (int promptRound = 0; ; promptRound++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (cause is WireToGatePromptCause.ShutOverOpposite or WireToGatePromptCause.ReopenNotReleased)
+            {
+                (OperatorWaitOutcome waited, promptRound) = await WaitForOperatorRequestAsync(
+                    physicalSlot,
+                    completed,
+                    promptRound,
+                    cause,
+                    progress,
+                    active,
+                    cancellationToken).ConfigureAwait(false);
+                if (waited == OperatorWaitOutcome.DoorReleased)
+                {
+                    // The lock reads released with nobody having pressed: the door was not latched after all, and it
+                    // is open now. Nothing to pulse; the operator is at an open door, as after any pulse.
+                    unlockNeeded = false;
+                    cause = WireToGatePromptCause.PromptCadence;
+                }
+                else
+                {
+                    unlockNeeded = true;
+                    cause = WireToGatePromptCause.OppositeReopen;
+                }
+            }
+
             if (unlockNeeded && cause == WireToGatePromptCause.OppositeReopen && !_reopenPermitted())
             {
+                // The press is spent on the hold. Once a pulse is allowed again the operator is asked anew; nothing opens
+                // by itself (see the remarks).
                 promptRound = await HoldReopenUntilPermittedAsync(
                     physicalSlot,
                     completed,
                     promptRound,
                     progress,
                     cancellationToken).ConfigureAwait(false);
+                cause = WireToGatePromptCause.ShutOverOpposite;
+                continue;
             }
 
             if (unlockNeeded)
@@ -1687,21 +1841,36 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 {
                     _declarationGate.Release();
                 }
+
                 // Both are hardware responses in milliseconds. Missing either one means the lock
-                // feedback or the unlock output cannot be trusted -- decision 2, not the operator.
-                LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown && !locker.IsLocked,
-                    _options.UnlockFeedbackTimeout,
-                    _options.FeedbackStableWindow,
-                    cancellationToken).ConfigureAwait(false);
-                await _ioModule.WaitForLockerAsync(
+                // feedback or the unlock output cannot be trusted -- decision 2, not the operator --
+                // except a pressed reopen whose door reads shut again (see the remarks).
+                LockerSnapshot unlocked;
+                try
+                {
+                    unlocked = await _ioModule.WaitForLockerAsync(
+                        slotIndex,
+                        locker => locker.IsKnown && !locker.IsLocked,
+                        _options.UnlockFeedbackTimeout,
+                        _options.FeedbackStableWindow,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (TimeoutException) when (cause == WireToGatePromptCause.OppositeReopen)
+                {
+                    await WaitForShutAndResetAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    cause = WireToGatePromptCause.ReopenNotReleased;
+                    continue;
+                }
+                catch (TimeoutException)
+                {
+                    throw new SlotFeedbackFailedException(UnlockNotConfirmedReason(slotIndex));
+                }
+
+                await WaitForOutputResetAsync(
                     slotIndex,
                     locker => locker.IsKnown
                         && locker.ObservedAt >= unlocked.ObservedAt
                         && locker.UnlockOutputRaw is false,
-                    _options.UnlockOutputResetTimeout,
-                    _options.FeedbackStableWindow,
                     cancellationToken).ConfigureAwait(false);
             }
 
@@ -1729,29 +1898,231 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             // given its reset timeout, and one that does not fall back throws from here (decision 2).
             LockerSnapshot settled = closed!.UnlockOutputRaw is false
                 ? closed
-                : await _ioModule.WaitForLockerAsync(
+                : await WaitForOutputResetAsync(
                     slotIndex,
                     locker => locker.IsKnown
                         && locker.IsLocked
                         && locker.HasCargo == closed.HasCargo
                         && locker.UnlockOutputRaw is false,
-                    _options.UnlockOutputResetTimeout,
-                    _options.FeedbackStableWindow,
                     cancellationToken).ConfigureAwait(false);
             if (outcome == SlotWaitOutcome.Reached)
             {
                 return settled;
             }
 
-            unlockNeeded = true;
-            cause = WireToGatePromptCause.OppositeReopen;
+            cause = WireToGatePromptCause.ShutOverOpposite;
         }
+    }
+
+    private enum OperatorWaitOutcome
+    {
+        /// <summary>The operator pressed 「重新开门」.</summary>
+        ReopenPressed,
+
+        /// <summary>The lock read released, held for the stable window, without a pulse.</summary>
+        DoorReleased
+    }
+
+    /// <summary>
+    /// Holds the slot shut over the opposite occupancy until the operator asks for it
+    /// (<see cref="SubmitOperatorRequest"/>), and prompts once at once and again every
+    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each a round of its own -- the prompt cadence
+    /// of decision 3, which also keeps the expected-action clock of REQ-0358 running from the slot's first unlock. Returns
+    /// how the wait ended and the round that follows it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What else ends it.</b> A slot that turns unreadable for the stable window is decision 2, as in the wait for a
+    /// shut door. A lock that reads released for the stable window without a pulse is a door that was never latched: it
+    /// is open, and the run goes back to waiting for it to be shut. A fatal fault latched while the run waits ends it at
+    /// once as the latch's refusal of the reopen, rather than leaving it waiting: <c>ClearFatalFaultAsync</c> refuses
+    /// while an operation is in flight, so nobody could lift the latch the wait would be waiting on. A slot fault
+    /// declaration or a load cancellation cancels the run's token, which ends the wait with it.
+    /// </para>
+    /// <para>
+    /// The request is published before the first prompt, so the screen offers the button no earlier than the executor
+    /// can take it, and taken off in the same lock that takes an answer, so a second press of the same wait finds
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    private async Task<(OperatorWaitOutcome Outcome, int NextRound)> WaitForOperatorRequestAsync(
+        int physicalSlot,
+        IReadOnlyList<int> completed,
+        int promptRound,
+        WireToGatePromptCause cause,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        ActiveOperation? active,
+        CancellationToken cancellationToken)
+    {
+        int slotIndex = physicalSlot - 1;
+        // Both callers publish the run before they get here; nothing else drives a slot.
+        ArgumentNullException.ThrowIfNull(active);
+        TaskCompletionSource<WireToGateOperatorSlotRequest> answer =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (active)
+        {
+            active.OperatorRequest = new(
+                new WireToGateOperatorRequestWait(active.SlotOperationAttemptId, physicalSlot, cause),
+                answer);
+        }
+
+        try
+        {
+            for (; ; promptRound++)
+            {
+                await SendProgressAsync(
+                    progress,
+                    new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, cause),
+                    cancellationToken).ConfigureAwait(false);
+                using CancellationTokenSource waitCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task<WireToGateOperatorSlotRequest> pressed = answer.Task.WaitAsync(waitCts.Token);
+                Task<LockerSnapshot> released = _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown && !locker.IsLocked,
+                    _options.OperationTimeout,
+                    _options.FeedbackStableWindow,
+                    waitCts.Token);
+                Task<LockerSnapshot> unknown = _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => !locker.IsKnown,
+                    _options.OperationTimeout,
+                    _options.FeedbackStableWindow,
+                    waitCts.Token);
+                Task latched = WaitForFatalFaultLatchAsync(waitCts.Token);
+                try
+                {
+                    Task winner = await Task.WhenAny(pressed, released, unknown, latched).ConfigureAwait(false);
+                    if (winner == pressed)
+                    {
+                        _ = await pressed.ConfigureAwait(false);
+                        return (OperatorWaitOutcome.ReopenPressed, promptRound + 1);
+                    }
+
+                    if (winner == latched)
+                    {
+                        await latched.ConfigureAwait(false);
+                        throw new FatalFaultLatchedException(reopen: true);
+                    }
+
+                    try
+                    {
+                        _ = await ((Task<LockerSnapshot>)winner).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException)
+                    {
+                        // One prompt cadence passed with the door shut and locked: prompt again, same cause.
+                        continue;
+                    }
+
+                    if (winner == unknown)
+                    {
+                        throw new InvalidDataException("SLOT_STATE_UNKNOWN");
+                    }
+
+                    return (OperatorWaitOutcome.DoorReleased, promptRound + 1);
+                }
+                finally
+                {
+                    await waitCts.CancelAsync().ConfigureAwait(false);
+                    await ObserveAsync(pressed).ConfigureAwait(false);
+                    await ObserveAsync(released).ConfigureAwait(false);
+                    await ObserveAsync(unknown).ConfigureAwait(false);
+                    await ObserveAsync(latched).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            lock (active)
+            {
+                if (active.OperatorRequest?.Answer == answer)
+                {
+                    active.OperatorRequest = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>Completes once the fatal-fault latch is set, polling it as the reopen permission is polled.</summary>
+    private async Task WaitForFatalFaultLatchAsync(CancellationToken cancellationToken)
+    {
+        while (!_fatalFaultLatched())
+        {
+            await Task.Delay(ReopenPermissionPollInterval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// After a pressed reopen whose lock did not hold released: the slot read, locked and its output reset, held for the
+    /// stable window, within <see cref="WireToGateSlotOperationExecutorOptions.UnlockOutputResetTimeout"/> -- the door
+    /// shut again over an occupancy that can be read. Anything else is decision 2, under the reason the reading at that
+    /// moment gives.
+    /// </summary>
+    private async Task WaitForShutAndResetAsync(int slotIndex, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _ioModule.WaitForLockerAsync(
+                slotIndex,
+                locker => locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false,
+                _options.UnlockOutputResetTimeout,
+                _options.FeedbackStableWindow,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new SlotFeedbackFailedException(UnlockNotConfirmedReason(slotIndex));
+        }
+    }
+
+    /// <summary>
+    /// The wait for the unlock output to fall back, which is decision 2 when it does not: <c>UNLOCK_OUTPUT_NOT_RESET</c>,
+    /// or <c>SLOT_STATE_UNKNOWN</c> when the slot cannot be read at that moment.
+    /// </summary>
+    private async Task<LockerSnapshot> WaitForOutputResetAsync(
+        int slotIndex,
+        Func<LockerSnapshot, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _ioModule.WaitForLockerAsync(
+                slotIndex,
+                predicate,
+                _options.UnlockOutputResetTimeout,
+                _options.FeedbackStableWindow,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            LockerSnapshot now = ReadLocker(_ioModule.CurrentSnapshot, slotIndex);
+            throw new SlotFeedbackFailedException(now.IsKnown ? "UNLOCK_OUTPUT_NOT_RESET" : "SLOT_STATE_UNKNOWN");
+        }
+    }
+
+    /// <summary>
+    /// Which decision 2 condition a lock that did not settle after a pulse is, read off the slot as it is now: unreadable
+    /// is <c>SLOT_STATE_UNKNOWN</c>, an output still energised is <c>UNLOCK_OUTPUT_NOT_RESET</c>, and a readable slot
+    /// whose output has fallen back but whose lock would not hold one state -- or would not release on the first pulse --
+    /// is <c>SLOT_INOPERABLE</c>. None of them is <c>ACTION_NOT_ALLOWED_IN_STATE</c>, which is what every timeout was
+    /// reported as until 8005-agv-onboard-hmi#385 and which read as "a state that does not allow it" on both field
+    /// occasions.
+    /// </summary>
+    private string UnlockNotConfirmedReason(int slotIndex)
+    {
+        LockerSnapshot now = ReadLocker(_ioModule.CurrentSnapshot, slotIndex);
+        return !now.IsKnown
+            ? "SLOT_STATE_UNKNOWN"
+            : now.UnlockOutputRaw is not false
+                ? "UNLOCK_OUTPUT_NOT_RESET"
+                : "SLOT_INOPERABLE";
     }
 
     /// <summary>
     /// Waits, without pulsing, until the vehicle safety fact allows the reopen. Prompts once at once
     /// and again every <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each as a
-    /// round of its own. Returns the round the reopen itself uses.
+    /// round of its own. Returns the last round it prompted, the one the wait for the next press follows.
     /// </summary>
     private async Task<int> HoldReopenUntilPermittedAsync(
         int physicalSlot,
@@ -1779,7 +2150,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
         }
 
-        return promptRound + 1;
+        return promptRound;
     }
 
     private enum SlotWaitOutcome
@@ -2163,6 +2534,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private sealed class RefusedBeforeFirstPulseException(string reasonCode) : Exception(reasonCode);
 
     /// <summary>
+    /// A hardware response after a pulse did not come -- the lock did not settle, or the output did not reset -- and the
+    /// slot's reading says which decision 2 condition that is. The message is the reason code (8005-agv-onboard-hmi#385).
+    /// </summary>
+    private sealed class SlotFeedbackFailedException(string reasonCode) : Exception(reasonCode);
+
+    /// <summary>
     /// The code a latch refusal carries on the wire, in a slot result's <c>reasonCodes</c>.
     /// </summary>
     /// <remarks>
@@ -2201,7 +2578,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private static string MapFailureReason(Exception exception) => exception switch
     {
         RefusedBeforeFirstPulseException refused => refused.Message,
-        TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
+        SlotFeedbackFailedException feedback => feedback.Message,
+        // Every wait on a hardware response turns its own timeout into SlotFeedbackFailedException with the reason the
+        // reading gives, so none should arrive here. One that does is a slot this run could not read in time; it is not
+        // ACTION_NOT_ALLOWED_IN_STATE, which is what it used to be called (8005-agv-onboard-hmi#385).
+        TimeoutException => "SLOT_STATE_UNKNOWN",
         IOException => "SLOT_STATE_UNKNOWN",
         // Raised with the reason code itself, by the single-door check before a pulse.
         InvalidDataException { Message: "UNLOCK_OUTPUT_NOT_RESET" or "LOCK_NOT_CLOSED" } invalid

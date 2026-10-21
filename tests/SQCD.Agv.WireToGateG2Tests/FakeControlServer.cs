@@ -701,6 +701,12 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    /// <summary>
+    /// Whether that command is a <c>LOAD</c> (the default) or an <c>UNLOAD</c> of the same slot, which then expects it
+    /// <c>EMPTY</c> (8005-agv-onboard-hmi#385: the 10-21 agv02 unload).
+    /// </summary>
+    public string SlotOperationType { get; set; } = "LOAD";
+
     /// <summary>The attempt of the one <c>SlotOperationCommand</c> this double issues.</summary>
     private const string CommandSlotOperationAttemptId = "44444444-4444-4444-4444-444444444444";
 
@@ -4164,16 +4170,17 @@ public sealed partial class FakeControlServer : IAsyncDisposable
             CreateEnvelope(
                 context,
                 "SlotOperationCommand",
-                Guid.NewGuid().ToString("D"),
+                // A load answers the operator's SublotSubmitted and is correlated to it; an unload answers nothing.
+                SlotOperationType == "UNLOAD" ? null : Guid.NewGuid().ToString("D"),
                 new
                 {
                     demandId = "11111111-1111-1111-1111-111111111111",
                     operationSessionId = "33333333-3333-3333-3333-333333333333",
                     slotOperationAttemptId = CommandSlotOperationAttemptId,
-                    operationType = "LOAD",
+                    operationType = SlotOperationType,
                     slots = SingleSlot,
                     expectedBasketCount = 1,
-                    expectedFinalPhysicalState = "OCCUPIED",
+                    expectedFinalPhysicalState = SlotOperationType == "UNLOAD" ? "EMPTY" : "OCCUPIED",
                     commandContentSha256 = new string('0', 64)
                 }))
             .ConfigureAwait(false);

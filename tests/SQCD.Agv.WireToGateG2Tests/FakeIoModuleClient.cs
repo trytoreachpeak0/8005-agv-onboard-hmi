@@ -49,6 +49,83 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     private int _emptyClosesDone;
 
+    /// <summary>
+    /// The IO plays back a script of the field's readings instead of an operator model (8005-agv-onboard-hmi#385). A pulse
+    /// runs the steps <see cref="ScriptPulse"/> gave its number -- or <see cref="DefaultPulseScript"/> -- on a timer of
+    /// its own, each step a change to the readings at a delay after the pulse, the way the module's own lines move: output
+    /// on, lock released, output fallen back, door shut. A wait polls the readings and holds its predicate for its stable
+    /// window, as <c>ModbusTcpIoModuleClient.WaitForLockerAsync</c> does, and times out as it does. Readings are always
+    /// fresh, the module being polled every few milliseconds on a vehicle.
+    /// </summary>
+    public bool ScriptedHardware { get; init; }
+
+    /// <summary>What a pulse with no script of its own does: the lock releases and the output falls back, nothing more.</summary>
+    public static IReadOnlyList<ScriptStep> DefaultPulseScript { get; } =
+    [
+        new(TimeSpan.FromMilliseconds(40), (io, slot) => io.SetLockFeedback(slot, locked: false)),
+        new(TimeSpan.FromMilliseconds(600), (io, slot) => io.SetUnlockOutput(slot, energised: false)),
+    ];
+
+    /// <summary>One change to the readings, <paramref name="After"/> the pulse that started its script.</summary>
+    public sealed record ScriptStep(TimeSpan After, Action<FakeIoModuleClient, int> Apply);
+
+    private readonly Dictionary<int, IReadOnlyList<ScriptStep>> _pulseScripts = [];
+    private readonly List<Task> _runningScripts = [];
+
+    /// <summary>
+    /// With <see cref="ScriptedHardware"/>, what the slot's readings do after the <paramref name="pulseNumber"/>th pulse of
+    /// this module (counted as <see cref="UnlockCount"/>, from 1). The output turns on with the pulse itself; the steps
+    /// are what follows.
+    /// </summary>
+    public void ScriptPulse(int pulseNumber, params ScriptStep[] steps)
+    {
+        lock (_sync)
+        {
+            _pulseScripts[pulseNumber] = steps;
+        }
+    }
+
+    /// <summary>The lock feedback alone changes: released (<c>false</c>) or caught (<c>true</c>).</summary>
+    public void SetLockFeedback(int slotIndex, bool locked)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with { LockFeedbackRaw = locked, ObservedAt = DateTimeOffset.UtcNow });
+        }
+    }
+
+    /// <summary>The unlock output alone changes.</summary>
+    public void SetUnlockOutput(int slotIndex, bool energised)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with { UnlockOutputRaw = energised, ObservedAt = DateTimeOffset.UtcNow });
+        }
+    }
+
+    /// <summary>The door is shut on a released lock: the lock catches, and the light curtain reads what is inside.</summary>
+    public void ShutDoor(int slotIndex, bool cargo)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = true,
+                LightCurtainRaw = !cargo,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>Every scripted step has run: the readings are where the scripts leave them.</summary>
+    public Task ScriptsFinishedAsync()
+    {
+        lock (_sync)
+        {
+            return Task.WhenAll(_runningScripts);
+        }
+    }
+
     public bool IsConnected => CurrentSnapshot.IsConnected;
 
     /// <summary>
@@ -76,7 +153,7 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         {
             lock (_sync)
             {
-                if (!KeepSnapshotFresh)
+                if (!KeepSnapshotFresh && !ScriptedHardware)
                 {
                     return _snapshot;
                 }
@@ -326,7 +403,15 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         lock (_sync)
         {
             UnlockCount++;
-            if (OperatorNeverActs)
+            if (ScriptedHardware)
+            {
+                Update(slotIndex, locker => locker with { UnlockOutputRaw = true, ObservedAt = DateTimeOffset.UtcNow });
+                IReadOnlyList<ScriptStep> steps = _pulseScripts.TryGetValue(UnlockCount, out IReadOnlyList<ScriptStep>? script)
+                    ? script
+                    : DefaultPulseScript;
+                _runningScripts.Add(RunScriptAsync(slotIndex, steps));
+            }
+            else if (OperatorNeverActs)
             {
                 // The pulse is over: the lock has released and the output has already fallen back.
                 Update(slotIndex, locker => locker with
@@ -360,6 +445,11 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         if (LockerWaitTimesOut)
         {
             throw new TimeoutException("G2 fake: the locker never reached the expected state.");
+        }
+
+        if (ScriptedHardware)
+        {
+            return await WaitLikeTheModuleAsync(slotIndex, predicate, timeout, stableWindow, cancellationToken);
         }
 
         if (OperatorNeverActs)
@@ -447,6 +537,61 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         }
 
         throw new TimeoutException();
+    }
+
+    private async Task RunScriptAsync(int slotIndex, IReadOnlyList<ScriptStep> steps)
+    {
+        // Timed from the pulse, not from the step before: a late wake-up delays one step, not every one after it.
+        System.Diagnostics.Stopwatch sincePulse = System.Diagnostics.Stopwatch.StartNew();
+        foreach (ScriptStep step in steps)
+        {
+            TimeSpan remaining = step.After - sincePulse.Elapsed;
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(remaining).ConfigureAwait(false);
+            }
+
+            step.Apply(this, slotIndex);
+        }
+    }
+
+    /// <summary>The algorithm of <c>ModbusTcpIoModuleClient.WaitForLockerAsync</c>, on the readings as they stand.</summary>
+    private async Task<LockerSnapshot> WaitLikeTheModuleAsync(
+        int slotIndex,
+        Func<LockerSnapshot, bool> predicate,
+        TimeSpan timeout,
+        TimeSpan stableWindow,
+        CancellationToken cancellationToken)
+    {
+        System.Diagnostics.Stopwatch started = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan? stableSince = null;
+        while (started.Elapsed < timeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IoSnapshot snapshot = CurrentSnapshot;
+            if (!snapshot.IsConnected)
+            {
+                throw new IOException("G2 fake: the IO connection dropped during a wait.");
+            }
+
+            LockerSnapshot locker = snapshot.GetLocker(slotIndex) with { ObservedAt = DateTimeOffset.UtcNow };
+            if (predicate(locker))
+            {
+                stableSince ??= started.Elapsed;
+                if (stableWindow <= TimeSpan.Zero || started.Elapsed - stableSince.Value >= stableWindow)
+                {
+                    return locker;
+                }
+            }
+            else
+            {
+                stableSince = null;
+            }
+
+            await Task.Delay(5, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"G2 fake: slot {slotIndex + 1} did not hold the expected state within {timeout}.");
     }
 
     private void Update(int slotIndex, Func<LockerSnapshot, LockerSnapshot> change)

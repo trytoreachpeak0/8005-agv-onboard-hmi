@@ -1,0 +1,15 @@
+Test run for C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:10.89]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.APressSpentOnTheSafetyHoldOpensNothingWhenTheHoldEndsAndTheButtonComesBack [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.APressSpentOnTheSafetyHoldOpensNothingWhenTheHoldEndsAndTheButtonComesBack [10 s]
+  Error Message:
+   System.Threading.Tasks.TaskCanceledException : A task was canceled.
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.APressSpentOnTheSafetyHoldOpensNothingWhenTheHoldEndsAndTheButtonComesBack() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.ShutOverOpposite.cs:line 449
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.APressSpentOnTheSafetyHoldOpensNothingWhenTheHoldEndsAndTheButtonComesBack() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.ShutOverOpposite.cs:line 465
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.UnitTests.dll (net8.0)

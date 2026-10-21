@@ -1,0 +1,103 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Infrastructure -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:10.77]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv03LoadShutEmptyWaitsForThePressAndALockThatFellBackIsNotUnknown [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv03LoadShutEmptyWaitsForThePressAndALockThatFellBackIsNotUnknown [9 s]
+  Error Message:
+   The operation ended instead of waiting for 「重新开门」 (pulses so far: 3): {"protocolVersion":6,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"5.0.0","protocolReleaseManifestSha256":"dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T03:31:24.7267275+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"EMPTY","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":["ACTION_NOT_ALLOWED_IN_STATE"]}],"observedAt":"2026-10-21T11:31:24.7008372\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"126978a93430125ebb13d1e9cf458f3ac0cfd91f7ff373be5cfe87ffa77e02e9"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 339
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 320
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv03LoadShutEmptyWaitsForThePressAndALockThatFellBackIsNotUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 73
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv03LoadShutEmptyWaitsForThePressAndALockThatFellBackIsNotUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 117
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:15.78]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockFeedbackTurnsUnreadableIsStillUnknown [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockFeedbackTurnsUnreadableIsStillUnknown [5 s]
+  Error Message:
+   The operation ended instead of waiting for 「重新开门」 (pulses so far: 2): {"protocolVersion":6,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"5.0.0","protocolReleaseManifestSha256":"dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T03:31:29.7781295+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"UNKNOWN","lockState":"UNKNOWN","unlockOutputState":"UNKNOWN","reasonCodes":["ACTION_NOT_ALLOWED_IN_STATE"]}],"observedAt":"2026-10-21T11:31:29.7664351\u002B08:00","journalCheckpoint":"ACTIVE_UNLOCK_SET","resultContentSha256":"6f5477c6ad19a65f0fe01d48daa1b796354f05b085a44588b27f21494de6562b"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 339
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 320
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockFeedbackTurnsUnreadableIsStillUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 205
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockFeedbackTurnsUnreadableIsStillUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 209
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:28.61]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv02UnloadShutOverTheBasketWaitsForThePressAndALockThatDidNotReleaseIsNotUnknown [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv02UnloadShutOverTheBasketWaitsForThePressAndALockThatDidNotReleaseIsNotUnknown [12 s]
+  Error Message:
+   The operation ended instead of waiting for 「重新开门」 (pulses so far: 5): {"protocolVersion":6,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"5.0.0","protocolReleaseManifestSha256":"dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T03:31:42.5953908+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"UNLOAD","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":["ACTION_NOT_ALLOWED_IN_STATE"]}],"observedAt":"2026-10-21T11:31:42.5773213\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"0d59818c0b00ce63f26c1b03ae8d9215df119e3e370db19783abab41e897e37c"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 339
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 320
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv02UnloadShutOverTheBasketWaitsForThePressAndALockThatDidNotReleaseIsNotUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 144
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.Agv02UnloadShutOverTheBasketWaitsForThePressAndALockThatDidNotReleaseIsNotUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 162
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:48.76]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WhileWaitingForThePressTheLoadCanStillBeCancelled [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WhileWaitingForThePressTheLoadCanStillBeCancelled [20 s]
+  Error Message:
+   Timed out after 20s waiting for: 「重新开门」 offered after pulse 1, or a result. Pulses: 3.
+OPERATION_PROGRESS: 准备执行装货：1号仓。
+OPERATION_PROGRESS: 正在检查1号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 1号仓关门时货物状态与预期不符，正在重新打开。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第2次提示）
+OPERATION_PROGRESS: 1号仓关门时货物状态与预期不符，正在重新打开。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第3次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第4次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第5次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第6次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第7次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第8次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第9次提示）
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。（第10次提示）
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SnapshotAppliedAck, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress
+03:31:42.632 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+03:31:42.685 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+03:31:42.686 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T03:31:42.6869389+00:00。
+03:31:42.713 Information WireToGateSessionClient: 收到SessionReadiness：messageId=ac397bdf-c48a-4806-baf7-1a70f8d74fa9，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+03:31:42.713 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+03:31:42.713 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+03:31:42.796 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+03:31:42.796 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+03:31:42.807 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 373
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 314
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WhileWaitingForThePressTheLoadCanStillBeCancelled() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 261
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WhileWaitingForThePressTheLoadCanStillBeCancelled() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 275
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:54.21]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseOutputNeverResetsIsStillUnknownAndSaysSo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseOutputNeverResetsIsStillUnknownAndSaysSo [5 s]
+  Error Message:
+   The operation ended instead of waiting for 「重新开门」 (pulses so far: 2): {"protocolVersion":6,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"5.0.0","protocolReleaseManifestSha256":"dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T03:32:08.2086171+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"EMPTY","lockState":"LOCKED","unlockOutputState":"ACTIVE","reasonCodes":["ACTION_NOT_ALLOWED_IN_STATE"]}],"observedAt":"2026-10-21T11:32:08.1959991\u002B08:00","journalCheckpoint":"ACTIVE_UNLOCK_SET","resultContentSha256":"22105edae5617aec2d1f5c332f6b1ce8701a0a5b0a668145944d13d31589c805"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 339
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 320
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseOutputNeverResetsIsStillUnknownAndSaysSo() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 180
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseOutputNeverResetsIsStillUnknownAndSaysSo() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 185
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:57.60]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.ASecondPressOfTheSameWaitOpensNothingMore [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.ASecondPressOfTheSameWaitOpensNothingMore [3 s]
+  Error Message:
+   The operation ended instead of waiting for 「重新开门」 (pulses so far: 2): {"protocolVersion":6,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"5.0.0","protocolReleaseManifestSha256":"dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T03:32:11.5819104+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"COMPLETED","slotResults":[{"slotNo":1,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]}],"observedAt":"2026-10-21T11:32:11.5795616\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"43277fd627a787fb82e75b5dab3d6707de2d63ce959ddfcc0f9e7aa33d6caa7a"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 339
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForReopenOfferAsync(Harness harness, CancellationToken token, Int32 unlockCount) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 320
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.ASecondPressOfTheSameWaitOpensNothingMore() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 226
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.ASecondPressOfTheSameWaitOpensNothingMore() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 234
+--- End of stack trace from previous location ---
+Results File: C:/work/8005-scratch/hmi385/red/red.trx
+
+Failed!  - Failed:     6, Passed:     0, Skipped:     0, Total:     6, Duration: 56 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
