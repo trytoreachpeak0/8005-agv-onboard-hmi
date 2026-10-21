@@ -49,7 +49,13 @@ public enum WireToGatePromptCause
     /// shut, locked, its output reset and its occupancy known: the door was held or shut again as it opened. Back to
     /// waiting for the press, as <see cref="ShutOverOpposite"/> (8005-agv-onboard-hmi#385).
     /// </summary>
-    ReopenNotReleased
+    ReopenNotReleased,
+
+    /// <summary>
+    /// The operator pressed 「剩下的不装」 over a slot held shut for 「重新开门」, and the run holds every slot shut until the
+    /// server's <c>RemainingBasketsSkipResult</c> decides it (8005-agv-onboard-hmi#388, CP-0021).
+    /// </summary>
+    RemainingBasketsSkipPending
 }
 
 /// <summary>
@@ -63,7 +69,14 @@ public enum WireToGatePromptCause
 public enum WireToGateOperatorSlotRequest
 {
     /// <summary>「重新开门」: one more unlock pulse on the same slot of the same operation, with no limit on how many.</summary>
-    Reopen
+    Reopen,
+
+    /// <summary>
+    /// 「剩下的不装」: hold every slot shut until the server decides the skip. Handed over only by
+    /// <see cref="WireToGateSlotOperationExecutor.HoldForRemainingBasketsSkip"/>, which checks what the skip needs first; a
+    /// <see cref="WireToGateSlotOperationExecutor.SubmitOperatorRequest"/> of this value is refused (8005-agv-onboard-hmi#388).
+    /// </summary>
+    RemainingBasketsSkip
 }
 
 /// <summary>
@@ -316,12 +329,32 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         /// written only under a lock on this object.
         /// </summary>
         public PendingOperatorRequest? OperatorRequest { get; set; }
+
+        /// <summary>
+        /// The 「剩下的不装」 the run holds every slot shut for, until its decision; read and written only under a lock on this
+        /// object (8005-agv-onboard-hmi#388).
+        /// </summary>
+        public RemainingBasketsSkipHold? SkipHold { get; set; }
     }
 
-    /// <summary>A slot held shut for an operator request, and the answer the request completes.</summary>
+    /// <summary>
+    /// A slot held shut for an operator request, and the answer the request completes. <paramref name="Command"/> and
+    /// <paramref name="Completed"/> are the run's at the moment it began to wait: what 「剩下的不装」 is judged on.
+    /// </summary>
     private sealed record PendingOperatorRequest(
         WireToGateOperatorRequestWait Wait,
-        TaskCompletionSource<WireToGateOperatorSlotRequest> Answer);
+        TaskCompletionSource<WireToGateOperatorSlotRequest> Answer,
+        WireToGateSlotOperationCommand Command,
+        IReadOnlyList<int> Completed);
+
+    /// <summary>
+    /// A press of 「剩下的不装」 the run is held for: the request and the slots it named, and the decision -- the authorized slots,
+    /// or <c>null</c> when the request was rejected or dropped.
+    /// </summary>
+    private sealed record RemainingBasketsSkipHold(
+        string SkipRequestId,
+        IReadOnlyList<int> LoadedSlots,
+        TaskCompletionSource<IReadOnlyList<int>?> Decision);
 
     /// <summary>
     /// The slot the running operation holds shut over the opposite occupancy, waiting for the operator's
@@ -352,7 +385,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Only hands it over. Whatever the request leads to -- the safety hold, the one-door check, the latch and the
-    /// declaration gate in front of a pulse -- is the run's, as for every other pulse.
+    /// declaration gate in front of a pulse -- is the run's, as for every other pulse. <see cref="WireToGateOperatorSlotRequest.RemainingBasketsSkip"/>
+    /// is refused here: it goes through <see cref="HoldForRemainingBasketsSkip"/>.
     /// </remarks>
     public bool SubmitOperatorRequest(
         string slotOperationAttemptId,
@@ -360,7 +394,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateOperatorSlotRequest request)
     {
         ActiveOperation? active = Volatile.Read(ref _activeOperation);
-        if (active is null
+        if (request == WireToGateOperatorSlotRequest.RemainingBasketsSkip
+            || active is null
             || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
         {
             return false;
@@ -376,6 +411,177 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             active.OperatorRequest = null;
             return pending.Answer.TrySetResult(request);
         }
+    }
+
+    /// <summary>
+    /// What 「剩下的不装」 would be asked over now, or <c>null</c> when it is not offered (8005-agv-onboard-hmi#388, CP-0021
+    /// REQ-0367): a load of N &gt; 1 baskets held shut for 「重新开门」, with k slots closed safely <c>OCCUPIED</c>,
+    /// 1 &lt;= k &lt; N, every target door read locked with its unlock output reset and none unreadable, and no skip held
+    /// already.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only while the run waits for 「重新开门」.</b> That is the one wait in which every target door is shut by
+    /// construction: the run opens one slot at a time, and the slot it waits on is held shut over the opposite occupancy.
+    /// The slot that is held -- opened, shut empty and locked -- counts among the remaining slots, as the 10-21 agv03 @160
+    /// shape needs. A door open, a lock that does not read locked, an output not reset, a slot that cannot be read: not
+    /// offered, read off the IO as it is now, not off the run's memory.
+    /// </para>
+    /// <para>
+    /// Manual recovery is the business service's to rule out; once an exception recovery session or a slot fault
+    /// declaration takes the run, this wait has ended anyway.
+    /// </para>
+    /// </remarks>
+    public WireToGateRemainingBasketsSkipOffer? RemainingBasketsSkipOffer
+    {
+        get
+        {
+            ActiveOperation? active = Volatile.Read(ref _activeOperation);
+            if (active is null)
+            {
+                return null;
+            }
+
+            PendingOperatorRequest? pending;
+            lock (active)
+            {
+                pending = active.SkipHold is null ? active.OperatorRequest : null;
+            }
+
+            return pending is null ? null : SkipOfferOver(pending, _ioModule.CurrentSnapshot);
+        }
+    }
+
+    /// <summary>The <c>skipRequestId</c> the running operation is held for, or <c>null</c> when none is pending in it.</summary>
+    public string? HeldRemainingBasketsSkipRequestId
+    {
+        get
+        {
+            ActiveOperation? active = Volatile.Read(ref _activeOperation);
+            if (active is null)
+            {
+                return null;
+            }
+
+            lock (active)
+            {
+                return active.SkipHold?.SkipRequestId;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The operator pressed 「剩下的不装」: holds the run -- no slot opens, 「重新开门」 is refused -- until
+    /// <see cref="DecideRemainingBasketsSkip"/> decides <paramref name="skipRequestId"/>. True when the run took the hold;
+    /// false, and nothing changes, when the skip is not offered now (<see cref="RemainingBasketsSkipOffer"/>), when it is
+    /// another attempt's, or when <paramref name="loadedSlots"/> are not exactly the slots the run has loaded.
+    /// </summary>
+    /// <remarks>
+    /// Taken in the same lock that takes a 「重新开门」, so the two presses of one wait cannot both win: the hold answers the
+    /// wait, and the reopen then finds nothing to answer. The caller journals the request and sends it after this returns
+    /// true, and decides it with <c>null</c> should either fail, so a hold is never left without a request behind it.
+    /// </remarks>
+    public bool HoldForRemainingBasketsSkip(
+        string slotOperationAttemptId,
+        string skipRequestId,
+        IReadOnlyList<int> loadedSlots)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(skipRequestId);
+        ArgumentNullException.ThrowIfNull(loadedSlots);
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
+        if (active is null
+            || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (active)
+        {
+            if (active.SkipHold is not null
+                || active.OperatorRequest is not { } pending
+                || SkipOfferOver(pending, _ioModule.CurrentSnapshot) is not { } offer
+                || !offer.LoadedSlots.SequenceEqual(loadedSlots.Order()))
+            {
+                return false;
+            }
+
+            active.OperatorRequest = null;
+            active.SkipHold = new RemainingBasketsSkipHold(
+                skipRequestId,
+                offer.LoadedSlots,
+                new TaskCompletionSource<IReadOnlyList<int>?>(TaskCreationOptions.RunContinuationsAsynchronously));
+            return pending.Answer.TrySetResult(WireToGateOperatorSlotRequest.RemainingBasketsSkip);
+        }
+    }
+
+    /// <summary>
+    /// Decides the skip the run is held for: <paramref name="authorizedSlots"/> are the slots the server's <c>AUTHORIZED</c>
+    /// names, and the run ends the load with them; <c>null</c> lets go of the hold -- rejected, or dropped -- and the run goes
+    /// back to waiting for 「重新开门」. True when the run held <paramref name="skipRequestId"/> and took the decision; false
+    /// when it holds no such request any more -- the operation ended another way, which is the late authorization the wire
+    /// notes say is never acted on -- or the authorization names other slots than the request did.
+    /// </summary>
+    public bool DecideRemainingBasketsSkip(
+        string slotOperationAttemptId,
+        string skipRequestId,
+        IReadOnlyList<int>? authorizedSlots)
+    {
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
+        if (active is null
+            || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (active)
+        {
+            // The hold stays published until the run's wait takes it off: a decision that comes before the run has reached
+            // that wait -- a server that answers within milliseconds -- is still found there (found by the G2 injection of
+            // 8005-agv-onboard-hmi#388). A decided hold takes no second decision.
+            if (active.SkipHold is not { } hold
+                || hold.Decision.Task.IsCompleted
+                || !string.Equals(hold.SkipRequestId, skipRequestId, StringComparison.Ordinal)
+                || authorizedSlots is not null && !hold.LoadedSlots.SequenceEqual(authorizedSlots.Order()))
+            {
+                return false;
+            }
+
+            return hold.Decision.TrySetResult(authorizedSlots is null ? null : [.. authorizedSlots.Order()]);
+        }
+    }
+
+    /// <summary>The skip offered over <paramref name="pending"/> as <paramref name="snapshot"/> reads, or <c>null</c>.</summary>
+    private WireToGateRemainingBasketsSkipOffer? SkipOfferOver(PendingOperatorRequest pending, IoSnapshot snapshot)
+    {
+        WireToGateSlotOperationCommand command = pending.Command;
+        if (command.OperationType != OperationType.Load
+            || command.Slots.Count < 2
+            || pending.Completed.Count == 0
+            || pending.Completed.Count >= command.Slots.Count
+            || !IsFresh(snapshot))
+        {
+            return null;
+        }
+
+        foreach (int slot in command.Slots)
+        {
+            LockerSnapshot locker = TryGetLocker(snapshot, slot - 1);
+            if (!locker.IsKnown
+                || !locker.IsLocked
+                || locker.UnlockOutputRaw is not false
+                || pending.Completed.Contains(slot) && !locker.HasCargo)
+            {
+                return null;
+            }
+        }
+
+        return new WireToGateRemainingBasketsSkipOffer(
+            command.SlotOperationAttemptId,
+            command.DemandId,
+            command.OperationSessionId,
+            command.ExpectedBasketCount,
+            [.. pending.Completed.Order()],
+            pending.Wait.PhysicalSlot);
     }
 
     /// <summary>
@@ -797,9 +1003,29 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 .ToArray(),
             LastCompletedLoadOperationContext = state.OperationContext is { OperationType: OperationType.Load } load
                 && string.Equals(load.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
-                    ? load
+                    ? LoadedContext(state)
                     : state.LastCompletedLoadOperationContext
         };
+
+    /// <summary>
+    /// The journal's operation context as the load it put on board: the context itself, or, for a load ended on an authorized
+    /// skip -- its slot results carry <see cref="RemainingBasketsSkippedReason"/> -- the context narrowed to the slots it
+    /// completed, with <c>expectedBasketCount</c> k (8005-agv-onboard-hmi#388). Its unload names only those slots.
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? LoadedContext(WireToGateRecoveryState state)
+    {
+        if (state.OperationContext is not { OperationType: OperationType.Load } context
+            || !state.SlotResults.Any(result => result.ReasonCodes.Contains(RemainingBasketsSkippedReason)))
+        {
+            return state.OperationContext;
+        }
+
+        int[] loaded = [.. state.SlotResults
+            .Where(result => string.Equals(result.Outcome, "COMPLETED", StringComparison.Ordinal))
+            .Select(result => result.SlotNo)
+            .Order()];
+        return context with { Slots = loaded, ExpectedBasketCount = loaded.Length };
+    }
 
     /// <summary>
     /// The settled-load list's share of recording <paramref name="slotOperationAttemptId"/> (8005-agv-onboard-hmi#209): its
@@ -812,7 +1038,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         state.OperationContext is { } context
             && string.Equals(context.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
                 ? context.OperationType == OperationType.Load
-                    ? state.WithLoadOnBoard(context)
+                    ? state.WithLoadOnBoard(LoadedContext(state)!)
                     : state.WithoutLoadOnBoard(context.DemandId)
                 : state;
 
@@ -838,8 +1064,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             PendingLoadCancellation = null,
             SlotFaultDeclaration = null,
             TakenOverSlotOperationAttemptId = null,
+            RemainingBasketsSkip = null,
             LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
-                ? state.OperationContext
+                ? LoadedContext(state)
                 : state.LastCompletedLoadOperationContext
         };
 
@@ -992,6 +1219,28 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             StringComparison.Ordinal)
             ? state.SlotFaultDeclaration!.SlotNo
             : null;
+        // The operator's 「剩下的不装」 authorized and journaled before the process went away (8005-agv-onboard-hmi#388): the load
+        // ends as the authorization says when the slots still read so, without a pulse. Otherwise, below, as it always has.
+        if (declaredSlot is null
+            && state.RemainingBasketsSkip is { IsAuthorized: true } skip
+            && string.Equals(skip.SlotOperationAttemptId, context.SlotOperationAttemptId, StringComparison.Ordinal)
+            && SkippedResults(command, skip.Result!.LoadedSlots, state.CompletedSlots, snapshot, fresh) is { } skipped)
+        {
+            await WriteCheckpointAsync(
+                context,
+                WireToGateRecoveryCheckpoint.SafeFinishReached,
+                [],
+                skip.Result.LoadedSlots,
+                skipped,
+                state,
+                CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(
+                command,
+                RemainingBasketsSkippedOutcome,
+                skipped,
+                WireToGateRecoveryCheckpoint.SafeFinishReached);
+        }
+
         foreach (int physicalSlot in command.Slots)
         {
             LockerSnapshot locker = fresh
@@ -1432,6 +1681,32 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 throw;
             }
+            catch (RemainingBasketsSkipAuthorizedException authorized)
+            {
+                // The server authorized the operator's 「剩下的不装」 while the run held the slots for it
+                // (8005-agv-onboard-hmi#388). A declaration applied first still owns its slot.
+                if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
+                {
+                    return await SettleDeclaredAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        progress,
+                        physicalSlot).ConfigureAwait(false);
+                }
+
+                return await SettleRemainingBasketsSkippedAsync(
+                    command,
+                    context,
+                    existingState,
+                    completed,
+                    results,
+                    progress,
+                    physicalSlot,
+                    authorized.AuthorizedSlots).ConfigureAwait(false);
+            }
             catch (FatalFaultLatchedException latched)
             {
                 if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
@@ -1551,6 +1826,149 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         await SendProgressAsync(progress, new("SAFE_FINISH", [], completed), cancellationToken)
             .ConfigureAwait(false);
         return CreateResult(command, "COMPLETED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
+    }
+
+    /// <summary>
+    /// Ends the load on the server's authorization of 「剩下的不装」 (8005-agv-onboard-hmi#388, CP-0021 REQ-0367): with the slots
+    /// reading as the authorization says, <c>COMPLETED_REMAINING_SKIPPED</c> -- the authorized slots <c>COMPLETED</c>, every
+    /// other target slot <c>NOT_STARTED</c> with <c>REMAINING_BASKETS_SKIPPED</c> -- at the safe finish, with the authorized
+    /// slots completed. No slot is opened on the way.
+    /// </summary>
+    /// <remarks>
+    /// When the slots no longer read so -- a slot unreadable, a door not locked, a basket where none is to be or none where
+    /// one is -- the vehicle reports what it would without the skip (wire notes): <c>UNKNOWN</c>, the slot in doubt
+    /// <c>UNKNOWN</c> and every untouched slot as read, never <c>REMAINING_BASKETS_SKIPPED</c>. The authorization is then
+    /// spent on the server's side when that result settles.
+    /// </remarks>
+    private async Task<WireToGateOperationExecutionResult> SettleRemainingBasketsSkippedAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        int heldSlot,
+        IReadOnlyList<int> authorized)
+    {
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        bool fresh = IsFresh(snapshot);
+        if (SkippedResults(command, authorized, completed, snapshot, fresh) is { } skipped)
+        {
+            foreach (WireToGateSlotExecutionResult result in skipped)
+            {
+                UpsertResult(results, result);
+            }
+
+            await WriteCheckpointAsync(
+                context,
+                WireToGateRecoveryCheckpoint.SafeFinishReached,
+                [],
+                authorized,
+                results,
+                existingState,
+                CancellationToken.None).ConfigureAwait(false);
+            await SendProgressAsync(progress, new("SAFE_FINISH", [], authorized), CancellationToken.None)
+                .ConfigureAwait(false);
+            return CreateResult(
+                command,
+                RemainingBasketsSkippedOutcome,
+                results,
+                WireToGateRecoveryCheckpoint.SafeFinishReached);
+        }
+
+        List<int> stillCompleted = [];
+        bool safeFinish = true;
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = ReadLocker(snapshot, physicalSlot - 1);
+            if (completed.Contains(physicalSlot) && IsFinalState(locker, command.ExpectedOccupied))
+            {
+                UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+                stillCompleted.Add(physicalSlot);
+            }
+            else if (!completed.Contains(physicalSlot)
+                && physicalSlot != heldSlot
+                && IsFinalState(locker, !command.ExpectedOccupied))
+            {
+                // Never opened by this run, and as it was: decision 6.
+                UpsertResult(results, CreateSlotResult(locker, "NOT_STARTED", []));
+            }
+            else
+            {
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        locker,
+                        "UNKNOWN",
+                        [locker.IsKnown ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+                safeFinish &= IsSafeFinish(snapshot, physicalSlot - 1);
+            }
+        }
+
+        WireToGateRecoveryCheckpoint checkpoint = safeFinish
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        IReadOnlyList<int> activeSlots = safeFinish ? [] : [heldSlot];
+        await WriteCheckpointAsync(
+            context,
+            checkpoint,
+            activeSlots,
+            stillCompleted,
+            results,
+            existingState,
+            CancellationToken.None).ConfigureAwait(false);
+        await SendProgressAsync(
+                progress,
+                new(safeFinish ? "SAFE_FINISH" : "PAUSED", activeSlots, stillCompleted),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return CreateResult(command, "UNKNOWN", results, checkpoint);
+    }
+
+    /// <summary>The <c>OperationResult.overallOutcome</c> of a load ended on an authorized skip (protocol 6.0.0 candidate).</summary>
+    public const string RemainingBasketsSkippedOutcome = "COMPLETED_REMAINING_SKIPPED";
+
+    /// <summary>The slot reason every skipped slot carries, and no other slot of any result (protocol 6.0.0 candidate).</summary>
+    public const string RemainingBasketsSkippedReason = "REMAINING_BASKETS_SKIPPED";
+
+    /// <summary>
+    /// The slot results of a skip of <paramref name="command"/> over <paramref name="authorized"/>, read off
+    /// <paramref name="snapshot"/>, or <c>null</c> when the slots do not read as the skip needs: the authorized slots are
+    /// exactly the completed ones and each reads its final state, every other target slot reads known, locked, empty and
+    /// reset. Shared by the run and the interrupted settlement, so both report a skip on the same facts.
+    /// </summary>
+    private static List<WireToGateSlotExecutionResult>? SkippedResults(
+        WireToGateSlotOperationCommand command,
+        IReadOnlyList<int> authorized,
+        IReadOnlyCollection<int> completed,
+        IoSnapshot snapshot,
+        bool fresh)
+    {
+        if (!fresh
+            || command.OperationType != OperationType.Load
+            || authorized.Count == 0
+            || authorized.Count >= command.Slots.Count
+            || !authorized.Order().SequenceEqual(completed.Distinct().Order()))
+        {
+            return null;
+        }
+
+        List<WireToGateSlotExecutionResult> results = [];
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = TryGetLocker(snapshot, physicalSlot - 1);
+            bool loaded = authorized.Contains(physicalSlot);
+            if (!IsFinalState(locker, expectedOccupied: loaded))
+            {
+                return null;
+            }
+
+            results.Add(loaded
+                ? CreateSlotResult(locker, "COMPLETED", [])
+                : CreateSlotResult(locker, "NOT_STARTED", [RemainingBasketsSkippedReason]));
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -1769,6 +2187,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             if (cause is WireToGatePromptCause.ShutOverOpposite or WireToGatePromptCause.ReopenNotReleased)
             {
                 (OperatorWaitOutcome waited, promptRound) = await WaitForOperatorRequestAsync(
+                    command,
                     physicalSlot,
                     completed,
                     promptRound,
@@ -1776,7 +2195,29 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     progress,
                     active,
                     cancellationToken).ConfigureAwait(false);
-                if (waited == OperatorWaitOutcome.DoorReleased)
+                if (waited == OperatorWaitOutcome.RemainingBasketsSkipHeld)
+                {
+                    // Held for the server's decision; an authorization ends the load from inside the wait. Let go -- rejected
+                    // or dropped -- the run goes on as the slot now stands: held shut for the press again, or, should the
+                    // lock have let go by itself meanwhile, an open door to be shut (8005-agv-onboard-hmi#388).
+                    promptRound = await WaitForRemainingBasketsSkipDecisionAsync(
+                        physicalSlot,
+                        completed,
+                        promptRound,
+                        progress,
+                        active,
+                        cancellationToken).ConfigureAwait(false);
+                    LockerSnapshot now = ReadLocker(_ioModule.CurrentSnapshot, slotIndex);
+                    if (!(now.IsKnown && !now.IsLocked))
+                    {
+                        continue;
+                    }
+
+                    promptRound++;
+                    unlockNeeded = false;
+                    cause = WireToGatePromptCause.PromptCadence;
+                }
+                else if (waited == OperatorWaitOutcome.DoorReleased)
                 {
                     // The lock reads released with nobody having pressed: the door was not latched after all, and it
                     // is open now. Nothing to pulse; the operator is at an open door, as after any pulse.
@@ -1920,7 +2361,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         ReopenPressed,
 
         /// <summary>The lock read released, held for the stable window, without a pulse.</summary>
-        DoorReleased
+        DoorReleased,
+
+        /// <summary>The operator pressed 「剩下的不装」, and the run is held for the server's decision.</summary>
+        RemainingBasketsSkipHeld
     }
 
     /// <summary>
@@ -1946,6 +2390,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// </para>
     /// </remarks>
     private async Task<(OperatorWaitOutcome Outcome, int NextRound)> WaitForOperatorRequestAsync(
+        WireToGateSlotOperationCommand command,
         int physicalSlot,
         IReadOnlyList<int> completed,
         int promptRound,
@@ -1963,7 +2408,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         {
             active.OperatorRequest = new(
                 new WireToGateOperatorRequestWait(active.SlotOperationAttemptId, physicalSlot, cause),
-                answer);
+                answer,
+                command,
+                [.. completed]);
         }
 
         try
@@ -1995,8 +2442,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     Task winner = await Task.WhenAny(pressed, released, unknown, latched).ConfigureAwait(false);
                     if (winner == pressed)
                     {
-                        _ = await pressed.ConfigureAwait(false);
-                        return (OperatorWaitOutcome.ReopenPressed, promptRound + 1);
+                        return (await pressed.ConfigureAwait(false) == WireToGateOperatorSlotRequest.RemainingBasketsSkip
+                                ? OperatorWaitOutcome.RemainingBasketsSkipHeld
+                                : OperatorWaitOutcome.ReopenPressed,
+                            promptRound + 1);
                     }
 
                     if (winner == latched)
@@ -2039,6 +2488,120 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 if (active.OperatorRequest?.Answer == answer)
                 {
                     active.OperatorRequest = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Holds every slot shut while a press of 「剩下的不装」 waits for the server (8005-agv-onboard-hmi#388): nothing is pulsed,
+    /// and the operator is told it is pending at once and again every
+    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each a round of its own. Returns the last round
+    /// prompted when the hold is let go; an authorization throws <see cref="RemainingBasketsSkipAuthorizedException"/>, which
+    /// the run settles.
+    /// </summary>
+    /// <remarks>
+    /// The held slot turning unreadable is decision 2 and a fatal fault latched is the latch's refusal, as in the wait for the
+    /// press; a cancellation of the run's token ends this wait too. The lock letting go by itself does not end it -- nothing
+    /// is pulsed either way, and the authorization, when it comes, is checked against the slots as they read then. Whatever
+    /// ends the wait other than a decision takes the hold off with it, so a late decision finds nothing to act on.
+    /// </remarks>
+    private async Task<int> WaitForRemainingBasketsSkipDecisionAsync(
+        int physicalSlot,
+        IReadOnlyList<int> completed,
+        int promptRound,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        ActiveOperation? active,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(active);
+        RemainingBasketsSkipHold hold;
+        lock (active)
+        {
+            hold = active.SkipHold ?? throw new InvalidOperationException("执行器没有持有这次「剩下的不装」。");
+        }
+
+        int slotIndex = physicalSlot - 1;
+        try
+        {
+            for (; ; promptRound++)
+            {
+                await SendProgressAsync(
+                    progress,
+                    new(
+                        "WAITING_OPERATOR",
+                        [physicalSlot],
+                        completed,
+                        promptRound,
+                        WireToGatePromptCause.RemainingBasketsSkipPending),
+                    cancellationToken).ConfigureAwait(false);
+                using CancellationTokenSource waitCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task<IReadOnlyList<int>?> decided = hold.Decision.Task.WaitAsync(_options.OperationTimeout, waitCts.Token);
+                Task<LockerSnapshot> unknown = _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => !locker.IsKnown,
+                    _options.OperationTimeout,
+                    _options.FeedbackStableWindow,
+                    waitCts.Token);
+                Task latched = WaitForFatalFaultLatchAsync(waitCts.Token);
+                try
+                {
+                    Task winner = await Task.WhenAny(decided, unknown, latched).ConfigureAwait(false);
+                    if (winner == latched)
+                    {
+                        await latched.ConfigureAwait(false);
+                        throw new FatalFaultLatchedException(reopen: true);
+                    }
+
+                    if (winner == unknown)
+                    {
+                        try
+                        {
+                            _ = await unknown.ConfigureAwait(false);
+                        }
+                        catch (TimeoutException)
+                        {
+                            continue;
+                        }
+
+                        throw new InvalidDataException("SLOT_STATE_UNKNOWN");
+                    }
+
+                    IReadOnlyList<int>? authorized;
+                    try
+                    {
+                        authorized = await decided.ConfigureAwait(false);
+                    }
+                    catch (TimeoutException)
+                    {
+                        // One prompt cadence with no answer: say again that it is pending.
+                        continue;
+                    }
+
+                    if (authorized is null)
+                    {
+                        return promptRound;
+                    }
+
+                    throw new RemainingBasketsSkipAuthorizedException(authorized);
+                }
+                finally
+                {
+                    await waitCts.CancelAsync().ConfigureAwait(false);
+                    await ObserveAsync(decided).ConfigureAwait(false);
+                    await ObserveAsync(unknown).ConfigureAwait(false);
+                    await ObserveAsync(latched).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            lock (active)
+            {
+                if (ReferenceEquals(active.SkipHold, hold))
+                {
+                    active.SkipHold = null;
                 }
             }
         }
@@ -2303,6 +2866,13 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                         StringComparison.Ordinal)
                         ? current.SlotFaultDeclaration
                         : null,
+                    // The operator's 「剩下的不装」 belongs to its attempt, like a declaration (8005-agv-onboard-hmi#388).
+                    RemainingBasketsSkip = string.Equals(
+                        current.RemainingBasketsSkip?.SlotOperationAttemptId,
+                        context.SlotOperationAttemptId,
+                        StringComparison.Ordinal)
+                        ? current.RemainingBasketsSkip
+                        : null,
                     // Written as null on purpose, not left out by accident (8005-agv-onboard-hmi#278): a checkpoint of
                     // this attempt means this executor is running it again -- a new operation, or a resume of the very
                     // attempt a forgotten vector held -- and the result it reaches is this run's own account, to be
@@ -2538,6 +3108,16 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// slot's reading says which decision 2 condition that is. The message is the reason code (8005-agv-onboard-hmi#385).
     /// </summary>
     private sealed class SlotFeedbackFailedException(string reasonCode) : Exception(reasonCode);
+
+    /// <summary>
+    /// The server authorized the 「剩下的不装」 the run was held for, naming <see cref="AuthorizedSlots"/>
+    /// (8005-agv-onboard-hmi#388); the run settles it in <see cref="SettleRemainingBasketsSkippedAsync"/>.
+    /// </summary>
+    private sealed class RemainingBasketsSkipAuthorizedException(IReadOnlyList<int> authorizedSlots)
+        : Exception("REMAINING_BASKETS_SKIP_AUTHORIZED")
+    {
+        public IReadOnlyList<int> AuthorizedSlots { get; } = authorizedSlots;
+    }
 
     /// <summary>
     /// The code a latch refusal carries on the wire, in a slot result's <c>reasonCodes</c>.

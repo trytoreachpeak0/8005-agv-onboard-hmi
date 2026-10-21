@@ -1018,6 +1018,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (args.Value.Readiness is WireToGateSessionReadiness.Ready
             or WireToGateSessionReadiness.RecoveryRequired)
         {
+            // A 「剩下的不装」 still waiting for its answer is resubmitted under a new messageId once per session generation
+            // (8005-agv-onboard-hmi#388).
+            TrackTask(ResubmitPendingRemainingBasketsSkipAsync(_stopping.Token));
             TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
         }
 
@@ -1841,7 +1844,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         return document.RootElement.TryGetProperty("payload", out JsonElement payload)
             && payload.TryGetProperty("overallOutcome", out JsonElement outcome)
             && outcome.ValueKind == JsonValueKind.String
-            && outcome.GetString() == "COMPLETED";
+            && IsCompletedOutcome(outcome.GetString());
     }
 
     /// <summary>
@@ -1992,6 +1995,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.NotSettled;
             }
 
+            // An unanswered 「剩下的不装」 over this attempt (8005-agv-onboard-hmi#388): the server may already have authorized
+            // it, and an authorized skip is this attempt's conclusion. Resubmitted, and this settlement runs once the answer
+            // is on file -- as the skip on AUTHORIZED when the slots still read so, as below otherwise.
+            if (await HoldInterruptedSettlementForRemainingBasketsSkipAsync(attemptId, cancellationToken).ConfigureAwait(false))
+            {
+                return InterruptedOperationSettlement.TakenOver;
+            }
+
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
             // not this settlement's (1acb018 redone, onboard-hmi#78) -- the executor was aborted by it or
             // went with the process, and the server may already have authorized it. Resent with the first
@@ -2020,10 +2031,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 .ConfigureAwait(false);
             WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
             WireToGateSlotOperationCommand command = context.ToCommand();
-            bool completedSuccessfully = string.Equals(
-                execution.OverallOutcome,
-                "COMPLETED",
-                StringComparison.Ordinal);
+            bool completedSuccessfully = IsCompletedOutcome(execution.OverallOutcome);
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
@@ -2123,6 +2131,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         finally
         {
             ReleaseInFlightAttempt(attemptId);
+            ResumeSettlementHeldForRemainingBasketsSkip(attemptId);
         }
     }
 
@@ -2697,6 +2706,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateCurrentStopDepartureResult departureResult:
                     await HandleCurrentStopDepartureResultAsync(departureResult, cancellationToken).ConfigureAwait(false);
                     break;
+                case WireToGateRemainingBasketsSkipResult skipResult:
+                    await HandleRemainingBasketsSkipResultAsync(skipResult, cancellationToken).ConfigureAwait(false);
+                    break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);
                     break;
@@ -3149,7 +3161,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 execution = _executor.CreateUnknownResultFromLiveIo(original);
             }
 
-            bool completedSuccessfully = execution.OverallOutcome == "COMPLETED";
+            await ConcludeRemainingBasketsSkipOnRunEndAsync(
+                original.SlotOperationAttemptId,
+                execution.OverallOutcome,
+                CancellationToken.None).ConfigureAwait(false);
+            bool completedSuccessfully = IsCompletedOutcome(execution.OverallOutcome);
             PublishOperation(
                 original,
                 completedSuccessfully
@@ -3197,7 +3213,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
         string resultMessageId = StableUuid(recoveryResultKey);
-        bool completedSuccessfully = execution.OverallOutcome == "COMPLETED";
+        bool completedSuccessfully = IsCompletedOutcome(execution.OverallOutcome);
         if (!completedSuccessfully && execution.JournalCheckpoint != "NONE")
         {
             try
@@ -3739,6 +3755,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
                     $"装货已被授权的装货取消中止，不上报OperationResult：attempt={command.SlotOperationAttemptId}。");
+                await ConcludeRemainingBasketsSkipOnRunEndAsync(command.SlotOperationAttemptId, null, CancellationToken.None)
+                    .ConfigureAwait(false);
                 return;
             }
             catch (WireToGateDoorNotProvenShutException refused)
@@ -3758,16 +3776,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
 
             WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
-            bool completedSuccessfully = string.Equals(
+            bool completedSuccessfully = IsCompletedOutcome(execution.OverallOutcome);
+            // Any other ending drops a 「剩下的不装」 still pending for this attempt: its result is being written now
+            // (8005-agv-onboard-hmi#388).
+            await ConcludeRemainingBasketsSkipOnRunEndAsync(
+                command.SlotOperationAttemptId,
                 execution.OverallOutcome,
-                "COMPLETED",
-                StringComparison.Ordinal);
+                CancellationToken.None).ConfigureAwait(false);
+            bool skipped = execution.OverallOutcome == WireToGateSlotOperationExecutor.RemainingBasketsSkippedOutcome;
             PublishOperation(
                 command,
                 completedSuccessfully
                     ? WireToGateHmiOperationStage.Completed
                     : WireToGateHmiOperationStage.RecoveryRequired,
-                completedSuccessfully
+                skipped
+                    ? $"{FormatSlots(CompletedSlots(execution.SlotResults))}已装好，剩下的不装，正在上报结果。"
+                    : completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : RefusedByFatalFaultLatch(execution.SlotResults)
                         ? $"本机已锁存严重安全故障，{FormatSlots(NotCompletedSlots(execution.SlotResults))}停止开门；复核并复位后可申请恢复。"
@@ -4232,6 +4256,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             "WAITING_OPERATOR" when progress.Cause is WireToGatePromptCause.ShutOverOpposite
                 or WireToGatePromptCause.ReopenNotReleased =>
                 ShutOverOppositeGuidance(command, progress, loadCancellationCaption),
+            "WAITING_OPERATOR" when progress.Cause == WireToGatePromptCause.RemainingBasketsSkipPending =>
+                WireToGateRemainingBasketsSkipText.PendingText,
             "WAITING_OPERATOR" when progress.Cause == WireToGatePromptCause.ReopenHeldBySafety =>
                 $"{FormatSlots(progress.Active)}暂不能重新开门：车辆安全状态未确认（急停或未停稳）。" +
                 "安全状态恢复后请再按「重新开门」。",
@@ -4411,6 +4437,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     private static IReadOnlyList<int> NotCompletedSlots(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
         [.. slotResults.Where(slot => slot.Outcome != "COMPLETED").Select(slot => slot.SlotNo)];
+
+    private static IReadOnlyList<int> CompletedSlots(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
+        [.. slotResults.Where(slot => slot.Outcome == "COMPLETED").Select(slot => slot.SlotNo)];
 
     private async Task SendOperationRejectedAsync(
         WireToGateSlotOperationCommand command,

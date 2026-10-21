@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v7/messages/RemainingBasketsSkipRequested.schema.json",
+  "title": "RemainingBasketsSkipRequested",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 7
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "const": "AGV_FULL_PRODUCT"
+    },
+    "protocolReleaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": [
+        "6.0.0"
+      ]
+    },
+    "protocolReleaseManifestSha256": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Sha256"
+    },
+    "messageType": {
+      "type": "string",
+      "minLength": 1,
+      "const": "RemainingBasketsSkipRequested"
+    },
+    "messageId": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
+    },
+    "correlationId": {
+      "type": "null"
+    },
+    "agvId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "AGV-8005-01"
+      ]
+    },
+    "sessionGeneration": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Generation"
+    },
+    "sentAt": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Instant"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "skipRequestId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
+        },
+        "demandId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
+        },
+        "operationSessionId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
+        },
+        "slotOperationAttemptId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
+        },
+        "loadedSlots": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/SlotNo"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "x-sortedAscending": true
+        },
+        "operator": {
+          "anyOf": [
+            {
+              "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/OperatorContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "skipRequestId",
+        "demandId",
+        "operationSessionId",
+        "slotOperationAttemptId",
+        "loadedSlots",
+        "operator"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "profileId",
+    "protocolReleaseVersion",
+    "protocolReleaseManifestSha256",
+    "messageType",
+    "messageId",
+    "correlationId",
+    "agvId",
+    "sessionGeneration",
+    "sentAt",
+    "payload"
+  ],
+  "additionalProperties": false
+}

@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
+using SQCD.Agv.Application;
 using SQCD.Agv.Wpf.ViewModels;
 
 namespace SQCD.Agv.Wpf;
@@ -140,6 +141,39 @@ public partial class MainWindow : Window
             ModalDialogs.Show(
                 "当前状态已经变化，不能重新打开仓门。请按照界面最新提示操作。",
                 "无法重新开门",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    /// <summary>
+    /// 「剩下的不装（已装 k/N 篮）」 (8005-agv-onboard-hmi#388): the confirmation names what goes and what stays, and the press is
+    /// bound to the offer the dialog was read from.
+    /// </summary>
+    private async void OnRemainingBasketsSkipClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.RemainingBasketsSkipOffer is not { } offer)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = ModalDialogs.Show(
+            WireToGateRemainingBasketsSkipText.Confirmation(offer.LoadedSlots.Count, offer.ExpectedBasketCount),
+            "剩下的不装",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        bool accepted = await _viewModel.RequestRemainingBasketsSkipAsync(offer);
+        if (!accepted)
+        {
+            ModalDialogs.Show(
+                WireToGateRemainingBasketsSkipText.ChangedText,
+                "剩下的不装",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }

@@ -1,0 +1,23 @@
+[E1-no-output-reset-check] changed files: 1
+-                || locker.UnlockOutputRaw is not false
+[E1-no-output-reset-check] unit exit=1;   Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(reading: "OUTPUT_NOT_RESET") [10 s] Failed!  - Failed:     1, Passed:   112, Skipped:     0, Total:   113, Duration: 40 s - SQCD.Agv.UnitTests.dll (net8.0) 
+[E1-no-output-reset-check] g2 exit=0; Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 47 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+[E1-no-output-reset-check] restored; dirty=0
+[E2-no-lock-check] changed files: 1
+-                || !locker.IsLocked
+[E2-no-lock-check] unit exit=1;   Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(reading: "LOCK_NOT_LOCKED") [10 s] Failed!  - Failed:     1, Passed:   112, Skipped:     0, Total:   113, Duration: 39 s - SQCD.Agv.UnitTests.dll (net8.0) 
+[E2-no-lock-check] g2 exit=0; Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 51 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+[E2-no-lock-check] restored; dirty=0
+[E4-no-known-check] changed files: 1
+-            if (!locker.IsKnown
++            if (false
+[E4-no-known-check] unit exit=1;   Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(reading: "UNREADABLE") [10 s] Failed!  - Failed:     1, Passed:   112, Skipped:     0, Total:   113, Duration: 41 s - SQCD.Agv.UnitTests.dll (net8.0) 
+[E4-no-known-check] g2 exit=0; Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 47 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+[E4-no-known-check] restored; dirty=0
+[E3-no-manual-recovery-gate] changed files: 1
+-        return manualRecovery
++        return false
+[E3-no-manual-recovery-gate] unit exit=0; Passed!  - Failed:     0, Passed:   113, Skipped:     0, Total:   113, Duration: 30 s - SQCD.Agv.UnitTests.dll (net8.0) 
+[E3-no-manual-recovery-gate] g2 exit=1;   Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NotOfferedOnceTheOperationHasGoneToManualRecovery(onFile: "SLOT_FAULT_DECLARATION") [22 s]   Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NotOfferedOnceTheOperationHasGoneToManualRecovery(onFile: "EXCEPTION_RECOVERY_SESSION") [22 s] Failed!  - Failed:     2, Passed:    10, Skipped:     0, Total:    12, Duration: 1 m 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+[E3-no-manual-recovery-gate] restored; dirty=0
+restored build exit=0

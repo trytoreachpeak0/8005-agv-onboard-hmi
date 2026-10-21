@@ -946,7 +946,14 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             : null,
         LoadsOnBoard = state.LoadsOnBoard?
             .Select(item => item with { Load = item.Load with { Slots = item.Load.Slots.Order().ToArray() } })
-            .ToArray()
+            .ToArray(),
+        RemainingBasketsSkip = state.RemainingBasketsSkip is { } skip
+            ? skip with
+            {
+                LoadedSlots = skip.LoadedSlots.Order().ToArray(),
+                Result = skip.Result is { } result ? result with { LoadedSlots = result.LoadedSlots.Order().ToArray() } : null
+            }
+            : null
     };
 
     private static void ValidateRecoveryState(WireToGateRecoveryState state)
@@ -1092,6 +1099,31 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             if (declaration.SlotNo is < 1 or > 8)
             {
                 throw new InvalidDataException("WIRE_TO_GATE slot fault declaration字段无效。");
+            }
+        }
+
+        if (state.RemainingBasketsSkip is { } skip)
+        {
+            RequireUuid(skip.SkipRequestId, nameof(skip.SkipRequestId));
+            RequireUuid(skip.DemandId, nameof(skip.DemandId));
+            RequireUuid(skip.OperationSessionId, nameof(skip.OperationSessionId));
+            RequireUuid(skip.SlotOperationAttemptId, nameof(skip.SlotOperationAttemptId));
+            if (skip.LoadedSlots is null
+                || skip.LoadedSlots.Count < 1
+                || skip.LoadedSlots.Any(slot => slot is < 1 or > 8)
+                || skip.LoadedSlots.Distinct().Count() != skip.LoadedSlots.Count
+                || skip.ExpectedBasketCount <= skip.LoadedSlots.Count
+                || skip.Result is { } result
+                    && (result.LoadedSlots is null
+                        || result.Outcome is not (WireToGateRemainingBasketsSkipOutcome.Authorized
+                            or WireToGateRemainingBasketsSkipOutcome.Rejected)))
+            {
+                throw new InvalidDataException("WIRE_TO_GATE remaining baskets skip字段无效。");
+            }
+
+            if (skip.Result is not null)
+            {
+                RequireUuid(skip.Result.ResultMessageId, nameof(skip.Result.ResultMessageId));
             }
         }
 

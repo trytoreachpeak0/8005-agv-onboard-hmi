@@ -55,37 +55,33 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
     throw '-AllSlices 与 -Slice 只能给一个。'
 }
 
-# 协议 v5.0.0 的身份。这是本仓库的第二份副本，权威副本是
+# 协议 v6.0.0 候选的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 18d4fb34（protocol#25 的合并提交，树与其 head ede2060f 相同；为 control-server#767）：在 protocol-v4.0.0（3fb214e5）之上给闭合
-# 枚举 TransportTaskType 追加 WIRE_TO_FULL_INSPECTION（焊线/键合机台送全检区），属于破坏性改动，所以升大版本；
-# PublicStationFunction 不变。先由 8005-agv-onboard-hmi#360 绑定在 4e9f3df8（protocol#21）；同一候选的第二次修订
-# protocol#23 不改 schema、消息与错误码，只新增向量 CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED（清单版本过期但无实质
-# 差别的出发请求受理）并把旅程计划措辞改为剩余计划。由 8005-agv-onboard-hmi#362 改钉，与服务端 8005-agv-control-server#748 同包。
-# 第三次修订 protocol#25 只改 docs/wire-notes.md（剩余计划的规则对所有计划成立，唯一例外是清桩途中保留已完成的充电桩腿；出发口径 (4) 服务端可从严），
-# 副本里只有 manifest 变；由 8005-agv-control-server#767 两端同包改钉。
-# protocol-v5.0.0 已于 2026-10-18 发布（8005-agv-control-server#767，追踪 8005-agv-program#195）：注释 tag（对象 7b108ccb）
-# 指向上面的 18d4fb34，外置 attestation（SHA-256 31d4d732…）里有一份批准，由产品负责人授权的 AI agent 给出。发布内容与
-# 候选逐字节相同，所以九个身份值原样保留，只把 ApprovalStatus 由 SUPERSEDING_CANDIDATE 改为 APPROVED_RELEASE
-# （照 protocol-v4.0.0 的先例 8005-agv-onboard-hmi#358）。候选期在本身份上产出的证据仍是 UNRELEASED_CANDIDATE，不计入批次出口。
+# 绑定的是 8005-agv-protocol fp/v2-candidate 上的 98f17264（protocol#27 的合并提交，树与其 head 13f52e67 相同；为 protocol#26、CP-0021）：
+# 在 protocol-v5.0.0（18d4fb34）之上新增减篮消息 RemainingBasketsSkipRequested／RemainingBasketsSkipResult，
+# OperationResult.overallOutcome 追加 COMPLETED_REMAINING_SKIPPED、仓位原因码 REMAINING_BASKETS_SKIPPED，
+# 装货取消改为装进一篮后不再取消（LOAD_CANCELLATION_BASKET_LOADED），属于破坏性改动，所以升大版本。
+# 由 8005-agv-onboard-hmi#388 绑定，与服务端 8005-agv-control-server#830 同包。
+# 用户 2026-10-21 定：两端跑通、真装置过了才打 protocol-v6.0.0，所以 ApprovalStatus 是 SUPERSEDING_CANDIDATE，
+# CI 按 Commit 检出协议；在本身份上产出的证据是 UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
 $expected = [ordered]@{
-    ProtocolVersion = 6
+    ProtocolVersion = 7
     ProfileId = 'AGV_FULL_PRODUCT'
-    ReleaseVersion = '5.0.0'
+    ReleaseVersion = '6.0.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v5.0.0'
-    Commit = '18d4fb3495033624cab412a7ee784f675dfe4cc2'
-    ManifestSha256 = 'dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa'
-    SchemaBundleSha256 = 'd51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933'
-    VectorsSha256 = '291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a'
-    ApprovalStatus = 'APPROVED_RELEASE'
+    Tag = 'protocol-v6.0.0'
+    Commit = '98f172642937994ed01668d81fe41e69cf089e10'
+    ManifestSha256 = 'a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1'
+    SchemaBundleSha256 = '0dab682174e2d3e4f931b3c0e87c7fa55bd2cb3395356d7845e595d8bfb1c795'
+    VectorsSha256 = 'e06ca9ea1d4445cd7d70fc190b0cf606a8e33cb7760d848c0270df24e2594c91'
+    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()

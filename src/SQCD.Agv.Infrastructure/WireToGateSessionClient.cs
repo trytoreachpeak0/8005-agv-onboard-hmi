@@ -344,6 +344,178 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// The line each skip request went out as, by <c>skipRequestId</c>, with the session generation it was built for
+    /// (8005-agv-onboard-hmi#388). A transport retry inside that generation sends this very line again -- same messageId, same
+    /// bytes -- so the server's inbox answers it from its first response; a send under a newer generation builds a new line
+    /// under a new messageId with the same payload, as the wire notes ask of a resubmission after a reconnect. In memory
+    /// only: a restart resubmits, which takes a new messageId anyway.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, RemainingBasketsSkipLine> _remainingBasketsSkipLines = [];
+
+    private sealed record RemainingBasketsSkipLine(long SessionGeneration, string MessageId, string ContentSha256, string WireLine);
+
+    /// <summary>
+    /// Sends the operator's 「剩下的不装」 (<c>RemainingBasketsSkipRequested</c>, protocol 6.0.0 candidate, 8005-agv-onboard-hmi#388)
+    /// and waits for its <c>DurableAck</c>; returns the messageId it went out under. The answer comes later as a
+    /// <c>RemainingBasketsSkipResult</c> of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not the outbox.</b> The request is journaled before this is called -- the business service's
+    /// <c>RemainingBasketsSkip</c> record, which is <c>durableBeforeSend</c> -- and an outbox row would be replayed by the next
+    /// handshake under the same messageId with a new session generation and <c>sentAt</c>: a line the server's inbox refuses
+    /// as a content conflict once it holds the first. The business service resends the record itself, and this method decides
+    /// the messageId by generation (see <see cref="_remainingBasketsSkipLines"/>).
+    /// </para>
+    /// <para>
+    /// A <c>ProtocolProblem</c> answering the request throws <see cref="WireToGateRequestNotAcceptedException"/> with its code:
+    /// no result follows one, and the request is dropped. Allowed in <c>READY</c> and in <c>RECOVERY_REQUIRED</c>: after a
+    /// reconnect mid-load the session waits for this very load, and the server decides the request either way.
+    /// </para>
+    /// </remarks>
+    public async Task<string> SendRemainingBasketsSkipRequestedAsync(
+        RemainingBasketsSkipRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRemainingBasketsSkipRequested(payload);
+        long connectionEpoch = CurrentConnectionEpoch;
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is not long generation
+            || current.Readiness is not (WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        RemainingBasketsSkipLine line = _remainingBasketsSkipLines.AddOrUpdate(
+            payload.SkipRequestId,
+            _ => BuildRemainingBasketsSkipLine(payload, generation),
+            (_, existing) => existing.SessionGeneration == generation
+                ? existing
+                : BuildRemainingBasketsSkipLine(payload, generation));
+        TaskCompletionSource<WireToGateEnvelope> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(line.MessageId, response))
+        {
+            throw new InvalidOperationException("重复的「剩下的不装」messageId。");
+        }
+
+        try
+        {
+            await SendLineAsync(line.WireLine, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            WireToGateEnvelope answer = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            if (string.Equals(answer.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                throw new WireToGateRequestNotAcceptedException(
+                    WireToGateProtocolSerializer.DeserializePayload<ProtocolProblemPayload>(answer).Problem.ReasonCode);
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(answer, "DurableAck", line.MessageId);
+            DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(answer);
+            if (ack.AcceptedMessageId != line.MessageId
+                || ack.AcceptedMessageType != "RemainingBasketsSkipRequested"
+                || ack.AcceptedContentSha256 != line.ContentSha256)
+            {
+                throw new InvalidDataException("CONTENT_HASH_MISMATCH");
+            }
+
+            return line.MessageId;
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(line.MessageId, out _);
+        }
+    }
+
+    private RemainingBasketsSkipLine BuildRemainingBasketsSkipLine(
+        RemainingBasketsSkipRequestedPayload payload,
+        long generation)
+    {
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
+            "RemainingBasketsSkipRequested",
+            Guid.NewGuid().ToString("D"),
+            null,
+            _options.AgvId,
+            generation,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        return new RemainingBasketsSkipLine(
+            generation,
+            envelope.MessageId,
+            WireToGateProtocolSerializer.ComputeContentSha256(envelope),
+            WireToGateProtocolSerializer.SerializeLine(envelope));
+    }
+
+    /// <summary>Every constraint the 6.0.0 candidate schema puts on the request, and nothing narrower.</summary>
+    private static void ValidateRemainingBasketsSkipRequested(RemainingBasketsSkipRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.SkipRequestId, nameof(payload.SkipRequestId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        if (payload.LoadedSlots is null
+            || payload.LoadedSlots.Count is < 1 or > 8
+            || payload.LoadedSlots.Any(slot => slot is < 1 or > 8)
+            || !payload.LoadedSlots.SequenceEqual(payload.LoadedSlots.Distinct().Order())
+            || payload.Operator is { } operatorContext
+                && (string.IsNullOrEmpty(operatorContext.OperatorId)
+                    || operatorContext.VerificationMethod is not ("BADGE" or "SESSION")))
+        {
+            throw new ArgumentException("PROTOCOL_SCHEMA_INVALID", nameof(payload));
+        }
+    }
+
+    /// <summary>
+    /// A <c>RemainingBasketsSkipResult</c> checked against every constraint the 6.0.0 candidate schema puts on it, and nothing
+    /// narrower (8005-agv-onboard-hmi#388): <c>AUTHORIZED</c> carries no problem and one to eight ascending slots,
+    /// <c>REJECTED</c> a problem and none. An unknown reason code is kept as it came.
+    /// </summary>
+    internal static WireToGateRemainingBasketsSkipResult CreateRemainingBasketsSkipResult(WireToGateEnvelope envelope)
+    {
+        if (envelope.CorrelationId is not null)
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        RemainingBasketsSkipResultPayload payload =
+            WireToGateProtocolSerializer.DeserializePayload<RemainingBasketsSkipResultPayload>(envelope);
+        RequireUuid(payload.SkipRequestId, nameof(payload.SkipRequestId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        IReadOnlyList<int> slots = payload.LoadedSlots ?? [];
+        bool slotsValid = slots.Count <= 8
+            && slots.All(slot => slot is >= 1 and <= 8)
+            && slots.SequenceEqual(slots.Distinct().Order());
+        bool shapeValid = slotsValid
+            && payload.Outcome switch
+            {
+                WireToGateRemainingBasketsSkipOutcome.Authorized => payload.Problem is null && slots.Count >= 1,
+                WireToGateRemainingBasketsSkipOutcome.Rejected =>
+                    payload.Problem is { } problem && !string.IsNullOrEmpty(problem.ReasonCode) && slots.Count == 0,
+                _ => false
+            };
+        if (payload.LoadedSlots is null || !shapeValid)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        return new WireToGateRemainingBasketsSkipResult(
+            envelope.MessageId,
+            envelope.SessionGeneration!.Value,
+            envelope.SentAt,
+            payload.SkipRequestId,
+            payload.DemandId,
+            payload.SlotOperationAttemptId,
+            payload.Outcome,
+            [.. slots],
+            payload.Problem?.ReasonCode,
+            WireToGateProtocolSerializer.ComputeContentSha256(envelope));
+    }
+
+    /// <summary>
     /// Acknowledges a <c>RELIABLE</c> message from the control server once the vehicle holds it durably
     /// (<c>durableBeforeAck</c>). Today only <c>CurrentStopDepartureResult</c> (8005-agv-onboard-hmi#349): the first
     /// <c>C_TO_O</c> reliable message the vehicle answers with a <c>DurableAck</c> rather than with a result of its own.
@@ -4172,6 +4344,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     command = CreateCurrentStopDepartureResult(envelope);
                     return true;
                 }
+            case "RemainingBasketsSkipResult":
+                {
+                    command = CreateRemainingBasketsSkipResult(envelope);
+                    return true;
+                }
             case "CapabilitySnapshotRequested":
             case "SafetyStateChanged":
             case "SafetyStateSnapshotRequested":
@@ -4778,7 +4955,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "SLOT_FAULT_DECLARED"
         or "RECOVERY_ACTION_RESULT_NOT_RECONCILED"
         or "ONBOARD_FATAL_FAULT_LATCHED"
-        or "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY";
+        or "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY"
+        // Protocol 6.0.0 candidate (8005-agv-onboard-hmi#388): the remaining-baskets skip and the cancellation refused once loaded.
+        or "REMAINING_BASKETS_SKIPPED"
+        or "REMAINING_BASKETS_SKIP_NOTHING_LOADED"
+        or "LOAD_CANCELLATION_BASKET_LOADED";
 
     /// <summary>
     /// Checks an inbound worklist snapshot against the frozen v2 schema, and nothing narrower.

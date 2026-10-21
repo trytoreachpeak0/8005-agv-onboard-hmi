@@ -66,6 +66,13 @@ internal static class HmiScreenBindings
         Click("OnRetryPendingResultClick", "重新上报结果", "CanRetryPendingResult", "CanRetryPendingResult"),
         // v2: the slot held shut over the opposite occupancy (8005-agv-onboard-hmi#385); MVP: the controller's reopen.
         Click("OnReopenOperationClick", "重新开门", "CanReopenOperation", "CanReopenOperation", "ReopenOperation"),
+        // 文字是绑定（「剩下的不装（已装 k/N 篮）」，8005-agv-onboard-hmi#388）；在途时仍显示、不可按。
+        Click(
+            "OnRemainingBasketsSkipClick",
+            null,
+            "ShowsRemainingBasketsSkip",
+            "CanRequestRemainingBasketsSkip",
+            "RemainingBasketsSkip"),
         Click("OnCancelOperationClick", "取消本次操作", "CanCancelOperation", "CanCancelOperation"),
         Click("OnSafetyReviewClick", "启动安全复核", "CanSafetyReview", "CanSafetyReview"),
         Click("OnClearFatalFaultClick", "复位严重安全故障", "CanClearFatalFault", "CanClearFatalFault"),
@@ -128,6 +135,7 @@ internal static class HmiScreenBindings
         // 「恢复尚未开放，请联系系统维护人员。」：值为 RECOVERY_AUTHENTICATION_FAILED（8005-agv-onboard-hmi#391）。
         new("RecoveryNotOpenNotice", "RecoveryNotOpenNoticeCode", "HasRecoveryNotOpenNotice"),
         new("ReopenOperation", "ReopenWaitStatus", "CanReopenOperation"),
+        new("RemainingBasketsSkip", "RemainingBasketsSkipStatus", "ShowsRemainingBasketsSkip"),
         new("StationClearanceStatus", "StationClearance.Status", "StationClearance.HasStatus"),
         new("UnableToChargeStatus", "UnableToCharge.Status", "UnableToCharge.HasStatus"),
         new("CargoHoldingCountdown", "CargoHoldingCountdownStatus", "HasCargoHoldingCountdown"),

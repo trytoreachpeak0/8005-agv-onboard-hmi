@@ -123,7 +123,13 @@
         "CV-CURRENT-STOP-DEPARTURE-MACHINE-STATION-WAIT",
         "CV-CURRENT-STOP-DEPARTURE-MACHINE-LOADING-INCOMPLETE",
         "CV-STAGING-CARGO-HOLDING-DEADLINE-MOVED",
-        "CV-STAGING-CARGO-HOLDING-TIMEOUT"
+        "CV-STAGING-CARGO-HOLDING-TIMEOUT",
+        "CV-REMAINING-BASKETS-SKIP-AUTHORIZED",
+        "CV-REMAINING-BASKETS-SKIP-REJECTED",
+        "CV-REMAINING-BASKETS-SKIP-NOTHING-LOADED",
+        "CV-REMAINING-BASKETS-SKIP-DUPLICATE-REQUEST",
+        "CV-REMAINING-BASKETS-SKIP-UNAUTHORIZED-RESULT",
+        "CV-LOAD-CANCELLATION-BASKET-LOADED"
       ],
       "gates": [
         "G1",
@@ -139,7 +145,9 @@
           "CORRECTION_AND_CANCELLATION_AUTHORIZED",
           "EMPTY_SLOTS_SETTLE_WHILE_UNPROVEN_DOOR_HOLDS_VEHICLE",
           "PICKUP_DEPARTURE_ON_OPERATOR_REQUEST_RELEASES_UNLOADED_DEMANDS",
-          "STAGING_CARGO_HOLDING_DEADLINE_RUNS_WITH_CARGO_ON_BOARD"
+          "STAGING_CARGO_HOLDING_DEADLINE_RUNS_WITH_CARGO_ON_BOARD",
+          "REMAINING_BASKETS_SKIPPED_ONLY_ON_SERVER_AUTHORIZATION",
+          "LOAD_CANCELLATION_REFUSED_ONCE_A_BASKET_IS_LOADED"
         ],
         "authorityModel": {
           "controlServerFact": "OperationSession",
@@ -148,7 +156,9 @@
             "SlotOperationCommand",
             "OperationResult",
             "CurrentStopDepartureRequested",
-            "CurrentStopDepartureResult"
+            "CurrentStopDepartureResult",
+            "RemainingBasketsSkipRequested",
+            "RemainingBasketsSkipResult"
           ],
           "onboardMode": [
             "PHYSICAL_EXECUTION_AUTHORITY",
@@ -161,13 +171,15 @@
             "RECONCILE_LOAD_OUTCOME",
             "HOLD_VEHICLE_ON_UNPROVEN_DOOR",
             "DECIDE_PICKUP_DEPARTURE_ON_REQUEST",
-            "RUN_STAGING_CARGO_HOLDING_DEADLINE"
+            "RUN_STAGING_CARGO_HOLDING_DEADLINE",
+            "AUTHORIZE_REMAINING_BASKETS_SKIP"
           ],
           "onboardHmi": [
             "SUBMIT_SCANNED_SUBLOT",
             "LOAD_ONLY_AUTHORIZED_SLOTS",
             "REPORT_UNPROVEN_DOOR_AFTER_EMPTY",
-            "REQUEST_PICKUP_DEPARTURE_WITH_OPERATOR"
+            "REQUEST_PICKUP_DEPARTURE_WITH_OPERATOR",
+            "REQUEST_REMAINING_BASKETS_SKIP_NEVER_SKIP_LOCALLY"
           ]
         }
       },
@@ -270,7 +282,8 @@
       ],
       "vectorIds": [
         "CV-CONNECTION-LOSS-SAFE-FINISH",
-        "CV-SESSION-RECONNECT-DURING-RECOVERY"
+        "CV-SESSION-RECONNECT-DURING-RECOVERY",
+        "CV-REMAINING-BASKETS-SKIP-DUPLICATE-REQUEST"
       ],
       "gates": [
         "G1",

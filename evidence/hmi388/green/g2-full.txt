@@ -1,0 +1,4 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ReopeningOverTheOppositeOccupancyDoesNotRestartTheWaitClock [10 s]
+Failed!  - Failed:     1, Passed:  1082, Skipped:     0, Total:  1083, Duration: 4 m 44 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+rerun alone x3: Passed 1/1 each
+Schema conformance (full run): 29107 lines, 28964 distinct, 64 message types; 0 distinct violations, 11 on file (all hmi#392 wildcard entries).

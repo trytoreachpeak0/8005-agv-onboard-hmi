@@ -1,0 +1,7 @@
+Passed!  - Failed:     0, Passed:  1322, Skipped:     0, Total:  1322, Duration: 32 s - SQCD.Agv.UnitTests.dll (net8.0)
+  Failed SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.ARestartRestoresTheIdleReturnFromTheJournalWithTheSameWords [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.AProtocolProblemAnsweringTheRequestSettlesItAsRefused [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.ASecondPressOfTheSameWaitOpensNothingMore [23 s]
+Failed!  - Failed:     3, Passed:  1083, Skipped:     0, Total:  1086, Duration: 4 m 36 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+3 failures rerun alone 3x: Passed 3/3 each time (session-layer stalls under load, none on the skip path)
+Schema conformance: 28815 lines, 0 distinct violations, 11 on file

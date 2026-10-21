@@ -1,5 +1,5 @@
 {
-  "registryVersion": "1.2.0",
+  "registryVersion": "1.3.0",
   "appendOnly": true,
   "displayMessageAuthoritative": false,
   "codes": [
@@ -640,6 +640,36 @@
       ],
       "retryDisposition": "MANUAL_REVIEW",
       "introducedInRelease": "3.0.0"
+    },
+    {
+      "code": "REMAINING_BASKETS_SKIPPED",
+      "category": "BUSINESS",
+      "meaning": "The slot is a remaining slot of a load the control server authorized to end short (REQ-0367, CP-0021): no basket was put in it under this operation, it is EMPTY, LOCKED and RESET, it is not opened again for this demand, and the slot and its reservation are released. It travels only on a NOT_STARTED SlotResult of an OperationResult with overallOutcome COMPLETED_REMAINING_SKIPPED.",
+      "allowedMessageTypes": [
+        "OperationResult"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "6.0.0"
+    },
+    {
+      "code": "REMAINING_BASKETS_SKIP_NOTHING_LOADED",
+      "category": "BUSINESS",
+      "meaning": "The control server refuses a remaining-baskets skip because, by its own facts, no target slot of the slot operation attempt has closed safely OCCUPIED (k = 0): with nothing loaded the operator gives the demand up by cancelling it under REQ-0211, not by skipping (REQ-0367, CP-0021). The vehicle keeps loading.",
+      "allowedMessageTypes": [
+        "RemainingBasketsSkipResult"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "6.0.0"
+    },
+    {
+      "code": "LOAD_CANCELLATION_BASKET_LOADED",
+      "category": "BUSINESS",
+      "meaning": "The control server refuses to authorize a load cancellation because a basket has been loaded into a target slot of the demand's load (the revised REQ-0211, CP-0021): a load with a basket in it is never cancelled; to load fewer the operator asks for the remaining-baskets skip (REQ-0367), and a wrong load is corrected. The control server checks a cancellation in the order SLOT_STATE_UNKNOWN, LOAD_CANCELLATION_BASKET_LOADED, LOCK_NOT_CLOSED, UNLOCK_OUTPUT_NOT_RESET, and the first that fails decides: so a load with nothing loaded whose door is not proven locked or whose unlock output is not proven reset is refused with LOCK_NOT_CLOSED or UNLOCK_OUTPUT_NOT_RESET, never with this code.",
+      "allowedMessageTypes": [
+        "LoadCancellationAuthorization"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "6.0.0"
     }
   ]
 }

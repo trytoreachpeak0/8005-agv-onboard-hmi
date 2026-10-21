@@ -1,0 +1,76 @@
+Test run for C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:12.78]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer [5 s]
+  Error Message:
+   The load ended (pulses so far: 2): {"protocolVersion":7,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"6.0.0","protocolReleaseManifestSha256":"a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T16:57:56.5887302+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"COMPLETED_REMAINING_SKIPPED","slotResults":[{"slotNo":1,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]},{"slotNo":2,"outcome":"NOT_STARTED","finalPhysicalState":"EMPTY","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":["REMAINING_BASKETS_SKIPPED"]}],"observedAt":"2026-10-22T00:57:56.5864509\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"26769caff6551d85e0c299f432225140e00129f12061f1d67534f5d58002efdc"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 501
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 128
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 143
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:38.38]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne [22 s]
+  Error Message:
+   Timed out after 20s waiting for: 「重新开门」 back once the request is dropped. Pulses: 2.
+OPERATION_PROGRESS: 准备执行装货：1、2号仓。
+OPERATION_PROGRESS: 正在检查1、2号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/2。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 2号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+OPERATION_PROGRESS: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+REMAINING_BASKETS_SKIP_DROPPED: 这次「剩下的不装」没有生效（BUSINESS_ID_CONTENT_CONFLICT），仓门状态未变。
+OPERATION_PROGRESS: 全部目标仓已达到安全收尾状态，正在上报结果。
+OPERATION_PROGRESS: 1号仓已装好，剩下的不装，正在上报结果。
+OPERATION_COMPLETED: 1、2号仓操作结果已被服务端确认。
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SnapshotAppliedAck, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, OperationProgress, OperationProgress, OperationResult, SafetyStateChanged
+16:58:01.774 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:58:01.806 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:58:01.808 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T16:58:01.8081971+00:00。
+16:58:01.830 Information WireToGateSessionClient: 收到SessionReadiness：messageId=21e27b19-c941-40b0-ac4e-f02d0686ecf7，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+16:58:01.830 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+16:58:01.830 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+16:58:01.914 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+16:58:01.914 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+16:58:01.925 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+16:58:04.538 Information WireToGateBusinessService: 操作员按「剩下的不装」：skipRequestId=1400eb1a-fd03-4ba8-8227-48c81a882edc，attempt=44444444-4444-4444-4444-444444444444，demand=11111111-1111-1111-1111-111111111111，已装=1（1/2），operator=operator-134。
+16:58:04.540 Warning WireToGateBusinessService: 服务端以 ProtocolProblem 回绝「剩下的不装」：skipRequestId=1400eb1a-fd03-4ba8-8227-48c81a882edc，reason=BUSINESS_ID_CONTENT_CONFLICT。
+16:58:04.557 Warning WireToGateBusinessService: 「剩下的不装」未生效、已放弃：skipRequestId=1400eb1a-fd03-4ba8-8227-48c81a882edc，attempt=44444444-4444-4444-4444-444444444444，reason=BUSINESS_ID_CONTENT_CONFLICT。
+16:58:04.621 Information WireToGateSessionClient: 收到SessionReadiness：messageId=e097413b-869b-45ad-a0a0-147e7978b167，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+16:58:04.621 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+16:58:04.621 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+16:58:04.621 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+16:58:04.661 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 523
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 305
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 316
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:41.28]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn [2 s]
+  Error Message:
+   The load ended (pulses so far: 2): {"protocolVersion":7,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"6.0.0","protocolReleaseManifestSha256":"a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T16:58:27.4576698+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"COMPLETED_REMAINING_SKIPPED","slotResults":[{"slotNo":1,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]},{"slotNo":2,"outcome":"NOT_STARTED","finalPhysicalState":"EMPTY","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":["REMAINING_BASKETS_SKIPPED"]}],"observedAt":"2026-10-22T00:58:27.4557244\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"f524d1981b44f174bd5cb93710b5e618f306870b960b8444b34a9fb5fcf6d201"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 501
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForOfferAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 481
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 179
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 189
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:48.94]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId [4 s]
+  Error Message:
+   expected a resubmission, saw 1
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 270
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 274
+--- End of stack trace from previous location ---
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Failed!  - Failed:     4, Passed:     5, Skipped:     0, Total:     9, Duration: 54 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

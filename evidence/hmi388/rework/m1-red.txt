@@ -1,0 +1,33 @@
+Test run for C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:25.63]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad [23 s]
+  Error Message:
+   Timed out after 20s waiting for: the OperationResult. Pulses: 2.
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+REMAINING_BASKETS_SKIP_DROPPED: 这次「剩下的不装」没有生效（BUSINESS_ID_CONTENT_CONFLICT），仓门状态未变。
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SafetyStateChanged, RemainingBasketsSkipRequested
+17:50:42.082 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+17:50:42.103 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=2，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+17:50:42.106 Information WireToGateSessionClient: 握手安全快照：generation=2，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T17:50:42.1066741+00:00。
+17:50:42.133 Information WireToGateSessionClient: 收到SessionReadiness：messageId=62d48566-4603-46f1-a638-c555baa1eab1，generation=2，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=1。
+17:50:42.133 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=1。
+17:50:42.134 Information WireToGateSessionClient: 安全状态变化：generation=2，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+17:50:42.159 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+17:50:42.159 Information WireToGateBusinessService: 判恢复入口：generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:50:42.166 Information WireToGateBusinessService: 重发未得到答复的「剩下的不装」：skipRequestId=ad1ed8d0-dcf7-4e89-9a0c-5a45f4cdcf18，generation=2。
+17:50:42.169 Information WireToGateBusinessService: 重连后检查授权请求：generation=2，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+17:50:42.170 Warning WireToGateBusinessService: 服务端以 ProtocolProblem 回绝「剩下的不装」：skipRequestId=ad1ed8d0-dcf7-4e89-9a0c-5a45f4cdcf18，reason=BUSINESS_ID_CONTENT_CONFLICT。
+17:50:42.182 Warning WireToGateBusinessService: 「剩下的不装」未生效、已放弃：skipRequestId=ad1ed8d0-dcf7-4e89-9a0c-5a45f4cdcf18，attempt=44444444-4444-4444-4444-444444444444，reason=BUSINESS_ID_CONTENT_CONFLICT。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 563
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForResultAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 527
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 429
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 432
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 432
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

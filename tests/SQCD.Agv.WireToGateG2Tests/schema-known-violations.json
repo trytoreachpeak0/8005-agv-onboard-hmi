@@ -40,5 +40,26 @@
     "keyword": "anyOf",
     "actual": "\"CHARGE_ELSEWHERE\"",
     "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
+  },
+  {
+    "messageType": "LoadCancellationAuthorization",
+    "pointer": "#/payload/decision",
+    "keyword": "const",
+    "actual": "\"AUTHORIZED\"",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
+  },
+  {
+    "messageType": "LoadCancellationAuthorization",
+    "pointer": "#/payload/slots",
+    "keyword": "maxItems",
+    "actual": "*",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
+  },
+  {
+    "messageType": "LoadCancellationAuthorization",
+    "pointer": "#/payload",
+    "keyword": "else",
+    "actual": "*",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
   }
 ]
