@@ -352,7 +352,9 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// The same close arriving right behind the result's acknowledgement, before the vehicle has settled it: the
-    /// completion is still said, and before the close.
+    /// completion is still said beside the close. Not necessarily before it -- the settlement on the acknowledgement and
+    /// the close run on their own, and either line can come first by milliseconds (a run on the rework had the close
+    /// first) -- but both are on the record together, so the close never stands alone.
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -374,8 +376,11 @@ public sealed partial class RecoveryVectorG2Tests
             "the compensation to be said completed",
             token);
 
-        AssertCompletedIsSaidBeforeTheClose(events);
+        Assert.Contains(events, item => item.Kind == "RECOVERY_VECTOR_COMPLETED"
+            && item.Message.StartsWith("补偿清空已完成", StringComparison.Ordinal));
+        Assert.Equal(AuthorizationClosedSentence, Assert.Single(ClosedEvents(events)).Message);
         AssertNoRecoveryEntryOffered(harness);
+        Assert.False(harness.Business.IsRecoveryNotOpen);
     }
 
     /// <summary>

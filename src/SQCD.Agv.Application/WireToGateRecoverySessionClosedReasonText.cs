@@ -25,9 +25,9 @@ public static class WireToGateRecoverySessionClosedReasonText
             ["RECOVERY_ACTION_RESULT_NOT_RECONCILED"] =
                 "服务端恢复会话已关闭：恢复动作结果未闭环，需求与旅程仍阻断，请管理员重新发起恢复。",
             // 恢复授权到期、被收回或服务端重启：服务端停收新动作、已发出的动作对账完再关（CP-0022、ADR-cross-0066 决策 5，
-            // 8005-agv-onboard-hmi#391）。不写票号与「调度」，写找谁。
-            ["RECOVERY_AUTHENTICATION_FAILED"] =
-                "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新开放。"
+            // 8005-agv-onboard-hmi#391）。动作做成、结果回来之后照样以这个码关（control-server#797 返工），所以这句只说
+            // 「结束了」，不说没做成；做成了的，操作记录里在它前面已经有「……已完成」那一条。不写票号与「调度」，写找谁。
+            ["RECOVERY_AUTHENTICATION_FAILED"] = "本次恢复已结束：恢复授权已失效。需要继续请联系系统维护人员重新开放。"
         };
 
     /// <summary>收到 <c>CLOSED</c> 快照时操作员事件的整句。</summary>

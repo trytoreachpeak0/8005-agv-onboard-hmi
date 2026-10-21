@@ -177,5 +177,11 @@ public static class OnboardCommandRejectionText
     /// </para>
     /// </remarks>
     public static string DescribeRecoveryBlocked(string reasonCode) =>
-        $"{DescribeWithCode(reasonCode)}请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。";
+        $"{DescribeWithCode(reasonCode)}{RecoveryBlockedGuidance}";
+
+    /// <summary>
+    /// 恢复入口被挡下时那半句必须保留的现场指引（见 <see cref="DescribeRecoveryBlocked"/>）。单独拿出来，是给换了前半句的
+    /// 拒绝也接上同一句（8005-agv-onboard-hmi#391：会话里授权外的动作被拒）。
+    /// </summary>
+    public const string RecoveryBlockedGuidance = "请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。";
 }

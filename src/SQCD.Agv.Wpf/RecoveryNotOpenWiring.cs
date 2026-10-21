@@ -16,6 +16,6 @@ internal static class RecoveryNotOpenWiring
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(business);
-        viewModel.ConfigureRecoveryNotOpen(() => business.IsRecoveryNotOpen);
+        viewModel.ConfigureRecoveryNotOpen(() => business.IsRecoveryNotOpen, () => business.LastRecoveryRefusalText);
     }
 }

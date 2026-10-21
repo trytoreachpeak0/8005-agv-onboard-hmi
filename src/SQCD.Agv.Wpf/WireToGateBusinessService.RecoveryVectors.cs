@@ -656,6 +656,7 @@ public sealed partial class WireToGateBusinessService
     {
         ThrowIfDisposed();
         await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        BeginRecoveryPress();
         try
         {
             return await action().ConfigureAwait(false);
@@ -675,14 +676,11 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"恢复向量{vectorType}未执行：reason={exception.Message}。",
                 exception);
-            NoteRecoveryRefusal(exception.Message);
             // 文案按错误码查表，不是把裸码拼进句子（8005-agv-onboard-hmi#171）。原来发出去的是
             // 「恢复向量被阻断：RECOVERY_REASON_REQUIRED。…」——一个操作员读不懂的码，正是
             // OnboardCommandRejectionText 的注释里说「等于什么都没说」的那种。未识别的码仍然
-            // 原样显示，那是故意的：猜出来的意思比没有更糟。
-            PublishOperatorResponse(
-                "RECOVERY_BLOCKED",
-                OnboardCommandRejectionText.DescribeRecoveryBlocked(exception.Message));
+            // 原样显示，那是故意的：猜出来的意思比没有更糟。记下这一次被拒（8005-agv-onboard-hmi#391）。
+            PublishOperatorResponse("RECOVERY_BLOCKED", NoteRecoveryRefusal(exception.Message));
             return false;
         }
         finally
@@ -2302,7 +2300,7 @@ public sealed partial class WireToGateBusinessService
                             proof),
                         cancellationToken)
                     .ConfigureAwait(false);
-                NoteRecoverySessionOpened();
+                NoteRecoverySessionOpened(opened.ExceptionRecoverySessionId);
             }
 
             ObserveRecoverySessionAttempt(
@@ -2916,13 +2914,16 @@ public sealed partial class WireToGateBusinessService
         }
 
         NoteRecoveryRefusal(reason);
-        // Refused for want of authorization, it is said in the operator's words like every other recovery refusal of that
-        // code; the other codes keep the line they had (8005-agv-onboard-hmi#391).
+        // Refused for want of authorization -- inside the session the vector was prepared under -- it is said in the
+        // operator's words; the other codes keep the line they had (8005-agv-onboard-hmi#391, wording from the #405 review).
         PublishOperatorEvent(
             $"recovery-vector-rejected:{command.MessageType}:{primaryId ?? command.MessageId}",
             "RECOVERY_BLOCKED",
             reason == RecoveryNotOpenReasonCode
-                ? $"服务端拒绝恢复向量请求：{OnboardCommandRejectionText.DescribeWithCode(reason)}未执行仓门IO。 "
+                ? RecoveryKindName(command.MessageType == "LoadCompensationRejected"
+                        ? WireToGateRecoveryVectorTypes.LoadCompensation
+                        : WireToGateRecoveryVectorTypes.LoadCorrection)
+                    + $"未获开放，未开仓门。（{reason}） "
                 : $"服务端拒绝恢复向量请求：{reason}。未执行仓门IO。 ");
     }
 

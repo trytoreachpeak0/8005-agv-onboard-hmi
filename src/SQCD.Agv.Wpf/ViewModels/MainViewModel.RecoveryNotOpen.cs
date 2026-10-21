@@ -20,6 +20,7 @@ namespace SQCD.Agv.Wpf.ViewModels;
 public sealed partial class MainViewModel
 {
     private Func<bool>? _wireToGateRecoveryNotOpen;
+    private Func<string?>? _wireToGateLastRecoveryRefusalText;
     private bool _recoveryNotOpen;
 
     /// <summary>恢复入口旁那一行是否显示。</summary>
@@ -34,17 +35,20 @@ public sealed partial class MainViewModel
         HasRecoveryNotOpenNotice ? WireToGateBusinessService.RecoveryNotOpenReasonCode : string.Empty;
 
     /// <remarks>接线本身在 <c>RecoveryNotOpenWiring</c>，G2 夹具调的是同一个方法。</remarks>
-    internal void ConfigureRecoveryNotOpen(Func<bool> recoveryNotOpen)
+    internal void ConfigureRecoveryNotOpen(Func<bool> recoveryNotOpen, Func<string?> lastRefusalText)
     {
         _wireToGateRecoveryNotOpen = recoveryNotOpen ?? throw new ArgumentNullException(nameof(recoveryNotOpen));
+        _wireToGateLastRecoveryRefusalText =
+            lastRefusalText ?? throw new ArgumentNullException(nameof(lastRefusalText));
         RunOnUiThread(RefreshRecoveryNotOpenCore);
     }
 
     /// <summary>
-    /// 会开会话的入口被拒后，弹框正文：恢复尚未开放时说那一句，其余照调用方给的话。
+    /// 会开会话的入口被拒后，弹框正文：按「这一次」被拒的原因说（#405 审查 M1）——未开放、会话里授权外的动作各有一句，
+    /// 其余照调用方给的话。
     /// </summary>
     internal string DescribeRecoveryRefusal(string otherwise) =>
-        HasRecoveryNotOpenNotice ? RecoveryNotOpenNoticeText : otherwise;
+        _wireToGateLastRecoveryRefusalText?.Invoke() ?? otherwise;
 
     private void RefreshRecoveryNotOpenCore()
     {
