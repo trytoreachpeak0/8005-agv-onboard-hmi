@@ -84,6 +84,12 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // Door 1's lock feedback goes unreadable while it stands open: the handoff ends UNKNOWN over it.
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 0,
+            "the control server to receive FaultCargoRecoveryResult, past the handoff's operation timeout",
+            token);
         JsonElement handoffResult = await WaitForPayloadAsync(harness, "FaultCargoRecoveryResult", token);
         Assert.Equal("UNKNOWN", handoffResult.GetProperty("overallOutcome").GetString());
         await harness.WaitUntilAsync(
@@ -162,6 +168,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(AttemptA, taken.UnsettledSlotOperationAttemptId);
 
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "LoadCompensationResult").Length > 0,
+            "the control server to receive LoadCompensationResult, past the compensation's operation timeout",
+            token);
         JsonElement compensation = await WaitForPayloadAsync(harness, "LoadCompensationResult", token);
         Assert.Equal("UNKNOWN", compensation.GetProperty("overallOutcome").GetString());
         await harness.WaitUntilAsync(
@@ -216,6 +228,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the compensation to open slot 1",
             token);
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "LoadCompensationResult").Length > 0,
+            "the control server to receive LoadCompensationResult, past the compensation's operation timeout",
+            token);
         JsonElement compensation = await WaitForPayloadAsync(harness, "LoadCompensationResult", token);
         Assert.Equal("UNKNOWN", compensation.GetProperty("overallOutcome").GetString());
         await harness.WaitUntilAsync(
@@ -285,6 +303,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         await ReleaseLoadAckAsync(harness, resultAckHeld, token);
 
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 0,
+            "the control server to receive FaultCargoRecoveryResult, past the handoff's operation timeout",
+            token);
         await harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
             "the refused handoff to wait for a maintainer's manual check",
@@ -379,18 +403,22 @@ public sealed partial class MultiDemandJourneyG2Tests
             messageTimeout: TimeSpan.FromSeconds(3));
 
         await LoadBothSlotsOfAAsync(harness, io, token);
-        await harness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
                 "OperationResult暂未收到DurableAck", StringComparison.Ordinal)),
             "the load's own wait for its acknowledgement to give up",
             token);
         await HoldTheSessionForRecoveryAsync(harness, token);
         // The restore's resend holds the attempt until it stops waiting; a restore that ran meanwhile would find the attempt
-        // in flight and leave it.
+        // in flight and leave it. The resend goes out once a restore runs, and is given up only once the vehicle's wait for
+        // its acknowledgement runs out after that (onboard-hmi#393): each in its own window.
         await harness.WaitUntilAsync(
-            () => ReceivedPayloads(harness, "OperationResult").Length == 2
-                && harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
-                    "OperationResult重发一次后仍未收到DurableAck", StringComparison.Ordinal))
+            () => ReceivedPayloads(harness, "OperationResult").Length == 2,
+            "the restore's resend of A's result",
+            token);
+        await harness.WaitPastMessageTimeoutUntilAsync(
+            () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                "OperationResult重发一次后仍未收到DurableAck", StringComparison.Ordinal))
                 && harness.Business.CanRequestFaultCargoHandoff,
             "the restore's resend of A's result to give up, and the handoff entry over A",
             token);
@@ -401,6 +429,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the handoff to open slot 1",
             token);
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 0,
+            "the control server to receive FaultCargoRecoveryResult, past the handoff's operation timeout",
+            token);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).RecoveryVector is null,
             "the UNKNOWN handoff to be forgotten once acknowledged",

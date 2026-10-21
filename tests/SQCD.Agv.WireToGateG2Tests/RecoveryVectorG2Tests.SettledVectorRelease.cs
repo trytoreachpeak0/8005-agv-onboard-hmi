@@ -136,7 +136,7 @@ public sealed partial class RecoveryVectorG2Tests
         // RESULT_ACK_PENDING is published by the very branch that would otherwise have cleared the
         // record, so waiting on it is waiting for that decision to have been made.
         await harness.WaitForResultAsync("LoadCompensationResult", token);
-        await RecoveryVectorHarness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => harness.Logger.Entries.Any(entry =>
                 entry.Message.Contains("恢复向量结果暂未收到DurableAck", StringComparison.Ordinal)),
             "the vehicle to record that the result has no acknowledgement yet",
@@ -200,7 +200,7 @@ public sealed partial class RecoveryVectorG2Tests
             await server.SendCommandAsync(
                 "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
             await beforeRestart.WaitForResultAsync("LoadCompensationResult", token);
-            await RecoveryVectorHarness.WaitUntilAsync(
+            await beforeRestart.WaitPastMessageTimeoutUntilAsync(
                 () => beforeRestart.Logger.Entries.Any(entry =>
                     entry.Message.Contains("恢复向量结果暂未收到DurableAck", StringComparison.Ordinal)),
                 "the vehicle to record that the result has no acknowledgement yet",

@@ -86,6 +86,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // Nothing in the session or the business reads it; see RegisterAcceptedSafety.
     private readonly WireToGateAcceptedSafetyRegister _acceptedSafety;
 
+    // Every safety version written to a connection, for the handshake to number above (onboard-hmi#394). Recorded in
+    // SendLineAsync; see WireToGateWrittenSafetyStates.
+    private readonly WireToGateWrittenSafetyStates _writtenSafety = new();
+
+    // SafetyStateChanged rows a handshake settled instead of replaying them, their version spent on other content (#394
+    // review M1). Marked acknowledged in the journal like a row the business service gives up; kept here so that
+    // WasSafetyStateChangedAcknowledgedAsync does not take them for delivered.
+    private readonly ConcurrentDictionary<string, byte> _safetyChangesNotReplayed = new(StringComparer.Ordinal);
+
     // The generation of the last session this client had, for a message put on file while none is up: the envelope
     // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
     private long _lastSessionGeneration;
@@ -176,6 +185,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// and which publication the screen was last given. Raised on the publishing thread.
     /// </summary>
     public event EventHandler<ValueChangedEventArgs<string>>? DiagnosticRecorded;
+
+    /// <summary>
+    /// One line per durable message refused because its key is on file with other content (8005-agv-onboard-hmi#386): the
+    /// key, the fields that differ and both versions. Apart from <see cref="DiagnosticRecorded"/> so the application log can
+    /// file it as a warning -- it is a refusal, not a publication. Raised on the sending thread.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<string>>? DurableContentConflictRecorded;
 
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
@@ -809,6 +825,29 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         SendManualChargingReturnToServiceRequestAsync(messageId, payload, cancellationToken);
 
+    /// <summary>
+    /// The outbox key of one answer to the pre-departure safety check <paramref name="preDepartureSafetyCheckId"/>,
+    /// and the one source of its messageId: the reading it reports, observation time included.
+    /// </summary>
+    /// <remarks>
+    /// The time is in the key because every answer is a new reading (8005-agv-onboard-hmi#386). The control server
+    /// asks the same check again -- same messageId, same check id -- for as long as it has no answer it accepts, and an
+    /// answer is a statement about the vehicle at <c>observedAt</c>, valid for two seconds. Without the time, the
+    /// second answer to one check, version and outcome met the first one's row with other times in it and was refused
+    /// as <c>BUSINESS_ID_CONTENT_CONFLICT</c>; the vehicle stopped answering, and the server, which had judged the
+    /// first answer invalid, kept asking (agv02, 2026-10-21, up to 22 minutes). Replaying the first answer instead
+    /// would not have helped: the server had refused it for exactly its times, and two seconds later it is expired
+    /// for good. Under its own key each answer is its own message with its own messageId, which the server's inbox
+    /// takes as a new row.
+    /// </remarks>
+    public static string PreDepartureSafetyCheckResultKey(
+        string preDepartureSafetyCheckId,
+        long safetyStateVersion,
+        string outcome,
+        DateTimeOffset observedAt) =>
+        $"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion.ToString(CultureInfo.InvariantCulture)}:{outcome}:"
+        + observedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
         string checkPurpose,
@@ -817,11 +856,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         long safetyStateVersion,
         DateTimeOffset validUntil,
         WireToGateSafetySummaryPayload safety,
-        CancellationToken cancellationToken = default) =>
-        SendDurableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string deduplicationKey = PreDepartureSafetyCheckResultKey(
+            preDepartureSafetyCheckId,
+            safetyStateVersion,
+            outcome,
+            observedAt);
+        return SendDurableAsync(
             "PreDepartureSafetyCheckResult",
-            $"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion}:{outcome}",
-            StableUuid($"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion}:{outcome}"),
+            deduplicationKey,
+            StableUuid(deduplicationKey),
             preDepartureSafetyCheckId,
             new PreDepartureSafetyCheckResultPayload(
                 preDepartureSafetyCheckId,
@@ -832,6 +877,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 validUntil,
                 safety),
             cancellationToken);
+    }
 
     public async Task<string> SendSafetyStateChangedAsync(
         long safetyStateVersion,
@@ -916,6 +962,56 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             .MarkOutgoingAcknowledgedAsync(row.MessageId, row.ContentSha256, cancellationToken)
             .ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// Whether the <c>SafetyStateChanged</c> sent under this version and observation was acknowledged: its outbox row is on
+    /// file, settled and not given up for good (8005-agv-onboard-hmi#394).
+    /// </summary>
+    /// <remarks>
+    /// For a change the business service still holds whose version the accepted one has reached. Since a reconnect
+    /// handshake numbers its snapshot above everything written, the accepted version reaching it no longer says the change
+    /// itself was taken: the handshake may have gone past a change that never left the vehicle.
+    /// </remarks>
+    public async Task<bool> WasSafetyStateChangedAcknowledgedAsync(
+        long safetyStateVersion,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default)
+    {
+        WireToGateDurableMessage? row = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return row is { Acknowledged: true, Abandoned: false }
+            && !_safetyChangesNotReplayed.ContainsKey(row.MessageId);
+    }
+
+    /// <summary>
+    /// <see cref="WireToGateWrittenSafetyStates.MayReplay"/> for an unacknowledged row, logged when the answer is no. A row
+    /// that cannot be read as a safety state is replayed, as before.
+    /// </summary>
+    private bool MayReplaySafetyStateChanged(WireToGateDurableMessage pending)
+    {
+        bool mayReplay;
+        try
+        {
+            mayReplay = _writtenSafety.MayReplay(pending.WireLine);
+        }
+        catch (Exception failure) when (failure is JsonException or InvalidDataException or KeyNotFoundException
+            or InvalidOperationException)
+        {
+            return true;
+        }
+
+        if (!mayReplay)
+        {
+            RecordDiagnostic(
+                $"握手不补发SafetyStateChanged：messageId={pending.MessageId}，它的安全状态版本号已由另一份内容写出或已被越过；"
+                + "标为不再欠，由此刻读数取代。");
+        }
+
+        return mayReplay;
     }
 
     private string SafetyStateChangedDeduplicationKey(long safetyStateVersion, DateTimeOffset observedAt)
@@ -1013,7 +1109,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
             List<WireToGateDurableMessage> supersededReports = [];
-            bool resentSafetyStateChange = false;
             foreach (WireToGateDurableMessage pending in unacknowledged)
             {
                 if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
@@ -1032,10 +1127,20 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
-                resentSafetyStateChange |= string.Equals(
-                    pending.MessageType,
-                    "SafetyStateChanged",
-                    StringComparison.Ordinal);
+                // A change whose version is already spent on other content -- a handshake snapshot numbered past it while
+                // it never left the vehicle -- is not replayed: under that version it would be a second safety state,
+                // and below the snapshot it would be older content. Settled here like a change the business service gives
+                // up (#208); the business service would have, had the session lasted until its next pass (#394 review M1).
+                if (string.Equals(pending.MessageType, "SafetyStateChanged", StringComparison.Ordinal)
+                    && !MayReplaySafetyStateChanged(pending))
+                {
+                    await _journal
+                        .MarkOutgoingAcknowledgedAsync(pending.MessageId, pending.ContentSha256, cancellationToken)
+                        .ConfigureAwait(false);
+                    _safetyChangesNotReplayed.TryAdd(pending.MessageId, 0);
+                    continue;
+                }
+
                 await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1066,17 +1171,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
 
             // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
-            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
-            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
-            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
-            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
-            // 开始，那个号在这一代里还没对应任何内容。
+            // 快照的内容是此刻现算的，所以它取一个本进程还没写出过的号：已写出的最大号与已接受的号，取大者加一
+            // （WireToGateWrittenSafetyStates）。上面补发过的 SafetyStateChanged 也算写出过，所以补发之后快照照样
+            // 在它之上（onboard-hmi#206：安全变化与安全快照在服务端共用同一个号、按整行哈希比）。
+            //
+            // 以前没补发时沿用已接受的号，理由是服务端每一代从零开始、那个号在这一代里还没对应任何内容。服务端确实
+            // 不拒，但同一个号在车载端日志、服务端日志里就对着两份内容：10-21 agv03 上一代的 v94 是全锁，代次 116
+            // 握手又以 v94 报了 SLOT_STATE_UNKNOWN，排查先从错的那一份读起（onboard-hmi#394）。确认丢了的握手快照
+            // 也算写出过：服务端可能已经收下，已接受的号却没动。只有本进程什么都没写出过时才用已接受的号——那是
+            // 配置里的起点，还没对应任何内容。
             IoSnapshot io = _ioModule.CurrentSnapshot;
             WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
-            long safetyStateVersion = resentSafetyStateChange
-                ? checked(acceptedSafetyStateVersion + 1)
-                : acceptedSafetyStateVersion;
+            long safetyStateVersion = _writtenSafety.NextHandshakeVersion(Volatile.Read(ref _acceptedSafetyStateVersion));
             RecordSafetySummary("握手安全快照", generation, safetyStateVersion, safety, io);
             RememberSafety(safetyStateVersion, safety);
             await SendSnapshotAndRequireAckAsync(
@@ -2152,6 +2258,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
                     JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
             {
+                // The exception keeps its bare reason code, which callers classify by; the technical log gets what
+                // the code alone never said -- which key, which fields, and both versions (8005-agv-onboard-hmi#386).
+                DurableContentConflictRecorded?.Invoke(this, new ValueChangedEventArgs<string>(DescribeDurableContentConflict(
+                    deduplicationKey,
+                    existing,
+                    existingEnvelope,
+                    messageType,
+                    messageId,
+                    correlationId,
+                    candidateEnvelope)));
                 throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
             }
 
@@ -4921,6 +5037,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
             }
 
+            // Before the write, not after it: a line cut off half way may still have reached the server, and a version
+            // counted spent that was not is only a number skipped (onboard-hmi#394).
+            RecordWrittenSafetyState(normalized);
             try
             {
                 await connection.Writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
@@ -5117,8 +5236,89 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 ? "。"
                 : $"，ioConnected={io.IsConnected}，ioObservedAt={io.ObservedAt.ToString("O", CultureInfo.InvariantCulture)}。"));
 
+    /// <summary>
+    /// Records a safety state about to be written (<see cref="WireToGateWrittenSafetyStates"/>). Observation of the line,
+    /// like <see cref="RegisterAcceptedSafety"/>: a failure here is a diagnostic, never a failed send.
+    /// </summary>
+    private void RecordWrittenSafetyState(string line)
+    {
+        try
+        {
+            if (_writtenSafety.Record(line) is { } conflict)
+            {
+                RecordDiagnostic(conflict);
+            }
+        }
+        catch (Exception failure)
+        {
+            try
+            {
+                RecordDiagnostic($"记录已写出的安全状态版本失败：{failure.GetType().Name}。");
+            }
+            catch (Exception)
+            {
+                // A diagnostic subscriber can throw; the send goes on.
+            }
+        }
+    }
+
     private void RecordDiagnostic(string line) =>
         DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
+
+    /// <summary>
+    /// One line for a durable message refused because its key is on file with other content: the key, the fields
+    /// that differ (envelope fields by name, payload fields as <c>payload.&lt;name&gt;</c>), and both versions in full
+    /// (8005-agv-onboard-hmi#386). Envelope fields the outbox rebinds or stamps itself -- generation, sentAt -- are
+    /// not compared by the caller and are not listed.
+    /// </summary>
+    private static string DescribeDurableContentConflict(
+        string deduplicationKey,
+        WireToGateDurableMessage existing,
+        WireToGateEnvelope existingEnvelope,
+        string messageType,
+        string messageId,
+        string? correlationId,
+        WireToGateEnvelope candidateEnvelope)
+    {
+        List<string> differing = [];
+        if (existing.MessageType != messageType || existingEnvelope.MessageType != messageType)
+        {
+            differing.Add("messageType");
+        }
+
+        if (existing.MessageId != messageId || existingEnvelope.MessageId != messageId)
+        {
+            differing.Add("messageId");
+        }
+
+        if (existingEnvelope.CorrelationId != correlationId)
+        {
+            differing.Add("correlationId");
+        }
+
+        string storedPayload = existingEnvelope.Payload.GetRawText();
+        string candidatePayload = candidateEnvelope.Payload.GetRawText();
+        if (JsonNode.Parse(storedPayload) is JsonObject stored && JsonNode.Parse(candidatePayload) is JsonObject candidate)
+        {
+            differing.AddRange(stored.Select(property => property.Key)
+                .Union(candidate.Select(property => property.Key), StringComparer.Ordinal)
+                .Where(name => !JsonNode.DeepEquals(
+                    stored.TryGetPropertyValue(name, out JsonNode? left) ? left : null,
+                    candidate.TryGetPropertyValue(name, out JsonNode? right) ? right : null))
+                .Select(name => $"payload.{name}"));
+        }
+        else if (storedPayload != candidatePayload)
+        {
+            differing.Add("payload");
+        }
+
+        return $"持久消息去重键已登记另一份内容，拒发（BUSINESS_ID_CONTENT_CONFLICT）：key={deduplicationKey}，"
+            + $"不同的字段=[{string.Join(",", differing)}]；"
+            + $"已登记 messageType={existing.MessageType}，messageId={existing.MessageId}，"
+            + $"correlationId={existingEnvelope.CorrelationId}，payload={storedPayload}；"
+            + $"本次 messageType={messageType}，messageId={messageId}，correlationId={correlationId}，"
+            + $"payload={candidatePayload}。";
+    }
 
     /// <param name="receiveLoopGeneration">
     /// The generation of the receive loop that read the line, or <c>null</c> for the handshake's own. A loop's line is
