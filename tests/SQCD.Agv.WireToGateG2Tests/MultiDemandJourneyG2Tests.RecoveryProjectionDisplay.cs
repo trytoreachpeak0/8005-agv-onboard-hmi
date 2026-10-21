@@ -113,7 +113,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         // Two waits, not one: A's DurableAck timeout alone is two seconds of the harness's five-second
         // budget, and the restore only starts after it.
-        await harness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => OperatorLog(harness).Contains(ResultAckPendingLine),
             "A's acknowledgement to be given up on",
             token);
@@ -203,7 +203,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         // Two waits, not one: A's DurableAck timeout alone is two seconds of the harness's five-second
         // budget, and the restore only starts after it.
-        await harness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => OperatorLog(harness).Contains(ResultAckPendingLine),
             "A's acknowledgement to be given up on",
             token);
@@ -366,7 +366,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => before.Server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"),
                 "A's UNKNOWN result to reach the server",
                 token);
-            await before.WaitUntilAsync(
+            await before.WaitPastMessageTimeoutUntilAsync(
                 () => OperatorLog(before).Contains(ResultAckPendingLine),
                 "A's acknowledgement to be given up on",
                 token);
