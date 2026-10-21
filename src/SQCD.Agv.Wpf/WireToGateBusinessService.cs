@@ -2229,28 +2229,32 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
             // Refused for good and given up (onboard-hmi#254): never resent, its version skipped.
             ForgetAbandonedSafetyChange();
-            // 换代必须重新全量上报一次安全快照（ADR-cross-0022「连接时全量同步，变化时可靠增量」
-            // 的前半句，它在重连时同样适用）。签名去重是进程内状态而会话不是：服务端重启后新会话
-            // 手上没有上一代的快照，车载端进程没重启、签名照旧，那份快照就永远不会重发，服务端的
-            // readiness 一直卡在 DEPARTURE_SAFETY_NOT_READY。车静止时安全签名恒定，正是它永远
-            // 跨不过下面那道 return 的时候——也就是最需要重发的那一种。
+            SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
+            string signature = evaluation.Signature;
+
+            // 换代后，服务端手上这一代的安全状态只有握手的全量快照（ADR-cross-0022「连接时全量同步，变化时可靠增量」）。
+            // 签名去重是进程内状态而会话不是，上一代报过的签名代表不了这一代：换代时签名改认握手快照。快照报的摘要与
+            // 此刻读数相同，就当此刻读数已经报过；不同（握手读到的是变化中途的 IO）、握手快照之后已有别的版本被接受、
+            // 或上一份报告已被放弃（签名为 null），就照旧清空签名，下面把此刻读数作为一条变化报出去。
             //
-            // 这一段必须排在上面的 pending 对账之后：SafetyStateVersion 是进程内单调递增的，
-            // 跨代不回退，所以换代之后它仍可能不小于 pending 的版本，让对账把签名恢复回去。
-            // _nextSafetyStateVersion 会随换代自动重新基线（紧接着的几行），签名不会，
-            // 这个不对称就是缺陷本身。
+            // 以前换代一律清空签名（82066c0，移植自 MVP 004891f：服务端重启后新会话没有快照，readiness 卡在
+            // DEPARTURE_SAFETY_NOT_READY）。v2 服务端把握手快照与 SafetyStateChanged 同样落库、据它判就绪
+            // （control-server OnboardMessageProcessor.cs:542-544、WireToGateStore.DecideReadinessAsync），那份补报
+            // 内容与快照相同，只是把已接受版本再抬一次，让服务端在途的出发前检查再过期一次（onboard-hmi#399）。
+            //
+            // 这一段必须排在上面的 pending 对账之后：SafetyStateVersion 是进程内单调递增的，跨代不回退，所以换代之后
+            // 它仍可能不小于 pending 的版本，让对账把签名恢复回去；对账放弃 pending 时清空的签名在这里也不改认。
             if (_lastSafetyGeneration != current.SessionGeneration)
             {
                 _lastSafetyGeneration = current.SessionGeneration;
-                _lastSafetySignature = null;
+                _lastSafetySignature = _lastSafetySignature is not null && HandshakeSnapshotHolds(current, evaluation.Safety)
+                    ? signature
+                    : null;
             }
 
             _nextSafetyStateVersion = Math.Max(
                 _nextSafetyStateVersion,
                 checked(current.SafetyStateVersion + 1));
-
-            SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
-            string signature = evaluation.Signature;
 
             // A change still pending -- the reconciliation above left it, so its version is still above the accepted
             // one -- whose content the IO has since moved past is never sent. The case that matters is a reconnect the
@@ -2507,6 +2511,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _safetySendGate.Release();
         }
     }
+
+    /// <summary>
+    /// Whether the server holds <paramref name="present"/> for <paramref name="session"/>'s generation through the
+    /// handshake's snapshot alone (onboard-hmi#399): that snapshot was acknowledged in this generation, nothing has been
+    /// accepted above it since, and it carried the same summary.
+    /// </summary>
+    private bool HandshakeSnapshotHolds(WireToGateSessionSnapshot session, WireToGateSafetySummaryPayload present) =>
+        _session.HandshakeSafety is { Safety: { } held } handshake
+        && handshake.SessionGeneration == session.SessionGeneration
+        && handshake.SafetyStateVersion == session.SafetyStateVersion
+        && held.DepartureSafe == present.DepartureSafe
+        && held.VehicleStopped == present.VehicleStopped
+        && held.AllTargetSlotsLocked == present.AllTargetSlotsLocked
+        && held.AllUnlockOutputsReset == present.AllUnlockOutputsReset
+        && held.UnknownPresent == present.UnknownPresent
+        && held.ReasonCodes.SequenceEqual(present.ReasonCodes, StringComparer.Ordinal);
 
     private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
         session.Connected
