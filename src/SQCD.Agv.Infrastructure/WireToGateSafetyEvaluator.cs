@@ -98,4 +98,11 @@ public static class WireToGateSafetyEvaluator
             slotUnknown || vehicleUnknown,
             reasons.Distinct(StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>
+    /// Whether two summaries say the same thing on the wire: every field equal, the reason codes in the same order
+    /// (8005-agv-onboard-hmi#399).
+    /// </summary>
+    public static bool SameSummary(WireToGateSafetySummaryPayload left, WireToGateSafetySummaryPayload right) =>
+        throw new NotImplementedException();
 }
