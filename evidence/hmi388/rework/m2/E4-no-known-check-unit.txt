@@ -1,0 +1,21 @@
+Test run for C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:13.98]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(reading: "UNREADABLE") [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(reading: "UNREADABLE") [10 s]
+  Error Message:
+   System.Threading.Tasks.TaskCanceledException : A task was canceled.
+  Stack Trace:
+     at SQCD.Agv.Application.WireToGateSlotOperationExecutor.WaitForRemainingBasketsSkipDecisionAsync(Int32 physicalSlot, IReadOnlyList`1 completed, Int32 promptRound, Func`3 progress, ActiveOperation active, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 2574
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.WaitForRemainingBasketsSkipDecisionAsync(Int32 physicalSlot, IReadOnlyList`1 completed, Int32 promptRound, Func`3 progress, ActiveOperation active, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 2595
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DriveSlotToTargetStateAsync(WireToGateSlotOperationCommand command, Int32 physicalSlot, IReadOnlyList`1 completed, Func`3 progress, ActiveOperation active, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 2203
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteRemainingSlotsAsync(WireToGateSlotOperationCommand command, WireToGateRecoveryOperationContext context, WireToGateRecoveryState existingState, List`1 completed, List`1 results, Func`3 progress, Boolean firstRun, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 1628
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteExclusiveAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 1472
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 300
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(String reading) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RemainingBasketsSkip.cs:line 94
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(String reading) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RemainingBasketsSkip.cs:line 143
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:   112, Skipped:     0, Total:   113, Duration: 41 s - SQCD.Agv.UnitTests.dll (net8.0)
