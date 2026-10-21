@@ -1859,6 +1859,14 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         private set;
     } = [];
 
+    /// <summary>
+    /// When this double read each of <see cref="ReceivedEnvelopes"/>, by index: the nearest this side gets to when the vehicle
+    /// put it on the wire. Not its <c>sentAt</c>: a resend goes out exactly as on file, <c>sentAt</c> and all, so the
+    /// resend of an <c>OperationResult</c> reads as sent when the first copy was (8005-agv-onboard-hmi#393 review S4).
+    /// Published before the envelope, so every index of a <see cref="ReceivedEnvelopes"/> read earlier is in range here.
+    /// </summary>
+    public IReadOnlyList<DateTimeOffset> ReceivedAt { get; private set; } = [];
+
     public IReadOnlyList<(int Connection, string MessageType, string MessageId, string WireLine)> SentJourneyEnvelopes
     {
         get;
@@ -2096,6 +2104,9 @@ public sealed partial class FakeControlServer : IAsyncDisposable
             // between the two assignments sees the message in Received and an envelope list that does
             // not have it yet -- an index-out-of-range in the waiting helper, once every few hundred
             // full runs (onboard-hmi#134, seen in a full G2 on RecoveryVectorG2Tests).
+            var readAt = ReceivedAt.ToList();
+            readAt.Add(DateTimeOffset.UtcNow);
+            ReceivedAt = readAt;
             var envelopes = ReceivedEnvelopes.ToList();
             envelopes.Add((connectionIndex, messageType, messageId, wireLine));
             ReceivedEnvelopes = envelopes;
