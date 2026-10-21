@@ -32,3 +32,12 @@ Runs on this machine, CPU affinity 0xF, through `Invoke-HeavyLocal.ps1`: see `ru
 shape (`red-scene-run1.txt`: stuck on the vehicle side, the result owed and not given up, the resend read 2.5-3 s into
 the wait, thread pool idle); fixed 5/5 green. The one pre-fix pass: the injection's start relative to the wait's start
 varies by a few hundred ms. Non-ASCII vehicle log lines in the scene file are mis-decoded by the console capture.
+
+## Why the injection delays the resend and not an ack on the double
+
+Holding back the DurableAck of the SafetyStateChanged that goes out just before the resend (on the double) would not
+delay the resend: the vehicle's durable sends are not serialized behind each other's acks -- each
+`SendDurableCoreAsync` writes its line and waits for its own ack alone. On CI the resend was read after that
+SafetyStateChanged because the vehicle was slow to get to it, not because it waited for that ack. So the injection
+delays the resend itself, on the test side (a journal wrapper through the harness's `wrapJournal`), with no product
+change.
