@@ -176,6 +176,7 @@ public sealed partial class WireToGateBusinessService
                         proof),
                     cancellationToken)
                 .ConfigureAwait(false);
+            NoteRecoverySessionOpened();
             ObserveRecoverySessionAttempt(opened.ExceptionRecoverySessionId, opened.SlotOperationAttemptId);
             if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
                 || !string.Equals(opened.EventId, release.EventId, StringComparison.Ordinal)

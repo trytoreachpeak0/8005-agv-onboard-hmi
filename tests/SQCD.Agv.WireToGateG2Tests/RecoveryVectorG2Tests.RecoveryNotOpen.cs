@@ -208,6 +208,47 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal((string.Empty, false), (notice.Value, notice.Visible));
     }
 
+    /// <summary>
+    /// A compensation's authorization request refused for want of authorization: the same sentence on the record, and the
+    /// vector is released, so the reconnect review has nothing to send again.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsReleased()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await StartForClosedReasonAsync(token);
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await harness.WaitForInboundAsync("LoadCompensationRequested", token);
+        string requestMessageId = harness.Server.ReceivedEnvelopes
+            .Last(envelope => envelope.MessageType == "LoadCompensationRequested")
+            .MessageId;
+
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationRejected",
+            "abcdabcd-0000-4000-8000-000000003910",
+            new
+            {
+                recoveryActionId = prepared.RecoveryVector!.PrimaryId,
+                problem = new
+                {
+                    reasonCode = RecoveryNotOpenCode,
+                    fieldPath = "payload",
+                    displayMessage = "Load compensation is not authorized."
+                }
+            },
+            correlationId: requestMessageId);
+        await harness.WaitForRecoveryBlockedAsync(RecoveryNotOpenCode, token);
+
+        WireToGateOperatorEvent shown = Assert.Single(
+            harness.OperatorEvents,
+            item => item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains(RecoveryNotOpenCode, StringComparison.Ordinal));
+        Assert.Contains(RecoveryNotOpenSentence, shown.Message, StringComparison.Ordinal);
+        Assert.True(harness.Business.IsRecoveryNotOpen);
+        Assert.Null((await harness.ReadRecoveryStateAsync(token)).RecoveryVector);
+    }
+
     private static Task<RecoveryVectorHarness> StartUnauthorizedAsync(CancellationToken token) =>
         RecoveryVectorHarness.StartAsync(
             token,

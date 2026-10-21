@@ -675,6 +675,7 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"恢复向量{vectorType}未执行：reason={exception.Message}。",
                 exception);
+            NoteRecoveryRefusal(exception.Message);
             // 文案按错误码查表，不是把裸码拼进句子（8005-agv-onboard-hmi#171）。原来发出去的是
             // 「恢复向量被阻断：RECOVERY_REASON_REQUIRED。…」——一个操作员读不懂的码，正是
             // OnboardCommandRejectionText 的注释里说「等于什么都没说」的那种。未识别的码仍然
@@ -2301,6 +2302,7 @@ public sealed partial class WireToGateBusinessService
                             proof),
                         cancellationToken)
                     .ConfigureAwait(false);
+                NoteRecoverySessionOpened();
             }
 
             ObserveRecoverySessionAttempt(
@@ -2913,10 +2915,15 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
+        NoteRecoveryRefusal(reason);
+        // Refused for want of authorization, it is said in the operator's words like every other recovery refusal of that
+        // code; the other codes keep the line they had (8005-agv-onboard-hmi#391).
         PublishOperatorEvent(
             $"recovery-vector-rejected:{command.MessageType}:{primaryId ?? command.MessageId}",
             "RECOVERY_BLOCKED",
-            $"服务端拒绝恢复向量请求：{reason}。未执行仓门IO。 ");
+            reason == RecoveryNotOpenReasonCode
+                ? $"服务端拒绝恢复向量请求：{OnboardCommandRejectionText.DescribeWithCode(reason)}未执行仓门IO。 "
+                : $"服务端拒绝恢复向量请求：{reason}。未执行仓门IO。 ");
     }
 
     /// <param name="forcedRecoveryGeneration">

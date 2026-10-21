@@ -58,11 +58,11 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// The three ways the sentence reads: a known reason from the table, no reason (as before 3.0.0), and a
-    /// reason the table does not know, shown as it came rather than guessed at.
+    /// reason the table does not know, shown as it came rather than guessed at. The table's second reason is an
+    /// authorization expired, withdrawn or lost with a server restart (8005-agv-onboard-hmi#391, control-server#797).
     /// </summary>
     [Theory]
     [InlineData("RECOVERY_ACTION_RESULT_NOT_RECONCILED", "服务端恢复会话已关闭：恢复动作结果未闭环，需求与旅程仍阻断，请管理员重新发起恢复。")]
-    // Authorization expired, withdrawn or lost with a server restart (8005-agv-onboard-hmi#391, control-server#797).
     [InlineData("RECOVERY_AUTHENTICATION_FAILED", "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新开放。")]
     [InlineData(null, "服务端恢复会话已关闭。")]
     [InlineData("ACTION_NOT_ALLOWED_IN_STATE", "服务端恢复会话已关闭（ACTION_NOT_ALLOWED_IN_STATE）。")]

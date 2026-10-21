@@ -662,6 +662,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             proof),
                         cancellationToken)
                     .ConfigureAwait(false);
+                NoteRecoverySessionOpened();
             }
             ObserveRecoverySessionAttempt(
                 opened.ExceptionRecoverySessionId, opened.SlotOperationAttemptId);
@@ -774,6 +775,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复申请未执行：session={recoveryId}，reason={exception.Message}。",
                 exception);
+            NoteRecoveryRefusal(exception.Message);
             // 与 RunRecoveryRequestAsync 同一条：按码查表，不拼裸码（8005-agv-onboard-hmi#171）。
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
@@ -2630,6 +2632,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}";
                     if (recoverySnapshot.State == "CLOSED")
                     {
+                        // Before the event below, which refreshes the screen (8005-agv-onboard-hmi#391).
+                        NoteRecoveryRefusal(recoverySnapshot.ClosedReason ?? string.Empty);
                         // A repair release's session is over, whatever it ended on (8005-agv-onboard-hmi#219).
                         await ForgetRepairReleaseOfClosedSessionAsync(
                                 recoverySnapshot.ExceptionRecoverySessionId,
@@ -2651,6 +2655,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     }
                     else
                     {
+                        NoteRecoverySessionOpened();
                         PublishOperatorEvent(
                             snapshotKey,
                             "RECOVERY_SESSION_UPDATED",
