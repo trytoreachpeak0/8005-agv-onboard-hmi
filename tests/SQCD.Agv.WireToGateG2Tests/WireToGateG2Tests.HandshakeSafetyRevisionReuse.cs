@@ -89,6 +89,43 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
+    /// The timing of generation 116 alone, on code that has #374: a reconnect whose capability ack takes 3.5 s, the IO
+    /// reading normally throughout. The handshake snapshot says nothing unknown and the session comes up ready -- the
+    /// shape that stopped agv03 at 13:52 on <c>a3fdb194</c>, which predates #374.
+    /// </summary>
+    /// <remarks>
+    /// Asserts nothing about versions, so that it says what #374 alone does: green on the integration branch before this
+    /// ticket, red with #374's reading taken back to before the capability ack.
+    /// </remarks>
+    [Fact]
+    public async Task TheFieldReconnectWhoseHandshakeTakes3500MsReportsNothingUnknown()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            BeforeSnapshotAck = (messageType, connection) => messageType == "CapabilitySnapshot" && connection == 2
+                ? Task.Delay(FieldHandshakeAckDelay, testToken)
+                : Task.CompletedTask
+        };
+        ConcurrentQueue<string> diagnostics = new();
+        await using WireToGateSessionClient client = HandshakeFreshnessClient(server, io, diagnostics);
+        await client.ConnectAndRecoverAsync(testToken);
+
+        server.CloseLatestConnection();
+        await client.ConnectAndRecoverAsync(testToken);
+
+        WireToGateSafetySummaryPayload safety = SafetyOf(server.ReceivedEnvelopes
+            .Single(item => item.Connection == 2 && item.MessageType == "SafetyStateSnapshot")
+            .WireLine);
+        Assert.True(
+            !safety.ReasonCodes.Contains("SLOT_STATE_UNKNOWN") && !safety.UnknownPresent && safety.DepartureSafe,
+            $"the reconnect handshake snapshot reported [{string.Join(",", safety.ReasonCodes)}] unknownPresent={safety.UnknownPresent}");
+        Assert.Equal(WireToGateSessionReadiness.Ready, client.Current.Readiness);
+    }
+
+    /// <summary>
     /// A handshake snapshot that went out but whose ack never came -- the link roamed in the middle of it -- still spent
     /// its version: the next handshake goes above it, although the server never accepted it.
     /// </summary>
