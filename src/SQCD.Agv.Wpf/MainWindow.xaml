@@ -946,7 +946,7 @@
                                    Text="{Binding CurrentStopDeparture.StatusText}"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding CurrentStopDeparture.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155">
+                        <TextBlock FontSize="15" FontWeight="Bold" Foreground="#334155">
                             <Run Text="本站清单" /><Run Text="{Binding WorklistCountText, Mode=OneWay}" />
                         </TextBlock>
                         <!--
@@ -954,7 +954,7 @@
                             不是从清单挑待装任务的入口（WORKLIST_SELECTION 归批次 11）。
                             待送点取货停靠上（CP-0014 修订项二，8005-agv-onboard-hmi#353）：每行压成一行（子批、篮数、侧），
                             还没装的行右边一个「取消」，按下确认后彻底取消这一条；那几行的侧都是「待分配」，字不显示、ItemStatus 照旧。
-                            1024×768 上一次露出约 4 行，其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
+                            1024×768 上一次露出约 3 行（8005-agv-onboard-hmi#387 放大字号后，原来约 4 行），其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
                             每行第一个 TextBlock 只放子批：真装置 L2 按「行里第一个 TextBlock 是子批」读清单（L2MultiStopJourney）。
                         -->
                         <ListBox Margin="0,2,0,8"
@@ -980,12 +980,12 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14"
+                                                <TextBlock FontSize="18"
                                                            FontWeight="Bold"
                                                            Text="{Binding Sublot}"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTip="{Binding Sublot}" />
-                                                <TextBlock FontSize="12"
+                                                <TextBlock FontSize="14"
                                                            Foreground="{StaticResource MutedBrush}"
                                                            TextTrimming="CharacterEllipsis"
                                                            Visibility="{Binding ShowsDetailLine, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -999,14 +999,14 @@
                                             <TextBlock Grid.Column="1"
                                                        Margin="6,0,0,0"
                                                        VerticalAlignment="Center"
-                                                       FontSize="13"
+                                                       FontSize="15"
                                                        Foreground="{StaticResource MutedBrush}"
                                                        Text="{Binding ExpectedBasketCountText}"
                                                        Visibility="{Binding AtStagingPickupStop, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <TextBlock Grid.Column="2"
                                                        Margin="6,0,0,0"
                                                        VerticalAlignment="Center"
-                                                       FontSize="13"
+                                                       FontSize="15"
                                                        FontWeight="SemiBold"
                                                        Foreground="{StaticResource PrimaryBrush}"
                                                        AutomationProperties.AutomationId="WorklistItemSide"
@@ -1015,7 +1015,7 @@
                                             <Button Grid.Column="3"
                                                     Margin="6,0,0,0"
                                                     Padding="12,2"
-                                                    FontSize="14"
+                                                    FontSize="16"
                                                     AutomationProperties.AutomationId="WorklistItemCancellation"
                                                     IsEnabled="{Binding CanPressCancellation}"
                                                     Visibility="{Binding OffersCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"

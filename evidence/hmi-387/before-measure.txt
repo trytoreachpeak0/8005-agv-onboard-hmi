@@ -1,0 +1,16 @@
+[before machine-pickup] column viewport=275 extent=373
+  row0 h=47 top=19 fullyVisible=True | 'Q26056680-14' fs=14 w=222/97 | '取货    待送→焊线机台    2 篮' fs=12 w=222/154 | '前侧' fs=13 w=26/32 TRIMMED
+  row1 h=47 top=66 fullyVisible=True | 'Q260566829-12' fs=14 w=222/105 | '取货    装片→焊线待送    12 篮' fs=12 w=222/161 | '后侧' fs=13 w=26/32 TRIMMED
+  row2 h=47 top=112 fullyVisible=True | 'Q260566829-123' fs=14 w=209/113 | '取货    焊线→质检关卡    2 篮' fs=12 w=209/154 | '待分配' fs=13 w=39/45 TRIMMED
+  row3 h=47 top=159 fullyVisible=True | 'Q2605668291-123' fs=14 w=222/121 | '取货    焊线→氮气柜    2 篮' fs=12 w=222/142 | '前侧' fs=13 w=26/32 TRIMMED
+  row4 h=47 top=206 fullyVisible=True | 'Q26056682912-123' fs=14 w=222/129 | '取货    装片→焊线待送    2 篮' fs=12 w=222/154 | '后侧' fs=13 w=26/32 TRIMMED
+  row5 h=47 top=252 fullyVisible=True | 'FIELD-1009-AGV02-01' fs=14 w=209/147 | '取货    焊线→全检    2 篮' fs=12 w=209/130 | '待分配' fs=13 w=39/45 TRIMMED
+  row6 h=47 top=299 fullyVisible=True | 'L2-CS-20260916T110453970Z-0' fs=14 w=222/210 | '取货    待送→焊线机台    2 篮' fs=12 w=222/154 | '前侧' fs=13 w=26/32 TRIMMED
+[before staging-pickup] column viewport=275 extent=289
+  row0 h=35 top=19 fullyVisible=True | 'Q26056680-14' fs=14 w=160/97 | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
+  row1 h=35 top=54 fullyVisible=True | 'Q260566829-12' fs=14 w=153/105 | '12 篮' fs=13 w=31/37 TRIMMED | button fs=14 w=52 h=23
+  row2 h=35 top=89 fullyVisible=True | 'Q260566829-123' fs=14 w=160/113 | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
+  row3 h=35 top=123 fullyVisible=True | 'Q2605668291-123' fs=14 w=160/121 | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
+  row4 h=35 top=158 fullyVisible=True | 'Q26056682912-123' fs=14 w=160/129 | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
+  row5 h=35 top=192 fullyVisible=True | 'FIELD-1009-AGV02-01' fs=14 w=160/147 | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
+  row6 h=35 top=227 fullyVisible=True | 'L2-CS-20260916T110453970Z-0' fs=14 w=160/210 TRIMMED | '2 篮' fs=13 w=24/30 TRIMMED | button fs=14 w=52 h=23
