@@ -223,12 +223,17 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
-    /// A new generation's handshake resends nothing, so it reuses the accepted number for a summary read from the IO just
-    /// then; the server holds that summary for the new generation. The accepted state follows it (ruling B, the second
-    /// same-version exception), where "only up" would keep the old generation's.
+    /// A new generation's handshake reads its summary from the IO just then and sends it under a version of its own, above
+    /// the old generation's (onboard-hmi#394); the accepted state follows it.
     /// </summary>
+    /// <remarks>
+    /// Before #394 the handshake reused the accepted number when it resent nothing, and this test pinned ruling B's second
+    /// same-version exception (<c>WireToGateAcceptedSafetyRegister.Supersedes</c>): the old generation's summary replaced
+    /// at the same version. Within one client that case no longer arises; the exception stays for the register's own
+    /// rules and is pinned at unit level.
+    /// </remarks>
     [Fact]
-    public async Task ANewGenerationsHandshakeAtTheSameVersionReplacesTheOldGenerationsSummary()
+    public async Task ANewGenerationsHandshakeTakesAVersionOfItsOwnAndReplacesTheOldGenerationsSummary()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
@@ -245,8 +250,7 @@ public sealed partial class WireToGateG2Tests
 
         string secondSnapshot = server.ReceivedEnvelopes
             .Single(item => item.Connection == 2 && item.MessageType == "SafetyStateSnapshot").WireLine;
-        // The premise, so that this test cannot pass by the version simply going up.
-        Assert.Equal(RevisionOf(firstSnapshot), RevisionOf(secondSnapshot));
+        Assert.True(RevisionOf(secondSnapshot) > RevisionOf(firstSnapshot));
         Assert.True(GenerationOf(secondSnapshot) > GenerationOf(firstSnapshot));
         Assert.False(SameSafety(SafetyOf(firstSnapshot), SafetyOf(secondSnapshot)));
         AssertAccepted(client.AcceptedSafety, secondSnapshot, WireToGateAcceptedSafetySource.HandshakeSnapshot);

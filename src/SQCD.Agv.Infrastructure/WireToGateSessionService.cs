@@ -399,6 +399,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             affectedSlots,
             cancellationToken);
 
+    public Task<bool> WasSafetyStateChangedAcknowledgedAsync(
+        long safetyStateVersion,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default) =>
+        _client.WasSafetyStateChangedAcknowledgedAsync(safetyStateVersion, observedAt, cancellationToken);
+
     public Task<bool> AbandonSafetyStateChangedAsync(
         long safetyStateVersion,
         DateTimeOffset observedAt,

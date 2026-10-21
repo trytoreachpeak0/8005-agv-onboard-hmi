@@ -2225,12 +2225,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
             WireToGateSessionSnapshot current = _session.Current;
             judgedOnGeneration = current.SessionGeneration;
-            if (_pendingSafetyChange is not null
-                && current.SafetyStateVersion >= _pendingSafetyChange.Version)
-            {
-                _lastSafetySignature = _pendingSafetyChange.Signature;
-                _pendingSafetyChange = null;
-            }
+            await SettlePassedSafetyChangeAsync(current, cancellationToken).ConfigureAwait(false);
 
             // Refused for good and given up (onboard-hmi#254): never resent, its version skipped.
             ForgetAbandonedSafetyChange();
@@ -2388,6 +2383,53 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Settles the pending safety change once the accepted version has reached its own. Under <see cref="_safetySendGate"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Acknowledged -- by its own send, a late ack or a handshake's replay of its outbox row -- it is what the server holds,
+    /// and its signature is the last one reported, as before.
+    /// </para>
+    /// <para>
+    /// Not acknowledged, the version was reached by something else: a reconnect handshake numbers its snapshot above
+    /// everything the session has written (8005-agv-onboard-hmi#394), and a change that never left the vehicle -- its
+    /// outbox write failed, or its row landed after the handshake had read the outbox -- is not among it. Its version now
+    /// names the handshake's content, or lies below it, so it can never go out: sent as it is it would put a second
+    /// content under that version, or a regression. It is given up as a change the IO has moved past is (#208): its row,
+    /// if it has one, marked no longer owed so no later handshake replays it, its version skipped, and the present
+    /// reading reported as a change of its own.
+    /// </para>
+    /// </remarks>
+    private async Task SettlePassedSafetyChangeAsync(
+        WireToGateSessionSnapshot current,
+        CancellationToken cancellationToken)
+    {
+        if (_pendingSafetyChange is not { } passed || current.SafetyStateVersion < passed.Version)
+        {
+            return;
+        }
+
+        if (await _session
+                .WasSafetyStateChangedAcknowledgedAsync(passed.Version, passed.ObservedAt, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            _lastSafetySignature = passed.Signature;
+            _pendingSafetyChange = null;
+            return;
+        }
+
+        await _session.AbandonSafetyStateChangedAsync(passed.Version, passed.ObservedAt, cancellationToken)
+            .ConfigureAwait(false);
+        _nextSafetyStateVersion = Math.Max(_nextSafetyStateVersion, checked(passed.Version + 1));
+        _pendingSafetyChange = null;
+        _lastSafetySignature = null;
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"未发出的SafetyStateChanged（版本{passed.Version}）已被握手快照越过（已接受版本{current.SafetyStateVersion}）；放弃它、跳过该版本，改报此刻读数。");
+    }
+
+    /// <summary>
     /// Answers the server's mid-session <c>SafetyStateSnapshotRequested</c> with a snapshot of the live IO
     /// (REQ-0358, onboard-hmi#109, paired with control-server#142). The dashboard asks for one when an
     /// expected-action-overdue alarm appears, to show the administrator the lock, light curtain and unlock
@@ -2412,12 +2454,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         try
         {
             WireToGateSessionSnapshot current = _session.Current;
-            if (_pendingSafetyChange is not null
-                && current.SafetyStateVersion >= _pendingSafetyChange.Version)
-            {
-                _lastSafetySignature = _pendingSafetyChange.Signature;
-                _pendingSafetyChange = null;
-            }
+            await SettlePassedSafetyChangeAsync(current, cancellationToken).ConfigureAwait(false);
 
             // A change refused for good is not waiting to be resent (onboard-hmi#254). Kept, it left this request -- the
             // one the server makes after refusing a safety message -- unanswered for as long as it stayed.
