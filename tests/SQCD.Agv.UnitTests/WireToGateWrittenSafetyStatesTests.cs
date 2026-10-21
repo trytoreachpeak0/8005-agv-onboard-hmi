@@ -91,6 +91,26 @@ public sealed class WireToGateWrittenSafetyStatesTests
         Assert.Equal(WireToGateWrittenSafetyStates.RememberedCount + 2, written.NextHandshakeVersion(1));
     }
 
+    [Fact]
+    public void ARowMayBeReplayedUnderItsVersionOnlyWithTheContentItWentOutWithOrAboveEverythingWritten()
+    {
+        WireToGateWrittenSafetyStates written = new();
+        // Nothing written yet: a row from before this process goes out as it is.
+        Assert.True(written.MayReplay(Line("SafetyStateChanged", 3, "a")));
+
+        Assert.Null(written.Record(Line("SafetyStateChanged", 3, "a")));
+        Assert.Null(written.Record(Line("SafetyStateSnapshot", 5, "s")));
+
+        // Written before with this content: a resend.
+        Assert.True(written.MayReplay(Line("SafetyStateChanged", 3, "a", generation: 2)));
+        // Written before with other content.
+        Assert.False(written.MayReplay(Line("SafetyStateChanged", 5, "a")));
+        // Never written, at or below the highest: a version numbered past.
+        Assert.False(written.MayReplay(Line("SafetyStateChanged", 4, "a")));
+        // Never written, above everything: a change that has not gone out yet.
+        Assert.True(written.MayReplay(Line("SafetyStateChanged", 6, "a")));
+    }
+
     private static string Line(string messageType, long version, string marker, long generation = 1) =>
         $"{{\"messageType\":\"{messageType}\",\"sessionGeneration\":{generation},"
         + $"\"payload\":{{\"safetyStateVersion\":{version},\"marker\":\"{marker}\"}}}}";

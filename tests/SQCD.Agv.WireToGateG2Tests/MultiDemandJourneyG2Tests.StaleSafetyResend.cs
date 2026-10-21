@@ -266,14 +266,14 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 放弃那份旧变化时，标记它发件箱行的那次写盘失败：会话断开，旧内容一次也没在会话就绪期间写上服务端；下一次握手
-    /// 补发那一行，但同一次握手的快照以更大的号盖掉它，服务端直到就绪都没据它宣布过 READY。
+    /// 不补发那一行（它的号已被上一次握手快照用掉），当场标为不再欠，服务端直到就绪都没据它宣布过 READY。
     /// </summary>
     /// <remarks>
     /// <para>
     /// 这是修法自己的失败路径（两路审查都指出剩余风险里那句「以同一版本和内容重试」写错了）。失败落进业务服务的通用
-    /// catch，按活连接失败断开；待发项留着。下一次握手读到的发件箱里有那一行、仍未确认，照 RELIABLE 补发，
-    /// hmi#206 的规则让同一次握手的快照取再下一个号。服务端在握手期间是 <c>HANDSHAKE_INCOMPLETE</c>，派车只读就绪
-    /// 会话的事实（control-server <c>OnboardDispatchFactsReader</c>），所以握手里那一瞬的旧内容不是本票的缺陷。
+    /// catch，按活连接失败断开；待发项留着。下一次握手读到的发件箱里有那一行、仍未确认。hmi#394 之前照 RELIABLE 补发，
+    /// 再由同一次握手的快照以更大的号盖掉；hmi#394 起上一次握手快照已经以这一行的号写出了此刻读数，这一行再按原号发出
+    /// 就是同号两份内容，所以握手不补发、标为不再欠（PR #397 审查 M1）。
     /// </para>
     /// <para>
     /// 第三次连接前关掉 <see cref="FakeControlServer.SendReadinessAfterSafetyStateChangedAck"/>：这个替身对握手里补发的
@@ -362,7 +362,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.DoesNotContain(second, entry => entry.DepartureSafe);
             Assert.DoesNotContain("READY", ReadinessSentOn(harness, secondConnection));
 
-            // The next handshake replays the row still on file and supersedes it in the same handshake.
+            // The next handshake finds the row still owed. Before onboard-hmi#394 it replayed it and the snapshot superseded
+            // it in the same handshake; now the second handshake's snapshot has spent the row's version on the present
+            // reading, so the row is settled there without going out (#394 review M1).
             harness.Server.SendReadinessAfterSafetyStateChangedAck = false;
             await harness.Session.Client.ConnectAndRecoverAsync(token);
             int thirdConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
@@ -384,12 +386,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 + $"; SessionReadiness sent on it: {string.Join(", ", ReadinessSentOn(harness, thirdConnection))}";
             TestContext.Current.TestOutputHelper?.WriteLine(sequence);
             int snapshotAt = Array.FindIndex(third, entry => entry.MessageType == "SafetyStateSnapshot");
-            // The replayed row, older content, went on file inside the handshake -- before its snapshot, which is above it.
-            Assert.True(snapshotAt > 0, sequence);
-            Assert.Contains(
-                third[..snapshotAt],
-                entry => entry.MessageType == "SafetyStateChanged" && entry.Revision == SafetyStateVersionOf(stale.WireLine));
+            // The row did not go out: the handshake snapshot is the first thing on file, above the row's version.
+            Assert.True(snapshotAt == 0, sequence);
+            Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageId == stale.MessageId);
             Assert.True(third[snapshotAt].Revision > SafetyStateVersionOf(stale.WireLine), sequence);
+            SafetyRevisionContent.AssertNone(harness.Server.ReceivedEnvelopes);
             // From the snapshot on, what the IO read; and the session was never called ready on the older content.
             Assert.True(third[snapshotAt..].All(entry => !entry.DepartureSafe), sequence);
             Assert.DoesNotContain("READY", ReadinessSentOn(harness, thirdConnection));

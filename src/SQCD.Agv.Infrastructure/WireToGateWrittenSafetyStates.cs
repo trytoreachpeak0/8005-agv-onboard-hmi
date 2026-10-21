@@ -63,33 +63,38 @@ internal sealed class WireToGateWrittenSafetyStates
     }
 
     /// <summary>
+    /// Whether a stored <c>SafetyStateChanged</c> line may go out again under its version (8005-agv-onboard-hmi#394 review
+    /// M1): yes when that version was written with this same content, or lies above everything written; no when it went
+    /// out with other content, or lies at or below the highest written without this content on record -- a version a
+    /// handshake numbered past, or one too old to tell.
+    /// </summary>
+    internal bool MayReplay(string line)
+    {
+        (long version, string content) = Parse(line)
+            ?? throw new InvalidDataException("Not a safety state line.");
+        lock (_gate)
+        {
+            if (_contents.TryGetValue(version, out string? earlier))
+            {
+                return string.Equals(earlier, content, StringComparison.Ordinal);
+            }
+
+            return _highest is not long highest || version > highest;
+        }
+    }
+
+    /// <summary>
     /// Records <paramref name="line"/> if it is a safety state. Returns a diagnostic when its version was written before
     /// with other content, otherwise null.
     /// </summary>
     internal string? Record(string line)
     {
-        // Cheap enough for every line: the parse only runs for the two safety messages.
-        if (!line.Contains("\"SafetyState", StringComparison.Ordinal))
+        if (Parse(line) is not { } parsed)
         {
             return null;
         }
 
-        string messageType;
-        long version;
-        string content;
-        using (JsonDocument document = JsonDocument.Parse(line))
-        {
-            JsonElement root = document.RootElement;
-            messageType = root.GetProperty("messageType").GetString() ?? string.Empty;
-            if (messageType is not ("SafetyStateChanged" or "SafetyStateSnapshot"))
-            {
-                return null;
-            }
-
-            JsonElement payload = root.GetProperty("payload");
-            version = payload.GetProperty("safetyStateVersion").GetInt64();
-            content = messageType + " " + payload.GetRawText();
-        }
+        (long version, string content) = parsed;
 
         lock (_gate)
         {
@@ -111,5 +116,26 @@ internal sealed class WireToGateWrittenSafetyStates
 
             return null;
         }
+    }
+
+    /// <summary>The version and content of a safety state line, or null for any other line.</summary>
+    private static (long Version, string Content)? Parse(string line)
+    {
+        // Cheap enough for every line: the parse only runs for the two safety messages.
+        if (!line.Contains("\"SafetyState", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(line);
+        JsonElement root = document.RootElement;
+        string messageType = root.GetProperty("messageType").GetString() ?? string.Empty;
+        if (messageType is not ("SafetyStateChanged" or "SafetyStateSnapshot"))
+        {
+            return null;
+        }
+
+        JsonElement payload = root.GetProperty("payload");
+        return (payload.GetProperty("safetyStateVersion").GetInt64(), messageType + " " + payload.GetRawText());
     }
 }

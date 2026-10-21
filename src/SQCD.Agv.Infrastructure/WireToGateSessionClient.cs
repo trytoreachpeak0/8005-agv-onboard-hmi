@@ -90,6 +90,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // SendLineAsync; see WireToGateWrittenSafetyStates.
     private readonly WireToGateWrittenSafetyStates _writtenSafety = new();
 
+    // SafetyStateChanged rows a handshake settled instead of replaying them, their version spent on other content (#394
+    // review M1). Marked acknowledged in the journal like a row the business service gives up; kept here so that
+    // WasSafetyStateChangedAcknowledgedAsync does not take them for delivered.
+    private readonly ConcurrentDictionary<string, byte> _safetyChangesNotReplayed = new(StringComparer.Ordinal);
+
     // The generation of the last session this client had, for a message put on file while none is up: the envelope
     // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
     private long _lastSessionGeneration;
@@ -978,7 +983,35 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt),
                 cancellationToken)
             .ConfigureAwait(false);
-        return row is { Acknowledged: true, Abandoned: false };
+        return row is { Acknowledged: true, Abandoned: false }
+            && !_safetyChangesNotReplayed.ContainsKey(row.MessageId);
+    }
+
+    /// <summary>
+    /// <see cref="WireToGateWrittenSafetyStates.MayReplay"/> for an unacknowledged row, logged when the answer is no. A row
+    /// that cannot be read as a safety state is replayed, as before.
+    /// </summary>
+    private bool MayReplaySafetyStateChanged(WireToGateDurableMessage pending)
+    {
+        bool mayReplay;
+        try
+        {
+            mayReplay = _writtenSafety.MayReplay(pending.WireLine);
+        }
+        catch (Exception failure) when (failure is JsonException or InvalidDataException or KeyNotFoundException
+            or InvalidOperationException)
+        {
+            return true;
+        }
+
+        if (!mayReplay)
+        {
+            RecordDiagnostic(
+                $"握手不补发SafetyStateChanged：messageId={pending.MessageId}，它的安全状态版本号已由另一份内容写出或已被越过；"
+                + "标为不再欠，由此刻读数取代。");
+        }
+
+        return mayReplay;
     }
 
     private string SafetyStateChangedDeduplicationKey(long safetyStateVersion, DateTimeOffset observedAt)
@@ -1091,6 +1124,20 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 // it under the same messageId, where the result is read like any other.
                 if (string.Equals(pending.MessageType, "CurrentStopDepartureRequested", StringComparison.Ordinal))
                 {
+                    continue;
+                }
+
+                // A change whose version is already spent on other content -- a handshake snapshot numbered past it while
+                // it never left the vehicle -- is not replayed: under that version it would be a second safety state,
+                // and below the snapshot it would be older content. Settled here like a change the business service gives
+                // up (#208); the business service would have, had the session lasted until its next pass (#394 review M1).
+                if (string.Equals(pending.MessageType, "SafetyStateChanged", StringComparison.Ordinal)
+                    && !MayReplaySafetyStateChanged(pending))
+                {
+                    await _journal
+                        .MarkOutgoingAcknowledgedAsync(pending.MessageId, pending.ContentSha256, cancellationToken)
+                        .ConfigureAwait(false);
+                    _safetyChangesNotReplayed.TryAdd(pending.MessageId, 0);
                     continue;
                 }
 
