@@ -583,6 +583,15 @@ public sealed record WireToGateRecoveryState(
     public WireToGateCurrentStopDeparture? CurrentStopDeparture { get; init; }
 
     /// <summary>
+    /// The latest press of 「剩下的不装」 of the unsettled load (8005-agv-onboard-hmi#388): pending until the server answers or the
+    /// operation ends another way, then kept with its end so a replayed or late result is recognised and never acted on twice.
+    /// A checkpoint of the same attempt keeps it, a checkpoint of another attempt drops it, and the attempt's settlement
+    /// drops it.
+    /// </summary>
+    /// <remarks><c>null</c> in a journal written before this field existed, which means none.</remarks>
+    public WireToGateRemainingBasketsSkip? RemainingBasketsSkip { get; init; }
+
+    /// <summary>
     /// The stations where a staging pickup worklist has been seen, so the cargo-holding wait there -- an empty worklist --
     /// is still known as a staging pickup stop after a restart (<see cref="WireToGateStagingPickupStop"/>).
     /// </summary>

@@ -49,7 +49,13 @@ public enum WireToGatePromptCause
     /// shut, locked, its output reset and its occupancy known: the door was held or shut again as it opened. Back to
     /// waiting for the press, as <see cref="ShutOverOpposite"/> (8005-agv-onboard-hmi#385).
     /// </summary>
-    ReopenNotReleased
+    ReopenNotReleased,
+
+    /// <summary>
+    /// The operator pressed 「剩下的不装」 over a slot held shut for 「重新开门」, and the run holds every slot shut until the
+    /// server's <c>RemainingBasketsSkipResult</c> decides it (8005-agv-onboard-hmi#388, CP-0021).
+    /// </summary>
+    RemainingBasketsSkipPending
 }
 
 /// <summary>
@@ -354,6 +360,20 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// Only hands it over. Whatever the request leads to -- the safety hold, the one-door check, the latch and the
     /// declaration gate in front of a pulse -- is the run's, as for every other pulse.
     /// </remarks>
+    public WireToGateRemainingBasketsSkipOffer? RemainingBasketsSkipOffer => _activeOperation is null ? null : null;
+
+    public string? HeldRemainingBasketsSkipRequestId => _activeOperation is null ? null : null;
+
+    public bool HoldForRemainingBasketsSkip(
+        string slotOperationAttemptId,
+        string skipRequestId,
+        IReadOnlyList<int> loadedSlots) => _activeOperation is null && false;
+
+    public bool DecideRemainingBasketsSkip(
+        string slotOperationAttemptId,
+        string skipRequestId,
+        IReadOnlyList<int>? authorizedSlots) => _activeOperation is null && false;
+
     public bool SubmitOperatorRequest(
         string slotOperationAttemptId,
         int physicalSlot,
