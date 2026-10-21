@@ -1760,8 +1760,15 @@ public sealed partial class RecoveryVectorG2Tests
             //
             // A test that delivers something into the settlement itself (onboard-hmi#233) says
             // awaitStartSettlement: false and waits for the moment it needs on its own.
+            //
+            // RESULT_ACK_PENDING is only published once the settlement's wait for its DurableAck has run out, so that
+            // ending cannot come before the session's message timeout: the wait is the usual 5 s on top of it, as
+            // WaitPastMessageTimeoutUntilAsync gives (onboard-hmi#396). On a session whose message timeout leaves no room
+            // for that under StallAwareDeadline.StallBudget, the ack-pending ending cannot come inside any allowed
+            // wait, and the reported ending, which no timer holds back, keeps the usual 5 s.
             if (settledAtStart is not null && awaitStartSettlement)
             {
+                TimeSpan pastMessageTimeout = session.Client.MessageTimeout + TimeSpan.FromSeconds(5);
                 await WaitUntilAsync(
                     () => Volatile.Read(ref startSettlementConcluded) switch
                     {
@@ -1771,6 +1778,7 @@ public sealed partial class RecoveryVectorG2Tests
                         _ => false
                     },
                     "the interrupted settlement of the seeded attempt to send its OperationResult and conclude",
+                    pastMessageTimeout <= StallAwareDeadline.StallBudget ? pastMessageTimeout : TimeSpan.FromSeconds(5),
                     cancellationToken);
             }
 
