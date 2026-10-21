@@ -37,6 +37,30 @@ waits use it. The 5 s `WaitUntilAsync` is unchanged for everything else.
 Not changed, as the issue's table says: `ResumeDuringSettlement.cs:105` asserts that a line is absent (no wait) and
 `:273` already waits 40 s on a 15 s message timeout session.
 
+**Added after the review (M1, S1).**
+
+- `HandoffOverUnrecordedLoad.cs`, the four other waits after `io.SetUnreadable(0)`: `AnUnknownHandoffOverALoadWhoseAckCameLate…`
+  (both cases), `AnUnknownCompensationOverARecordedLoad…`, `ARefusedHandoffEndedAfterTheManualCheck…` (waits for
+  `CanCloseConflictedRecoveryAfterReview`, which follows the refusal of the handoff's result) and
+  `TheMarkedSettlement…` (waits for the vector to be forgotten, which follows the handoff's result's ack). Handoff and
+  compensation both run `ExecuteClearAsync`, so each result is held behind the same `OperationTimeout` as AForgotten's.
+  Each test now waits for the result to reach the double with `WaitPastOperationTimeoutUntilAsync`, then keeps its own
+  5 s wait for what follows.
+- `BlockedBeforeUnlock.cs:262`, `AnUnacknowledgedRefusalStillLetsTheVehicleOpenAnotherSession`: the refused vector is
+  released (`ReleaseRefusedVectorAsync`) only after `SendRecoveryVectorResultAsync` throws on the dropped ack, after the
+  message timeout (`RecoveryVectors.cs`, the catch before it). Now `WaitPastMessageTimeoutUntilAsync`.
+- The harness start's wait for the seeded attempt's settlement (`RecoveryVectorG2Tests.cs`, `FinishStartAsync`): its
+  RESULT_ACK_PENDING ending is only published once the settlement's ack wait runs out; `RefusedSettlement.cs:429`
+  (`OperationResultAcksToDrop = 3`, "one for the start settlement's own result") takes it. The wait is now the
+  message timeout + 5 s, and refused with an exception past `StallBudget`, as the other two methods do. Every session
+  with a longer message timeout (15 s and 30 s, in `ResumeDuringSettlement` and `ResumeHeldAttempt`) already passes
+  `awaitStartSettlement: false`, so none reaches it.
+
+Swept for this ticket: `HandoffOverUnrecordedLoad.cs` and every `RecoveryVectorG2Tests*.cs` wait on a DurableAck
+give-up line or event. Not swept: the other `MultiDemandJourneyG2Tests` files that make a door unreadable (about 35
+`SetUnreadable` call sites, e.g. `CancellationOverRecordedLoad`, `RefusedSafetyChange`, `StaleSafetyResend`); whether
+any of their waits sits behind `OperationTimeout` is not known.
+
 ## Red / green
 
 `apply-injection.sh [checkout] [delay-ms]` copies `injection-DelayedOutgoingJournal.cs.txt` into the G2 project and
@@ -59,15 +83,34 @@ from this branch (the pre-fix tests do not call the new methods).
   AckOutsideTheSend: FIRED 0.2-0.3 s after ARMED; the ack-pending line is no earlier than FIRED + 3.5 s + 2 s.
 - fixed: 6/6 green each, FIRED in every run.
 
-Without injection, at the fix commit: MultiDemand + G2 `ArchitectureTests` 208/208, RecoveryVector 225/225, UnitTests
-`ArchitectureTests` 203/203, `dotnet format --verify-no-changes` exit 0. A first run of both classes in one process
+M1 (`apply-injection-m1.sh`, the same wrapper on the four waits above, every mark labelled with its test; one
+`dotnet test` per round with the five cases, which run one after another; pre-fix = the file at `bc0447d`):
+- pre-fix: 5 rounds, 25/25 red, FIRED in all 25, each on the wait under test (the result, or for
+  `TheMarkedSettlement…`/`ARefusedHandoff…` the fact after it).
+- fixed: 5 rounds, 23/25 green, FIRED in all 25. The two reds timed out on the new 7 s wait: the compensation in round 1
+  (PAUSED 4.1 s after WAITING_OPERATOR against a timer of under 2 s, then the injected 3.5 s) and the refused handoff in
+  round 5 (PAUSED 2.7 s after WAITING_OPERATOR, the saved result on the wire 2.5 s after the injected delay ended).
+  Natural latency after the timer of 1.5 s or more on top of the injected 3.5 s is past the 5 s the window leaves; see
+  the next section.
+
+### Where the time after the timer goes (`diag-marks.txt`)
+
+The issue (PAUSED 4.4 s after WAITING_OPERATOR), the review's natural red (about 2.9 s late) and the two reds above all
+look like the 2 s timer running late. Five diagnostic rounds (fixed + M1 injection + temporary marks in the fake IO and
+the journal wrapper, not committed) say it is not the timer: the fake IO's door wait gave up at most 15 ms past its own
+deadline in all 25 cases, every time. What comes after is slow: the journal's `UpdateRecoveryStateAsync` (the
+executor's `WriteVectorStateAsync` before PAUSED, among others) took 0.3-2.2 s in 6 of 25 rounds, with one test running
+at a time on 4 cores; round 4's red was a 2.19 s write right after the timer, then the injected 3.5 s. This is the
+processing latency the window is for, and nothing shows a product defect in it; why a SQLite write in a temp
+directory sometimes takes 2 s on this machine was not looked into.
+
+Without injection: see `runs.txt` (each family in its own process, G2 and UnitTests `ArchitectureTests`, `dotnet format
+--verify-no-changes`, at `519b2cd` and again after the review's rework). A first run of both classes in one process
 (433 tests on 4 cores) had two reds in tests this ticket does not touch, with no product timer in their windows; see
 `runs.txt`.
 
 ## Not handled here
 
-- The issue's timeline (the reviewer's run, 208 tests in parallel) had PAUSED 4.4 s after WAITING_OPERATOR, where the
-  timer is 2 s; locally PAUSED follows WAITING_OPERATOR by ~2 s. Presumably the fake IO's polling loop
-  (`FakeIoModuleClient.WaitForLockerAsync`, `Task.Delay(1)` under `OperatorNeverActs`) or the thread pool running late
-  under the parallel run; not investigated (no scene of that run was kept). The new window leaves 5 s beyond the timer
-  for it and for the save and send.
+- Residual risk: the 5 s left after the timer also has to absorb the latency the section above found right after it:
+  up to 2.2 s here, about 2.4 s in the issue's timeline, about 2.9 s in the review's natural red. With 2.9 s gone, the
+  save and send have about 2.1 s. Not widened further (the coordinator's ruling); the window stays timer + 5 s.

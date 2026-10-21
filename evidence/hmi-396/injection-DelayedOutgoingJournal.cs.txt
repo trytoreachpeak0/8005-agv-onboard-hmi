@@ -5,8 +5,12 @@ namespace SQCD.Agv.WireToGateG2Tests;
 // TEMPORARY red injection for onboard-hmi#396: copied in by apply-injection.sh, never committed to tests/.
 // While armed it holds the first save-before-send of one message type (the vector's result) for a fixed delay: the
 // processing latency CI showed between the product's timer running out and the result reaching the double. Writes
-// ARMED, FIRED and DISARMED with their times to the file W2G_HMI396_MARKS names, so every run shows whether it fired.
-internal sealed class Hmi396DelayedOutgoingJournal(IWireToGateJournal inner, string messageType, TimeSpan delay)
+// ARMED, FIRED and DISARMED with their times, after the label if one is given, to the file W2G_HMI396_MARKS names, so every run shows whether it fired.
+internal sealed class Hmi396DelayedOutgoingJournal(
+    IWireToGateJournal inner,
+    string messageType,
+    TimeSpan delay,
+    string label = "")
     : IWireToGateJournal
 {
     private int _armed;
@@ -26,12 +30,12 @@ internal sealed class Hmi396DelayedOutgoingJournal(IWireToGateJournal inner, str
         Mark(Fired ? "DISARMED" : "DISARMED-NOT-FIRED");
     }
 
-    private static void Mark(string what)
+    private void Mark(string what)
     {
         string? path = Environment.GetEnvironmentVariable("W2G_HMI396_MARKS");
         if (!string.IsNullOrEmpty(path))
         {
-            File.AppendAllText(path, $"{what} {DateTimeOffset.UtcNow:HH:mm:ss.fff}{Environment.NewLine}");
+            File.AppendAllText(path, $"{label}{what} {DateTimeOffset.UtcNow:HH:mm:ss.fff}{Environment.NewLine}");
         }
     }
 
