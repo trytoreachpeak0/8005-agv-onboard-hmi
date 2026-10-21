@@ -351,6 +351,17 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             await WaitUntilAsync(
                 () => server.SentEnvelopes.Any(envelope => envelope.MessageType == "CurrentStopDepartureResult"),
                 token);
+            // onboard-hmi#388: the remaining-baskets skip request, sent by the session's own path. The double only
+            // acknowledges it here; its answer is the business service's to journal, and RemainingBasketsSkipG2Tests drives it.
+            await client.SendRemainingBasketsSkipRequestedAsync(
+                new RemainingBasketsSkipRequestedPayload(
+                    "77777777-7777-4777-8777-777777777771",
+                    "11111111-1111-1111-1111-111111111111",
+                    "33333333-3333-3333-3333-333333333333",
+                    "44444444-4444-4444-4444-444444444444",
+                    [1],
+                    new WireToGateOperatorContextPayload("operator-001", "SESSION", DateTimeOffset.UtcNow)),
+                token);
             var departureResult = server.SentEnvelopes.First(envelope => envelope.MessageType == "CurrentStopDepartureResult");
             await client.SendDurableAckAsync(
                 departureResult.MessageId,

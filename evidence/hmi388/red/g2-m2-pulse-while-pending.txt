@@ -1,0 +1,220 @@
+Test run for C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:24.30]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.Agv03At160TheSkipIsOfferedAndAnAuthorizationEndsTheLoadWithTheLoadedBasket [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.Agv03At160TheSkipIsOfferedAndAnAuthorizationEndsTheLoadWithTheLoadedBasket [23 s]
+  Error Message:
+   Timed out after 20s waiting for: the OperationResult. Pulses: 3.
+OPERATION_PROGRESS: 准备执行装货：1、2号仓。
+OPERATION_PROGRESS: 正在检查1、2号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/2。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 2号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 正在重新打开2号仓。
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+REMAINING_BASKETS_SKIP_AUTHORIZED: 服务端已同意剩下的不装：已装的 1 篮照常送走，其余仓门不再打开。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第3次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第4次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第5次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第6次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第7次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第8次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第9次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第10次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第11次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第12次提示）
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, OperationProgress, DurableAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress
+16:59:28.375 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:59:28.484 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:59:28.496 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T16:59:28.4953487+00:00。
+16:59:28.541 Information WireToGateSessionClient: 收到SessionReadiness：messageId=bf7bff30-21e8-4860-b7ee-423c9b989170，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+16:59:28.542 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+16:59:28.548 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+16:59:28.678 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+16:59:28.680 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+16:59:28.690 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+16:59:31.315 Information WireToGateBusinessService: 操作员按「剩下的不装」：skipRequestId=465c579b-c187-4c01-b616-427d8296af3e，attempt=44444444-4444-4444-4444-444444444444，demand=11111111-1111-1111-1111-111111111111，已装=1（1/2），operator=operator-134。
+16:59:31.324 Information WireToGateBusinessService: 「剩下的不装」已被服务端收下：skipRequestId=465c579b-c187-4c01-b616-427d8296af3e，messageId=2586605d-36f6-432f-b38c-f3729cbd9a29，generation=1。
+16:59:31.345 Information WireToGateBusinessService: 收到「剩下的不装」结果：skipRequestId=465c579b-c187-4c01-b616-427d8296af3e，messageId=fcf1f26b-59f5-42ae-8834-e188761959cd，outcome=AUTHORIZED，slots=1，reason=null，disposition=New。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 523
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForResultAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 487
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.Agv03At160TheSkipIsOfferedAndAnAuthorizationEndsTheLoadWithTheLoadedBasket() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 76
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.Agv03At160TheSkipIsOfferedAndAnAuthorizationEndsTheLoadWithTheLoadedBasket() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 98
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:47.06]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AnAuthorizationAfterTheLoadEndedAnotherWayIsNotActedOn [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AnAuthorizationAfterTheLoadEndedAnotherWayIsNotActedOn [22 s]
+  Error Message:
+   Timed out after 20s waiting for: the OperationResult. Pulses: 3.
+OPERATION_PROGRESS: 准备执行装货：1、2号仓。
+OPERATION_PROGRESS: 正在检查1、2号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/2。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 2号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+OPERATION_PROGRESS: 正在重新打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第3次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第4次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第5次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第6次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第7次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第8次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第9次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第10次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第11次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第12次提示）
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SnapshotAppliedAck, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress
+16:59:51.363 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:59:51.397 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+16:59:51.399 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T16:59:51.3992002+00:00。
+16:59:51.421 Information WireToGateSessionClient: 收到SessionReadiness：messageId=f42ba67e-652e-4d09-bc8e-840d1db454b4，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+16:59:51.421 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+16:59:51.421 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+16:59:51.510 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+16:59:51.510 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+16:59:51.521 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+16:59:54.116 Information WireToGateBusinessService: 操作员按「剩下的不装」：skipRequestId=bafbe5bc-7e94-4125-b7b4-1346fb85d8b8，attempt=44444444-4444-4444-4444-444444444444，demand=11111111-1111-1111-1111-111111111111，已装=1（1/2），operator=operator-134。
+16:59:54.117 Information WireToGateBusinessService: 「剩下的不装」已被服务端收下：skipRequestId=bafbe5bc-7e94-4125-b7b4-1346fb85d8b8，messageId=a8e6d412-c45e-414d-ad01-07af50740e49，generation=1。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 523
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForResultAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 487
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AnAuthorizationAfterTheLoadEndedAnotherWayIsNotActedOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 337
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AnAuthorizationAfterTheLoadEndedAnotherWayIsNotActedOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 355
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:52.53]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer [5 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 2
+Actual:   3
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 129
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.NothingOpensAndNothingEndsWhileTheRequestWaitsForTheServer() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 143
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:18.38]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne [22 s]
+  Error Message:
+   Timed out after 20s waiting for: 「重新开门」 back once the request is dropped. Pulses: 3.
+OPERATION_PROGRESS: 准备执行装货：1、2号仓。
+OPERATION_PROGRESS: 正在检查1、2号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/2。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 2号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+OPERATION_PROGRESS: 正在重新打开2号仓。
+REMAINING_BASKETS_SKIP_DROPPED: 这次「剩下的不装」没有生效（BUSINESS_ID_CONTENT_CONFLICT），仓门状态未变。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第3次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第4次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第5次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第6次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第7次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第8次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第9次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第10次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第11次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第12次提示）
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SnapshotAppliedAck, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress
+17:00:22.661 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+17:00:22.697 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+17:00:22.699 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T17:00:22.6991233+00:00。
+17:00:22.725 Information WireToGateSessionClient: 收到SessionReadiness：messageId=c60321c2-b04c-403d-b0bf-7e5d9ccd0a35，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+17:00:22.725 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+17:00:22.725 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+17:00:22.817 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+17:00:22.817 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:00:22.832 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+17:00:25.412 Information WireToGateBusinessService: 操作员按「剩下的不装」：skipRequestId=1ad7b64b-498a-442a-b0b5-f780a662ab84，attempt=44444444-4444-4444-4444-444444444444，demand=11111111-1111-1111-1111-111111111111，已装=1（1/2），operator=operator-134。
+17:00:25.415 Warning WireToGateBusinessService: 服务端以 ProtocolProblem 回绝「剩下的不装」：skipRequestId=1ad7b64b-498a-442a-b0b5-f780a662ab84，reason=BUSINESS_ID_CONTENT_CONFLICT。
+17:00:25.438 Warning WireToGateBusinessService: 「剩下的不装」未生效、已放弃：skipRequestId=1ad7b64b-498a-442a-b0b5-f780a662ab84，attempt=44444444-4444-4444-4444-444444444444，reason=BUSINESS_ID_CONTENT_CONFLICT。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 523
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 305
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AProtocolProblemDropsTheRequestAndAnotherPressIsANewOne() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 316
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:23.13]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn [4 s]
+  Error Message:
+   The load ended (pulses so far: 3): {"protocolVersion":7,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"6.0.0","protocolReleaseManifestSha256":"a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1","messageType":"OperationResult","messageId":"44444444-4444-4444-4444-444444444444","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-21T17:00:50.1652824+00:00","payload":{"demandId":"11111111-1111-1111-1111-111111111111","slotOperationAttemptId":"44444444-4444-4444-4444-444444444444","operationType":"LOAD","overallOutcome":"COMPLETED","slotResults":[{"slotNo":1,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]},{"slotNo":2,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]}],"observedAt":"2026-10-22T01:00:50.1612481\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"b06bd4622a156b6fd4516c320d209abe750b1aa84e13ef19a28583c566d43360"}}
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AssertNoResult(Harness harness) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 501
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForOfferAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 481
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 179
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.ARejectionIsShownAndLoadingGoesOn() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 189
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:50.99]     SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId [24 s]
+  Error Message:
+   Timed out after 20s waiting for: the OperationResult. Pulses: 3.
+OPERATION_PROGRESS: 准备执行装货：1、2号仓。
+OPERATION_PROGRESS: 正在检查1、2号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/2。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 2号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+REMAINING_BASKETS_SKIP_REQUESTED: 已申请剩下的不装，正在等服务端确认；确认前不开仓门。
+OPERATION_PROGRESS: 正在重新打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第3次提示）
+REMAINING_BASKETS_SKIP_AUTHORIZED: 服务端已同意剩下的不装：已装的 1 篮照常送走，其余仓门不再打开。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第4次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第5次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第6次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第7次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第8次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第9次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第10次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第11次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第12次提示）
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。（第13次提示）
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SnapshotAppliedAck, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, RemainingBasketsSkipRequested, OperationProgress, OperationProgress, SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, RemainingBasketsSkipRequested, DurableAck, SafetyStateChanged
+17:00:53.210 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+17:00:53.312 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+17:00:53.312 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:00:53.326 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+17:00:55.965 Information WireToGateBusinessService: 操作员按「剩下的不装」：skipRequestId=87d0a7ae-beed-4031-8cfa-d7faa893bbfc，attempt=44444444-4444-4444-4444-444444444444，demand=11111111-1111-1111-1111-111111111111，已装=1（1/2），operator=operator-134。
+17:00:57.976 Warning WireToGateBusinessService: 「剩下的不装」这一次没有得到确认：skipRequestId=87d0a7ae-beed-4031-8cfa-d7faa893bbfc，TimeoutException：The operation has timed out.。
+17:00:57.976 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=2。
+17:00:57.977 Information WireToGateBusinessService: 判恢复入口：generation=null，readiness=Recovering，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:00:58.001 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=2，readiness=Recovering，reasonCodes=[]，safetyStateVersion=2。
+17:00:58.001 Information WireToGateBusinessService: 判恢复入口：generation=2，readiness=Recovering，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:00:58.004 Information WireToGateSessionClient: 握手安全快照：generation=2，safetyStateVersion=3，departureSafe=False，unknownPresent=False，reasonCodes=[LOCK_NOT_CLOSED]，ioConnected=True，ioObservedAt=2026-10-21T17:00:58.0044328+00:00。
+17:00:58.032 Information WireToGateSessionClient: 收到SessionReadiness：messageId=45f90037-2178-42db-a399-2c07a5893611，generation=2，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=3。
+17:00:58.032 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+17:00:58.033 Information WireToGateBusinessService: 判恢复入口：generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+17:00:58.033 Information WireToGateBusinessService: 重发未得到答复的「剩下的不装」：skipRequestId=87d0a7ae-beed-4031-8cfa-d7faa893bbfc，generation=2。
+17:00:58.033 Information WireToGateSessionClient: 安全状态变化：generation=2，safetyStateVersion=4，departureSafe=False，unknownPresent=False，reasonCodes=[LOCK_NOT_CLOSED]。
+17:00:58.033 Information WireToGateBusinessService: 「剩下的不装」已被服务端收下：skipRequestId=87d0a7ae-beed-4031-8cfa-d7faa893bbfc，messageId=ad7b3beb-e68e-4a25-bac4-d92856866aca，generation=2。
+17:00:58.039 Information WireToGateBusinessService: 重连后检查授权请求：generation=2，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+17:00:58.052 Information WireToGateBusinessService: 收到「剩下的不装」结果：skipRequestId=87d0a7ae-beed-4031-8cfa-d7faa893bbfc，messageId=df87eeca-6340-41e3-9d73-376c9ca3961e，outcome=AUTHORIZED，slots=1，reason=null，disposition=New。
+17:00:58.077 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=2，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=4。
+17:00:58.646 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=3，error=InvalidOperationException。
+17:01:00.651 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=4，error=InvalidOperationException。
+17:01:02.665 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=5，error=InvalidOperationException。
+17:01:04.671 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=6，error=InvalidOperationException。
+17:01:06.680 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=7，error=InvalidOperationException。
+17:01:08.690 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=8，error=InvalidOperationException。
+17:01:10.695 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=9，error=InvalidOperationException。
+17:01:12.704 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=10，error=InvalidOperationException。
+17:01:14.714 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=11，error=InvalidOperationException。
+17:01:16.721 Warning WireToGateBusinessService: 仓位操作进度未能发送，不影响仓位判定：attempt=44444444-4444-4444-4444-444444444444，phase=WAITING_OPERATOR，round=12，error=InvalidOperationException。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 523
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.WaitForResultAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 487
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 267
+   at SQCD.Agv.WireToGateG2Tests.RemainingBasketsSkipG2Tests.AReconnectResubmitsTheSameRequestUnderANewMessageId() in C:\work\8005-wt\hmi388-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RemainingBasketsSkipG2Tests.cs:line 274
+--- End of stack trace from previous location ---
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Failed!  - Failed:     6, Passed:     3, Skipped:     0, Total:     9, Duration: 1 m 56 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

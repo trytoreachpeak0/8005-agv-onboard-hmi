@@ -309,7 +309,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
                     .Select(slice => $"{slice.SliceId}/{slice.Sequence}")
             ]);
         Assert.Equal(
-            3,
+            4,
             entries.GroupBy(vectorId => vectorId, StringComparer.Ordinal)
                 .Count(group => group.Count() > 1));
     }
