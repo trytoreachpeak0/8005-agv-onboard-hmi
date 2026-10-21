@@ -162,6 +162,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(AttemptA, taken.UnsettledSlotOperationAttemptId);
 
         io.SetUnreadable(0);
+        // The UNKNOWN answer only comes once the executor's wait at slot 1 runs out: OperationTimeout from the slot's
+        // turn, which started before the pulse this test just saw (onboard-hmi#396).
+        await harness.WaitPastOperationTimeoutUntilAsync(
+            () => ReceivedPayloads(harness, "LoadCompensationResult").Length > 0,
+            "the control server to receive LoadCompensationResult, past the compensation's operation timeout",
+            token);
         JsonElement compensation = await WaitForPayloadAsync(harness, "LoadCompensationResult", token);
         Assert.Equal("UNKNOWN", compensation.GetProperty("overallOutcome").GetString());
         await harness.WaitUntilAsync(

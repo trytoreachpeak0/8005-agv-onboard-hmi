@@ -394,7 +394,7 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     private static Task WaitForAckPendingAsync(RecoveryVectorHarness harness, CancellationToken token) =>
-        RecoveryVectorHarness.WaitUntilAsync(
+        harness.WaitPastMessageTimeoutUntilAsync(
             () => harness.Logger.Entries.Any(entry =>
                 entry.Message.Contains("恢复向量结果暂未收到DurableAck", StringComparison.Ordinal)),
             "the vehicle to record that the result has no acknowledgement yet",
