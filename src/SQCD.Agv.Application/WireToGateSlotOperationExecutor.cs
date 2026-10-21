@@ -2515,7 +2515,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         RemainingBasketsSkipHold hold;
         lock (active)
         {
-            hold = active.SkipHold ?? throw new InvalidOperationException("REMAINING_BASKETS_SKIP_NOT_HELD");
+            hold = active.SkipHold ?? throw new InvalidOperationException("执行器没有持有这次「剩下的不装」。");
         }
 
         int slotIndex = physicalSlot - 1;

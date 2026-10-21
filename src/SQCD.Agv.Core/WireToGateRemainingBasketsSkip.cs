@@ -82,7 +82,8 @@ public sealed record WireToGateRemainingBasketsSkipResult(
     string Outcome,
     IReadOnlyList<int> LoadedSlots,
     string? ReasonCode,
-    string ContentSha256);
+    string ContentSha256)
+    : WireToGateServerCommand("RemainingBasketsSkipResult", MessageId, null, SessionGeneration, SentAt);
 
 /// <summary>
 /// What the executor offers 「剩下的不装」 over right now (<c>WireToGateSlotOperationExecutor.RemainingBasketsSkipOffer</c>): a

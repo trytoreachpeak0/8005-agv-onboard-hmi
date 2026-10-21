@@ -466,6 +466,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-REMAINING-BASKETS-SKIP-DUPLICATE-REQUEST")]
     public async Task AnInterruptedLoadSettlesAsSkippedOnlyWithTheAuthorizationOnFile(bool authorized)

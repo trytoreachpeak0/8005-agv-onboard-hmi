@@ -136,8 +136,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     ];
 
     /// <summary>
-    /// The parse of the manifest, checked against the shape the bound release froze: 67 message types
-    /// since the 4.0.0 candidate added <c>CurrentStopDepartureRequested</c> and
+    /// The parse of the manifest, checked against the shape the bound release froze: 69 message types
+    /// since the 6.0.0 candidate added <c>RemainingBasketsSkipRequested</c> and <c>RemainingBasketsSkipResult</c>
+    /// (8005-agv-onboard-hmi#388), 67 before that since the 4.0.0 candidate added <c>CurrentStopDepartureRequested</c> and
     /// <c>CurrentStopDepartureResult</c> (8005-agv-onboard-hmi#349), 65 before that since the 3.0.0
     /// candidate added <c>SlotFaultDeclarationCommand</c> and <c>SlotFaultDeclarationResult</c>
     /// (8005-agv-onboard-hmi#214).
@@ -149,9 +150,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// wrong property is reported here.
     /// </remarks>
     [Fact]
-    public void TheManifestParsesIntoSixtySevenMessagesAndElevenDenylistedTypes()
+    public void TheManifestParsesIntoSixtyNineMessagesAndElevenDenylistedTypes()
     {
-        Assert.Equal(67, FrozenMessageTypes().Length);
+        Assert.Equal(69, FrozenMessageTypes().Length);
         Assert.Equal(11, DenylistedMessageTypes().Length);
         Assert.Empty(FrozenMessageTypes().Intersect(DenylistedMessageTypes(), StringComparer.Ordinal));
     }

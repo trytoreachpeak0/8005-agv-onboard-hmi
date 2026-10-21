@@ -331,6 +331,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SendCurrentStopDepartureRequestedAsync(departure, cancellationToken);
 
+    /// <inheritdoc cref="WireToGateSessionClient.SendRemainingBasketsSkipRequestedAsync"/>
+    public Task<string> SendRemainingBasketsSkipRequestedAsync(
+        RemainingBasketsSkipRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendRemainingBasketsSkipRequestedAsync(payload, cancellationToken);
+
     /// <inheritdoc cref="WireToGateSessionClient.SendDurableAckAsync"/>
     public Task SendDurableAckAsync(
         string acceptedMessageId,

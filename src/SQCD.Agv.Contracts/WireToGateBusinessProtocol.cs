@@ -536,3 +536,36 @@ public sealed record CurrentStopDepartureResultPayload(
     string Outcome,
     WireToGateProblemPayload? Problem,
     long CurrentWorklistRevision);
+
+/// <summary>
+/// The O_TO_C request to leave the remaining baskets of a multi-basket load, shaped by the 6.0.0 candidate's
+/// <c>RemainingBasketsSkipRequested.schema.json</c> (CP-0021, 8005-agv-onboard-hmi#388). <c>RELIABLE</c>, deduplicated by
+/// <see cref="SkipRequestId"/>; answered later by <see cref="RemainingBasketsSkipResultPayload"/>.
+/// </summary>
+/// <remarks>
+/// <see cref="LoadedSlots"/> are the slots closed safely <c>OCCUPIED</c>, ascending, at least one. <see cref="Operator"/> is
+/// required and nullable: the operator when the vehicle knows one.
+/// </remarks>
+public sealed record RemainingBasketsSkipRequestedPayload(
+    string SkipRequestId,
+    string DemandId,
+    string OperationSessionId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> LoadedSlots,
+    WireToGateOperatorContextPayload? Operator);
+
+/// <summary>
+/// The C_TO_O answer to a skip request, shaped by the 6.0.0 candidate's <c>RemainingBasketsSkipResult.schema.json</c>.
+/// <c>RELIABLE</c>: the vehicle journals it before acknowledging it with a <c>DurableAck</c>.
+/// </summary>
+/// <remarks>
+/// <c>AUTHORIZED</c> carries no problem and at least one slot; <c>REJECTED</c> carries a problem and no slot (the schema's
+/// <c>if/then/else</c>).
+/// </remarks>
+public sealed record RemainingBasketsSkipResultPayload(
+    string SkipRequestId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    string Outcome,
+    IReadOnlyList<int> LoadedSlots,
+    WireToGateProblemPayload? Problem);

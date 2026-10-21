@@ -2602,6 +2602,10 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                     case "CurrentStopDepartureRequested":
                         await HandleCurrentStopDepartureRequestedAsync(context, root).ConfigureAwait(false);
                         break;
+                    // 「剩下的不装」 (protocol 6.0.0 candidate, 8005-agv-onboard-hmi#388).
+                    case "RemainingBasketsSkipRequested":
+                        await HandleRemainingBasketsSkipRequestedAsync(context, root).ConfigureAwait(false);
+                        break;
                     case "SafetyStateChanged" when AnswerSafetyStateChanged:
                         await HandleSafetyStateChangedAsync(context, line, root).ConfigureAwait(false);
                         break;
@@ -4178,8 +4182,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                     operationSessionId = "33333333-3333-3333-3333-333333333333",
                     slotOperationAttemptId = CommandSlotOperationAttemptId,
                     operationType = SlotOperationType,
-                    slots = SingleSlot,
-                    expectedBasketCount = 1,
+                    slots = SlotOperationSlots.ToArray(),
+                    expectedBasketCount = SlotOperationSlots.Count,
                     expectedFinalPhysicalState = SlotOperationType == "UNLOAD" ? "EMPTY" : "OCCUPIED",
                     commandContentSha256 = new string('0', 64)
                 }))

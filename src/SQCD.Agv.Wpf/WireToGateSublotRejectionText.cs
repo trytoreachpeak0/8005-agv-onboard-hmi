@@ -48,12 +48,18 @@ public static class WireToGateSublotRejectionText
     /// <remarks>
     /// <c>WORKLIST_REVISION_STALE</c> is a cancellation that arrived after the stop had ended
     /// (control-server#324): nothing is left to cancel, and the operator is told so, with the code kept for
-    /// whoever is on the phone. Every other code is shown as itself, as before.
+    /// whoever is on the phone. <c>LOAD_CANCELLATION_BASKET_LOADED</c> (protocol 6.0.0 candidate, CP-0021 REQ-0211) is a load
+    /// with a basket in: it is never cancelled, and the way to load fewer is 「剩下的不装」 (8005-agv-onboard-hmi#388). Every
+    /// other code is shown as itself, as before.
     /// </remarks>
-    public static string LoadCancellationRefusal(string reasonCode) =>
-        reasonCode == WorklistRevisionStale
-            ? $"服务端拒绝装货取消：本站作业已结束，无需再取消（{WorklistRevisionStale}）。"
-            : $"服务端拒绝装货取消：{reasonCode}。";
+    public static string LoadCancellationRefusal(string reasonCode) => reasonCode switch
+    {
+        WorklistRevisionStale => $"服务端拒绝装货取消：本站作业已结束，无需再取消（{WorklistRevisionStale}）。",
+        BasketLoaded => $"已经装进花篮，不能取消；要少装请按「剩下的不装」（{BasketLoaded}）。",
+        _ => $"服务端拒绝装货取消：{reasonCode}。"
+    };
+
+    private const string BasketLoaded = "LOAD_CANCELLATION_BASKET_LOADED";
 
     /// <summary>What the operator can do next, which turns on whether the entry request was kept.</summary>
     /// <remarks>

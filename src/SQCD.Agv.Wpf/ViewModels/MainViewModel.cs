@@ -2637,6 +2637,8 @@ public sealed partial class MainViewModel : ViewModelBase
         // 「重新开门」同理写在守卫之前：它不是那十个恢复入口之一。锁存期间执行器不再等这一按（锁存一到就按锁存拒绝结束），
         // 入口跟着业务服务关掉；放到守卫之后，锁存期间这条路径就不刷新它，按钮会停在锁存那一刻（8005-agv-onboard-hmi#385）。
         RefreshSlotReopenCore();
+        // 「剩下的不装」同理（8005-agv-onboard-hmi#388）：它随「重新开门」的等待出现，锁存期间执行器结束等待，入口跟着关掉。
+        RefreshRemainingBasketsSkipCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;

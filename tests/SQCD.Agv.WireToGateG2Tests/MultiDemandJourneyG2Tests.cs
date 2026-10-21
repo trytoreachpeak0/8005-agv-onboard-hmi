@@ -547,6 +547,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             NoOnboardExitNoticeWiring.Configure(viewModel, business, harness.OnUiThread);
             // 「重新开门」 over a door shut on the opposite occupancy (8005-agv-onboard-hmi#385).
             SlotReopenWiring.Configure(viewModel, business);
+            RemainingBasketsSkipWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

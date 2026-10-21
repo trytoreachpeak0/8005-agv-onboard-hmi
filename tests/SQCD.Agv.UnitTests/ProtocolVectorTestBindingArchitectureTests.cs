@@ -90,7 +90,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// gate evidence -- so the boundary has to be stated somewhere on this side, and this is the
     /// smallest form it takes. The two pin sets below are what make it load-bearing instead of
     /// decorative, and
-    /// <see cref="TheIndexParsesIntoSixteenSlicesAndFiftyOneDistinctVectors"/> is what lets it be
+    /// <see cref="TheIndexParsesIntoSixteenSlicesAndFiftySevenDistinctVectors"/> is what lets it be
     /// stated as slice ids at all: it pins each slice's id to its own sequence, so the ids named here
     /// and the sequences the index carries cannot drift apart.
     /// </para>
@@ -274,27 +274,30 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse. The three counts are the
-    /// ones that differ from each other -- 16 slices, 54 <c>vectorIds</c> entries, 51 distinct
+    /// ones that differ from each other -- 16 slices, 61 <c>vectorIds</c> entries, 57 distinct
     /// vectors -- so a parse that lost a slice, or one that forgot to deduplicate, is reported here
-    /// rather than silently narrowing what the binding check covers. The three vectors shared across
-    /// slices are counted rather than named: the count is the entire difference between 54 and 51,
+    /// rather than silently narrowing what the binding check covers. The four vectors shared across
+    /// slices are counted rather than named: the count is the entire difference between 61 and 57,
     /// and writing their ids out would put a hand-copied fragment of the vector list in a file whose
     /// whole point is not to hold one. The 2.0.0 candidate added two vectors to <c>FP-IS-02</c> and
     /// no slice; the 3.0.0 candidate added six (one to <c>FP-IS-02</c>, five to <c>FP-IS-07</c>) and
     /// no slice, and shares none of them, so again only the first two counts moved. The 4.0.0 candidate
     /// added six more the same way (five to <c>FP-IS-02</c>, one to <c>FP-IS-13</c>, 8005-agv-onboard-hmi#349), and its
     /// commit <c>83c8f1f5</c> five more to <c>FP-IS-02</c> (CP-0014, 8005-agv-onboard-hmi#352). The 5.0.0 candidate's
-    /// second revision (<c>8005-agv-protocol#23</c>) added one more to <c>FP-IS-02</c>, 8005-agv-onboard-hmi#362.
+    /// second revision (<c>8005-agv-protocol#23</c>) added one more to <c>FP-IS-02</c>, 8005-agv-onboard-hmi#362. The 6.0.0
+    /// candidate added six to <c>FP-IS-02</c> and shares one of them, <c>CV-REMAINING-BASKETS-SKIP-DUPLICATE-REQUEST</c>, with
+    /// <c>FP-IS-05</c> -- the fourth shared vector -- and no slice, so the first two counts moved by seven and six
+    /// (8005-agv-onboard-hmi#388).
     /// </remarks>
     [Fact]
-    public void TheIndexParsesIntoSixteenSlicesAndFiftyOneDistinctVectors()
+    public void TheIndexParsesIntoSixteenSlicesAndFiftySevenDistinctVectors()
     {
         Slice[] slices = Slices();
         string[] entries = [.. slices.SelectMany(slice => slice.VectorIds)];
 
         Assert.Equal(16, slices.Length);
-        Assert.Equal(54, entries.Length);
-        Assert.Equal(51, FrozenVectorIds().Length);
+        Assert.Equal(61, entries.Length);
+        Assert.Equal(57, FrozenVectorIds().Length);
 
         // Each slice's id paired with its own sequence, not the two sets compared separately.
         // LastSliceSequenceThisBatchImplements is stated as a sequence and read as a batch boundary
