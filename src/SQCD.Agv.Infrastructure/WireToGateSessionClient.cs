@@ -809,6 +809,29 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         SendManualChargingReturnToServiceRequestAsync(messageId, payload, cancellationToken);
 
+    /// <summary>
+    /// The outbox key of one answer to the pre-departure safety check <paramref name="preDepartureSafetyCheckId"/>,
+    /// and the one source of its messageId: the reading it reports, observation time included.
+    /// </summary>
+    /// <remarks>
+    /// The time is in the key because every answer is a new reading (8005-agv-onboard-hmi#386). The control server
+    /// asks the same check again -- same messageId, same check id -- for as long as it has no answer it accepts, and an
+    /// answer is a statement about the vehicle at <c>observedAt</c>, valid for two seconds. Without the time, the
+    /// second answer to one check, version and outcome met the first one's row with other times in it and was refused
+    /// as <c>BUSINESS_ID_CONTENT_CONFLICT</c>; the vehicle stopped answering, and the server, which had judged the
+    /// first answer invalid, kept asking (agv02, 2026-10-21, up to 22 minutes). Replaying the first answer instead
+    /// would not have helped: the server had refused it for exactly its times, and two seconds later it is expired
+    /// for good. Under its own key each answer is its own message with its own messageId, which the server's inbox
+    /// takes as a new row.
+    /// </remarks>
+    public static string PreDepartureSafetyCheckResultKey(
+        string preDepartureSafetyCheckId,
+        long safetyStateVersion,
+        string outcome,
+        DateTimeOffset observedAt) =>
+        $"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion.ToString(CultureInfo.InvariantCulture)}:{outcome}:"
+        + observedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
         string checkPurpose,
@@ -817,11 +840,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         long safetyStateVersion,
         DateTimeOffset validUntil,
         WireToGateSafetySummaryPayload safety,
-        CancellationToken cancellationToken = default) =>
-        SendDurableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string deduplicationKey = PreDepartureSafetyCheckResultKey(
+            preDepartureSafetyCheckId,
+            safetyStateVersion,
+            outcome,
+            observedAt);
+        return SendDurableAsync(
             "PreDepartureSafetyCheckResult",
-            $"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion}:{outcome}",
-            StableUuid($"predeparture:{preDepartureSafetyCheckId}:{safetyStateVersion}:{outcome}"),
+            deduplicationKey,
+            StableUuid(deduplicationKey),
             preDepartureSafetyCheckId,
             new PreDepartureSafetyCheckResultPayload(
                 preDepartureSafetyCheckId,
@@ -832,6 +861,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 validUntil,
                 safety),
             cancellationToken);
+    }
 
     public async Task<string> SendSafetyStateChangedAsync(
         long safetyStateVersion,
@@ -2152,6 +2182,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
                     JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
             {
+                // The exception keeps its bare reason code, which callers classify by; the technical log gets what
+                // the code alone never said -- which key, which fields, and both versions (8005-agv-onboard-hmi#386).
+                RecordDiagnostic(DescribeDurableContentConflict(
+                    deduplicationKey,
+                    existing,
+                    existingEnvelope,
+                    messageType,
+                    messageId,
+                    correlationId,
+                    candidateEnvelope));
                 throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
             }
 
@@ -5119,6 +5159,61 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     private void RecordDiagnostic(string line) =>
         DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
+
+    /// <summary>
+    /// One line for a durable message refused because its key is on file with other content: the key, the fields
+    /// that differ (envelope fields by name, payload fields as <c>payload.&lt;name&gt;</c>), and both versions in full
+    /// (8005-agv-onboard-hmi#386). Envelope fields the outbox rebinds or stamps itself -- generation, sentAt -- are
+    /// not compared by the caller and are not listed.
+    /// </summary>
+    private static string DescribeDurableContentConflict(
+        string deduplicationKey,
+        WireToGateDurableMessage existing,
+        WireToGateEnvelope existingEnvelope,
+        string messageType,
+        string messageId,
+        string? correlationId,
+        WireToGateEnvelope candidateEnvelope)
+    {
+        List<string> differing = [];
+        if (existing.MessageType != messageType || existingEnvelope.MessageType != messageType)
+        {
+            differing.Add("messageType");
+        }
+
+        if (existing.MessageId != messageId || existingEnvelope.MessageId != messageId)
+        {
+            differing.Add("messageId");
+        }
+
+        if (existingEnvelope.CorrelationId != correlationId)
+        {
+            differing.Add("correlationId");
+        }
+
+        string storedPayload = existingEnvelope.Payload.GetRawText();
+        string candidatePayload = candidateEnvelope.Payload.GetRawText();
+        if (JsonNode.Parse(storedPayload) is JsonObject stored && JsonNode.Parse(candidatePayload) is JsonObject candidate)
+        {
+            differing.AddRange(stored.Select(property => property.Key)
+                .Union(candidate.Select(property => property.Key), StringComparer.Ordinal)
+                .Where(name => !JsonNode.DeepEquals(
+                    stored.TryGetPropertyValue(name, out JsonNode? left) ? left : null,
+                    candidate.TryGetPropertyValue(name, out JsonNode? right) ? right : null))
+                .Select(name => $"payload.{name}"));
+        }
+        else if (storedPayload != candidatePayload)
+        {
+            differing.Add("payload");
+        }
+
+        return $"持久消息去重键已登记另一份内容，拒发（BUSINESS_ID_CONTENT_CONFLICT）：key={deduplicationKey}，"
+            + $"不同的字段=[{string.Join(",", differing)}]；"
+            + $"已登记 messageType={existing.MessageType}，messageId={existing.MessageId}，"
+            + $"correlationId={existingEnvelope.CorrelationId}，payload={storedPayload}；"
+            + $"本次 messageType={messageType}，messageId={messageId}，correlationId={correlationId}，"
+            + $"payload={candidatePayload}。";
+    }
 
     /// <param name="receiveLoopGeneration">
     /// The generation of the receive loop that read the line, or <c>null</c> for the handshake's own. A loop's line is
