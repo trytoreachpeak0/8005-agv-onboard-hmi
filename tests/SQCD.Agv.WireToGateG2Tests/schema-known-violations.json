@@ -45,7 +45,7 @@
     "messageType": "LoadCancellationAuthorization",
     "pointer": "#/payload/decision",
     "keyword": "const",
-    "actual": "*",
+    "actual": "\"AUTHORIZED\"",
     "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
   },
   {

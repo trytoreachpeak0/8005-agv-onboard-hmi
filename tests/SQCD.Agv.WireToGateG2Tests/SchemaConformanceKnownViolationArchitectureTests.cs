@@ -11,16 +11,17 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <remarks>
 /// Protocol 6.0.0 lets a <c>LoadCancellationAuthorization</c> authorize only an empty slot scope; the G2 double still
 /// authorizes cancellations with slots, as under 5.0.0, until 8005-agv-onboard-hmi#392 moves it and the in-flight
-/// cancellation path. Its lines are filed against that issue with <c>actual</c> written <c>*</c>, because one of the three
-/// errors carries the whole payload and with it each cancellation's own id. The wildcard is allowed on an issue entry
-/// only, matches the synthetic peer only, and leaves messageType, pointer and keyword exact; these tests hold all of it.
+/// cancellation path. Its lines are filed against that issue: two of the three errors with <c>actual</c> written <c>*</c>,
+/// because one carries the whole payload and with it each cancellation's own id and the other the slots, which differ from
+/// line to line; the third, decision const, exactly. The wildcard is allowed on an issue entry only, matches the synthetic
+/// peer only, and leaves messageType, pointer and keyword exact; these tests hold all of it.
 /// </remarks>
 public sealed class SchemaConformanceKnownViolationArchitectureTests
 {
     /// <summary>
-    /// The validator's own self-test: a wildcard covers the same three paths whatever the values, an error at another path,
-    /// under another keyword or on another message type is not swallowed, the vehicle's own lines are never covered, and a
-    /// wildcard entry without an issue link is refused.
+    /// The validator's own self-test: the entries cover the three paths whatever the wildcarded values; an error at another
+    /// path (under the same keyword too, review M3 of PR #406), under another keyword or on another message type is not
+    /// swallowed; the vehicle's own lines are never covered; and a wildcard entry without an issue link is refused.
     /// </summary>
     [Fact]
     public async Task TheValidatorsWildcardRulesHold()
@@ -37,16 +38,17 @@ public sealed class SchemaConformanceKnownViolationArchitectureTests
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 
         Assert.True(process.ExitCode == 0, output);
-        Assert.Equal(8, output.Split('\n').Count(line => line.StartsWith("PASS ", StringComparison.Ordinal)));
+        Assert.Equal(9, output.Split('\n').Count(line => line.StartsWith("PASS ", StringComparison.Ordinal)));
     }
 
     /// <summary>
-    /// Every wildcard entry on file is a filed defect, of 8005-agv-onboard-hmi#392 and nothing else, and names one of the three
-    /// schema paths of the cancellation authorization the double still sends in the 5.0.0 shape. A fourth, or another issue,
-    /// is a new widening that has to be argued for on its own.
+    /// Every wildcard entry on file is a filed defect, of 8005-agv-onboard-hmi#392 and nothing else, and names one of the two
+    /// schema paths of the cancellation authorization whose actual value changes from line to line (the slots, and the whole
+    /// payload with its cancellationId). The third error, decision const, is always "AUTHORIZED" and is filed exactly (review
+    /// L3 of PR #406). A third wildcard, or another issue, is a new widening that has to be argued for on its own.
     /// </summary>
     [Fact]
-    public void TheOnlyWildcardsOnFileAreTheThreeCancellationAuthorizationPathsOwedBy392()
+    public void TheOnlyWildcardsOnFileAreTheTwoCancellationAuthorizationPathsOwedBy392()
     {
         string path = Path.Combine(
             OutboundSchemaConformance.RepositoryRoot(),
@@ -69,7 +71,6 @@ public sealed class SchemaConformanceKnownViolationArchitectureTests
         Assert.Equal(
             [
                 $"LoadCancellationAuthorization #/payload else {Issue}",
-                $"LoadCancellationAuthorization #/payload/decision const {Issue}",
                 $"LoadCancellationAuthorization #/payload/slots maxItems {Issue}",
             ],
             wildcards);

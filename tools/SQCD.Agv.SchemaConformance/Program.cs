@@ -522,7 +522,7 @@ internal static class KnownViolationSelfTest
         const string Type = "LoadCancellationAuthorization";
         KnownViolation[] filed =
         [
-            new(Type, "#/payload/decision", "const", KnownViolation.AnyActual, Issue, null),
+            new(Type, "#/payload/decision", "const", "\"AUTHORIZED\"", Issue, null),
             new(Type, "#/payload/slots", "maxItems", KnownViolation.AnyActual, Issue, null),
             new(Type, "#/payload", "else", KnownViolation.AnyActual, Issue, null),
         ];
@@ -540,6 +540,9 @@ internal static class KnownViolationSelfTest
                 KnownViolation.Cover(filed, Type, "synthetic-peer", [.. sameThree, new("#/payload/problem", "type", "", "null")]) is null),
             ("the same path under another keyword is not swallowed",
                 KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/slots", "minItems", "", "[]")]) is null),
+            ("the same keyword at another path is not swallowed",
+                KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/cancellationId", "maxItems", "", "[]")]) is null
+                && KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/problem", "else", "", "null")]) is null),
             ("another message type is not swallowed",
                 KnownViolation.Cover(filed, "OperationResult", "synthetic-peer", sameThree) is null),
             ("a wildcard never covers the vehicle's own lines",
