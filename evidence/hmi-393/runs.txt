@@ -1,25 +1,30 @@
-pre-fix + 3s injection run 1: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-pre-fix + 3s injection run 2: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-pre-fix + 3s injection run 3: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-pre-fix + 3s injection run 4: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-pre-fix + 3s injection run 5: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-fixed + 3s injection run 1: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [11 s]
-fixed + 3s injection run 2: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
-fixed + 3s injection run 3: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
-fixed + 3s injection run 4: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
-fixed + 3s injection run 5: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [11 s]
+Injection runs (apply-injection.sh at c8a4bc4, 3 s delay on the restore's resend, CPU affinity 0xF, Invoke-HeavyLocal.ps1).
+pre-fix = HandoffOverUnrecordedLoad.cs as on w2g/fp-v2-impl 32d691a; fixed = this branch. Marks: W2G_HMI393_MARKS.
 
-Without injection, fixed (ec34cac):
-  G2 MultiDemandJourneyG2Tests + ArchitectureTests: Passed!  - Failed:     0, Passed:   208, Skipped:     0, Total:   208, Duration: 4 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  UnitTests ArchitectureTests: Passed!  - Failed:     0, Passed:   203, Skipped:     0, Total:   203, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
-  plain run 1 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 2 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 3 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 4 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 5 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 6 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 7 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 8 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 9 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-  plain run 10 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+prefix run 1: Failed [9 s] | ARMED 07:47:14.445 FIRED 07:47:17.703 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+prefix run 2: Failed [8 s] | ARMED 07:47:54.729 FIRED 07:47:57.884 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+prefix run 3: Failed [8 s] | ARMED 07:48:36.785 FIRED 07:48:39.976 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+prefix run 4: Failed [8 s] | ARMED 07:49:18.056 FIRED 07:49:21.211 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+prefix run 5: Failed [9 s] | ARMED 07:50:00.975 FIRED 07:50:04.307 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+prefix run 6: Failed [9 s] | ARMED 07:50:41.590 FIRED 07:50:44.783 | timed out waiting for: the restore's resend of A's result to give up, and the handoff entry over A
+fixed run 1: Passed [12 s] | ARMED 07:51:31.441 FIRED 07:51:34.620 DISARMED 07:51:40.656 | 
+fixed run 2: Passed [12 s] | ARMED 07:52:21.598 FIRED 07:52:24.788 DISARMED 07:52:30.826 | 
+fixed run 3: Passed [12 s] | ARMED 07:53:07.755 FIRED 07:53:10.941 DISARMED 07:53:16.982 | 
+fixed run 4: Passed [12 s] | ARMED 07:53:50.753 FIRED 07:53:53.926 DISARMED 07:53:59.965 | 
+fixed run 5: Passed [12 s] | ARMED 07:54:34.552 FIRED 07:54:37.738 DISARMED 07:54:43.770 | 
+fixed run 6: Passed [12 s] | ARMED 07:55:15.652 FIRED 07:55:18.778 DISARMED 07:55:24.818 | 
+
+Without injection, at 6e66d5d (tests unchanged since):
+  G2 MultiDemandJourneyG2Tests + ArchitectureTests: Passed!  - Failed:     0, Passed:   208, Skipped:     0, Total:   208, Duration: 4 m 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  UnitTests ArchitectureTests: Passed!  - Failed:     0, Passed:   203, Skipped:     0, Total:   203, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+  plain run 1: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 2: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 3: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 4: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 5: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 6: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 7: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 8: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 9: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 10: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
   dotnet format --verify-no-changes: exit 0
