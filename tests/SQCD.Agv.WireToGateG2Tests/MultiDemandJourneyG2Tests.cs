@@ -310,7 +310,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             WireToGateRecoveryOptions? recoveryOptions = null,
             string? operatorIdEnvironmentVariable = null,
             TimeSpan? messageTimeout = null,
-            TimeSpan? operationTimeout = null)
+            TimeSpan? operationTimeout = null,
+            TimeSpan? unlockFeedbackTimeout = null,
+            TimeSpan? feedbackStableWindow = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -329,7 +331,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                     recoveryOptions,
                     operatorIdEnvironmentVariable,
                     messageTimeout,
-                    operationTimeout);
+                    operationTimeout,
+                    unlockFeedbackTimeout,
+                    feedbackStableWindow);
                 started._ownsServer = true;
                 return started;
             }
@@ -362,6 +366,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// in this class has always had. Longer only for a test that keeps a door open on purpose while the test thread
         /// does other work (8005-agv-onboard-hmi#323).
         /// </param>
+        /// <param name="unlockFeedbackTimeout">
+        /// How long the slot executor waits for the lock to read released after a pulse. Left null, one second.
+        /// </param>
+        /// <param name="feedbackStableWindow">
+        /// How long the slot executor holds a reading before it believes it. Left null, ten milliseconds; the field's
+        /// 300 for a test that replays the field's readings (8005-agv-onboard-hmi#385: a lock that released for 0.24 s).
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
@@ -371,7 +382,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             WireToGateRecoveryOptions? recoveryOptions = null,
             string? operatorIdEnvironmentVariable = null,
             TimeSpan? messageTimeout = null,
-            TimeSpan? operationTimeout = null)
+            TimeSpan? operationTimeout = null,
+            TimeSpan? unlockFeedbackTimeout = null,
+            TimeSpan? feedbackStableWindow = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
@@ -441,10 +454,10 @@ public sealed partial class MultiDemandJourneyG2Tests
                 new SystemClock(),
                 () => safety.Read().MotionState == VehicleMotionState.Stopped,
                 new WireToGateSlotOperationExecutorOptions(
-                    TimeSpan.FromSeconds(1),
+                    unlockFeedbackTimeout ?? TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
                     operationTimeout ?? TimeSpan.FromSeconds(2),
-                    TimeSpan.FromMilliseconds(10),
+                    feedbackStableWindow ?? TimeSpan.FromMilliseconds(10),
                     TimeSpan.FromSeconds(30)),
                 operatorIdEnvironmentVariable ?? OperatorVariable,
                 safety,
