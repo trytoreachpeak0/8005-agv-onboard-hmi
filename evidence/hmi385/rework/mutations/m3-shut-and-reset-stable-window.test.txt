@@ -1,0 +1,43 @@
+Test run for C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:23.23]     SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockKeepsBouncingIsStillUnknown [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockKeepsBouncingIsStillUnknown [22 s]
+  Error Message:
+   Timed out after 20s waiting for: the OperationResult. Pulses: 2.
+OPERATION_PROGRESS: 准备执行装货：1号仓。
+OPERATION_PROGRESS: 正在检查1号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 正在重新打开1号仓。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+OPERATION_PROGRESS: 1号仓门没有打开，可能是开锁时门被按住或又关上了。请按「重新开门」继续装；不装了请按「取消装货」。
+Received: SessionHello, CapabilitySnapshot, SafetyStateSnapshot, OnboardAlarmSnapshot, RecoveryStateReport, SafetyStateChanged, SnapshotAppliedAck, SnapshotAppliedAck, SnapshotAppliedAck, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress, OperationProgress
+05:06:19.201 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+05:06:19.305 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+05:06:19.319 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-21T05:06:19.3177982+00:00。
+05:06:19.378 Information WireToGateSessionClient: 收到SessionReadiness：messageId=0de18cb3-f17c-4104-b997-d9ccb9748d3c，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+05:06:19.378 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+05:06:19.385 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+05:06:19.534 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+05:06:19.535 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/11111111-1111-1111-1111-111111111111/44444444-4444-4444-4444-444444444444（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+05:06:19.547 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+05:06:21.150 Information WireToGateBusinessService: 操作员按了「重新开门」：attempt=44444444-4444-4444-4444-444444444444，slot=1，cause=ShutOverOpposite，已交给执行器。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitUntilAsync(Harness harness, Func`1 predicate, String expectation, CancellationToken token) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 433
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.WaitForResultAsync(Harness harness, CancellationToken token) in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 385
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockKeepsBouncingIsStillUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 304
+   at SQCD.Agv.WireToGateG2Tests.DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockKeepsBouncingIsStillUnknown() in C:\work\8005-wt\hmi385-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\DoorShutOverOppositeOccupancyG2Tests.cs:line 306
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

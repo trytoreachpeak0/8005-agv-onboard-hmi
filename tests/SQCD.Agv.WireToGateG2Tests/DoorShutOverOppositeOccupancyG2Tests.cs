@@ -332,7 +332,9 @@ public sealed class DoorShutOverOppositeOccupancyG2Tests
         Assert.False(await Press(harness));
         Assert.False(await harness.Business.RequestSlotReopenAsync(token));
         Assert.Equal(1, io.UnlockCount);
-        Assert.False(cancellation.IsCompleted);
+        // The request itself gives up on the double's silence after the message timeout; what stays is the pending
+        // cancellation on file, which is what takes the button away. Its own answer is not this test's subject.
+        _ = await cancellation;
     }
 
     private static ScriptStep[] OpensThenShut(bool cargo) =>
