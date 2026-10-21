@@ -246,7 +246,13 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static async Task StallThePoolOnceAsync(TimeSpan after, CancellationToken token)
     {
         await Task.Delay(after, token);
-        int sleepers = ThreadPool.ThreadCount + (Environment.ProcessorCount * 2) + 8;
+        // Counted from the pool's minimum as well as its size: below the minimum the pool starts a thread for each queued
+        // item at once, so sleepers counted from a small ThreadCount under a raised minimum all got threads of their own,
+        // the poll's continuation found one free, and nothing was given back (onboard-hmi#396, CI run 39572046925: 25
+        // threads, nothing queued). Above the minimum the pool adds threads slowly, so the extra sleepers queue ahead of
+        // the poll for a whole sleep.
+        ThreadPool.GetMinThreads(out int minimumWorkers, out _);
+        int sleepers = Math.Max(ThreadPool.ThreadCount, minimumWorkers) + (Environment.ProcessorCount * 2) + 8;
         await Task.WhenAll(Enumerable.Range(0, sleepers).Select(_ => Task.Run(() => Thread.Sleep(800), token)));
     }
 
