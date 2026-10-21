@@ -1,0 +1,25 @@
+pre-fix + 3s injection run 1: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+pre-fix + 3s injection run 2: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+pre-fix + 3s injection run 3: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+pre-fix + 3s injection run 4: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+pre-fix + 3s injection run 5: Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+fixed + 3s injection run 1: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [11 s]
+fixed + 3s injection run 2: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+fixed + 3s injection run 3: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+fixed + 3s injection run 4: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+fixed + 3s injection run 5: Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [11 s]
+
+Without injection, fixed (ec34cac):
+  G2 MultiDemandJourneyG2Tests + ArchitectureTests: Passed!  - Failed:     0, Passed:   208, Skipped:     0, Total:   208, Duration: 4 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  UnitTests ArchitectureTests: Passed!  - Failed:     0, Passed:   203, Skipped:     0, Total:   203, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
+  plain run 1 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 2 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 3 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 4 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 5 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 6 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 7 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 8 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 9 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  plain run 10 (no injection): Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+  dotnet format --verify-no-changes: exit 0
