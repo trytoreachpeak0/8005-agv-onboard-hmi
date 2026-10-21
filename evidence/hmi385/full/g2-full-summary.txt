@@ -1,0 +1,9 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedResultRefusedOnItsReplayIsGivenUpAndTheHandshakeCompletes [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.ADuplicatedActivationResultAckReportsNothingTwiceAndTheReplayIsSettledOnce [4 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.SettlingKeepsTheEntryRequestOnlyWhenTheNewWorklistIsAboutAnotherDemand(worklistStillNamesTheCancelledDemand: False) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AFailedResultOnAReadySessionIsAnnouncedOnceToo [11 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded [5 s]
+Failed!  - Failed:     8, Passed:  1051, Skipped:     0, Total:  1059, Duration: 6 m 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
