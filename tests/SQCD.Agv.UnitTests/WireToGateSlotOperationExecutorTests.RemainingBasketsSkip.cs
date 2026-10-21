@@ -70,6 +70,79 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Null(fixture.Executor.RemainingBasketsSkipOffer);
     }
 
+    /// <summary>
+    /// While the run waits for 「重新开门」 over slot 2, a target slot it has not touched reads one way the skip may not be asked
+    /// over: its output not reset, its lock not locked, or its occupancy unreadable. Nothing is offered and a hold is refused;
+    /// once the slot reads shut, locked and reset again the skip is offered (review M2 of PR #406: each of the three checks
+    /// removed alone, every other test still passed).
+    /// </summary>
+    [Theory]
+    [InlineData("OUTPUT_NOT_RESET")]
+    [InlineData("LOCK_NOT_LOCKED")]
+    [InlineData("UNREADABLE")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-REMAINING-BASKETS-SKIP-REJECTED")]
+    public async Task TheSkipIsNotOfferedOverATargetSlotThatDoesNotReadShutLockedAndReset(string reading)
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2, 3], expectedOccupied: true);
+        List<(WireToGateRemainingBasketsSkipOffer? Offer, bool Held)> whileOff = [];
+        WireToGateRemainingBasketsSkipOffer? afterwards = null;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase != "WAITING_OPERATOR")
+                {
+                    return Task.CompletedTask;
+                }
+
+                if (progress.Cause == WireToGatePromptCause.ShutOverOpposite && whileOff.Count > 0)
+                {
+                    PressReopenWhenAsked(fixture.Executor, command, progress);
+                }
+                else if (progress.Cause == WireToGatePromptCause.ShutOverOpposite)
+                {
+                    switch (reading)
+                    {
+                        case "OUTPUT_NOT_RESET":
+                            fixture.Io.CloseDoorWithUnlockOutputStuckActive(2, cargo: false);
+                            break;
+                        case "LOCK_NOT_LOCKED":
+                            fixture.Io.OpenDoor(2);
+                            break;
+                        default:
+                            fixture.Io.LoseOccupancyReading(2);
+                            break;
+                    }
+
+                    whileOff.Add((
+                        fixture.Executor.RemainingBasketsSkipOffer,
+                        fixture.Executor.HoldForRemainingBasketsSkip(command.SlotOperationAttemptId, SkipRequestId, [1])));
+                    fixture.Io.CloseDoor(2, cargo: false);
+                    afterwards = fixture.Executor.RemainingBasketsSkipOffer;
+                    PressReopenWhenAsked(fixture.Executor, command, progress);
+                }
+                else
+                {
+                    int slotIndex = progress.Active.Single() - 1;
+                    fixture.Io.CloseDoor(slotIndex, cargo: slotIndex == 0 || fixture.Io.UnlockCount(slotIndex) >= 2);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        (WireToGateRemainingBasketsSkipOffer? offer, bool held) = Assert.Single(whileOff);
+        Assert.Null(offer);
+        Assert.False(held);
+        Assert.NotNull(afterwards);
+    }
+
     /// <summary>A single-basket load shut empty is offered 「重新开门」 and never the skip.</summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]

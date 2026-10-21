@@ -239,6 +239,51 @@ public sealed class RemainingBasketsSkipG2Tests
     }
 
     /// <summary>
+    /// The operation has gone to manual recovery -- an exception recovery session or a slot fault declaration on file -- while
+    /// the executor still holds slot 2 for 「重新开门」: the skip is not offered, on the screen or to a press (review M2 of
+    /// PR #406: with the gate removed every other test still passed). Put on file straight into the journal, and the business
+    /// service's cached copy refreshed by a readiness from the server, as any mid-session readiness refreshes it.
+    /// </summary>
+    [Theory]
+    [InlineData("EXCEPTION_RECOVERY_SESSION")]
+    [InlineData("SLOT_FAULT_DECLARATION")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-REMAINING-BASKETS-SKIP-REJECTED")]
+    public async Task NotOfferedOnceTheOperationHasGoneToManualRecovery(string onFile)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = LoadsSlotOneThenShutsSlotTwoEmpty();
+        await using Harness harness = await StartAsync(io, token);
+        WireToGateRemainingBasketsSkipOffer offer = await WaitForOfferAsync(harness, token);
+
+        await harness.Session.Journal.UpdateRecoveryStateAsync(
+            state => onFile == "EXCEPTION_RECOVERY_SESSION"
+                ? state with { ExceptionRecoverySessionId = "99999999-9999-4999-8999-999999999991" }
+                : state with
+                {
+                    SlotFaultDeclaration = new WireToGateSlotFaultDeclaration(
+                        "99999999-9999-4999-8999-999999999992",
+                        offer.SlotOperationAttemptId,
+                        2,
+                        "LOCK")
+                },
+            token);
+        await harness.Server.SendSessionReadinessAsync();
+
+        await WaitUntilAsync(
+            harness,
+            () => harness.Business.RemainingBasketsSkipOffer is null
+                && !harness.OnUi(() => harness.ViewModel.ShowsRemainingBasketsSkip),
+            "the skip taken away by the manual recovery on file",
+            token);
+        // The executor still holds slot 2 for the press: it is the gate, not the wait ending, that took the skip away.
+        Assert.True(harness.Business.CanReopenWaitingSlot);
+        Assert.False(await Press(harness, offer));
+        Assert.Empty(harness.Server.RemainingBasketsSkipRequests);
+        AssertNoResult(harness);
+    }
+
+    /// <summary>
     /// A link that drops with the request unanswered: the next session resubmits it under a new messageId with the same
     /// <c>skipRequestId</c> and the same payload; the server's answer is applied once.
     /// </summary>
