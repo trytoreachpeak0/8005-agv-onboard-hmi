@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SQCD.Agv.Contracts;
+using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using Xunit;
 
@@ -138,10 +139,12 @@ public sealed partial class MultiDemandJourneyG2Tests
                 checkId, "NON_BUSINESS_MOVE", "SAFE", observedAt, version, observedAt.AddSeconds(2), safety, token));
 
         Assert.Equal("BUSINESS_ID_CONTENT_CONFLICT", conflict.Message);
-        string line = Assert.Single(
+        (LogSeverity severity, _, string line) = Assert.Single(
             harness.Logger.Entries,
             entry => entry.Source == nameof(WireToGateSessionClient)
-                && entry.Message.Contains("BUSINESS_ID_CONTENT_CONFLICT", StringComparison.Ordinal)).Message;
+                && entry.Message.Contains("BUSINESS_ID_CONTENT_CONFLICT", StringComparison.Ordinal));
+        // A refusal, filed apart from the Information-level publication diagnostics.
+        Assert.Equal(LogSeverity.Warning, severity);
         Assert.Contains($"predeparture:{checkId}:", line, StringComparison.Ordinal);
         Assert.Contains("payload.checkPurpose", line, StringComparison.Ordinal);
         Assert.Contains("\"DEPARTURE\"", line, StringComparison.Ordinal);

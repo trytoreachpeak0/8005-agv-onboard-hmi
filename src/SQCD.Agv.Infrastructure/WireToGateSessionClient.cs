@@ -177,6 +177,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </summary>
     public event EventHandler<ValueChangedEventArgs<string>>? DiagnosticRecorded;
 
+    /// <summary>
+    /// One line per durable message refused because its key is on file with other content (8005-agv-onboard-hmi#386): the
+    /// key, the fields that differ and both versions. Apart from <see cref="DiagnosticRecorded"/> so the application log can
+    /// file it as a warning -- it is a refusal, not a publication. Raised on the sending thread.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<string>>? DurableContentConflictRecorded;
+
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
     /// <summary>
@@ -2184,14 +2191,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             {
                 // The exception keeps its bare reason code, which callers classify by; the technical log gets what
                 // the code alone never said -- which key, which fields, and both versions (8005-agv-onboard-hmi#386).
-                RecordDiagnostic(DescribeDurableContentConflict(
+                DurableContentConflictRecorded?.Invoke(this, new ValueChangedEventArgs<string>(DescribeDurableContentConflict(
                     deduplicationKey,
                     existing,
                     existingEnvelope,
                     messageType,
                     messageId,
                     correlationId,
-                    candidateEnvelope));
+                    candidateEnvelope)));
                 throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
             }
 
