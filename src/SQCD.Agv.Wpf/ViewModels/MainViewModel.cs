@@ -1872,8 +1872,13 @@ public sealed partial class MainViewModel : ViewModelBase
             : _controller.ClearFatalFaultAsync(operatorId, cancellationToken);
     }
 
-    public Task<bool> RequestReopenCurrentOperationAsync() =>
-        Task.FromResult(_controller.RequestReopenCurrentOperation());
+    /// <summary>
+    /// 「重新开门」。v2 上交给业务服务（8005-agv-onboard-hmi#385）；MVP 上照旧是控制器的重开。
+    /// </summary>
+    public Task<bool> RequestReopenCurrentOperationAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateSlotReopenRequester is { } requester
+            ? RequestSlotReopenAsync(requester, cancellationToken)
+            : Task.FromResult(_controller.RequestReopenCurrentOperation());
 
     public Task<bool> RequestCancelCurrentOperationAsync() =>
         Task.FromResult(_controller.RequestCancelCurrentOperation());
@@ -2629,6 +2634,9 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshConflictedRecoveryCore();
         // 车上没有出口的说明同理（见 RefreshNoOnboardExitNoticeCore）。
         RefreshNoOnboardExitNoticeCore();
+        // 「重新开门」同理写在守卫之前：它不是那十个恢复入口之一。锁存期间执行器不再等这一按（锁存一到就按锁存拒绝结束），
+        // 入口跟着业务服务关掉；放到守卫之后，锁存期间这条路径就不刷新它，按钮会停在锁存那一刻（8005-agv-onboard-hmi#385）。
+        RefreshSlotReopenCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
@@ -2680,7 +2688,6 @@ public sealed partial class MainViewModel : ViewModelBase
         HasWarning = banner.HasWarning || bannerNoticeHeld;
         HasError = banner.HasError;
         _bannerSource = HmiBannerSource.WireToGatePresentation;
-        CanReopenOperation = false;
         CanCancelOperation = false;
         CanRetryPendingResult = false;
         CanRequestWireToGateRecovery = Offer(

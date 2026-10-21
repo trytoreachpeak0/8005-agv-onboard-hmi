@@ -250,10 +250,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Empty(journaled.CompletedSlots);
         WireToGateSlotExecutionResult failed = journaled.SlotResults.Single(slot => slot.SlotNo == 1);
         Assert.Equal("UNKNOWN", failed.Outcome);
-        // A lock that never confirms the unlock times out waiting for it, and MapFailureReason turns that
-        // timeout into this code today. Pinned so the reason the settlement carries is known to be a real one;
-        // the settlement assertions compare with whatever the journal holds.
-        Assert.Equal(["ACTION_NOT_ALLOWED_IN_STATE"], failed.ReasonCodes);
+        // A lock that never confirms the unlock on a slot read shut, locked and reset is SLOT_INOPERABLE since
+        // onboard-hmi#385 (ACTION_NOT_ALLOWED_IN_STATE before). Pinned so the reason the settlement carries is known to
+        // be a real one; the settlement assertions compare with whatever the journal holds.
+        Assert.Equal(["SLOT_INOPERABLE"], failed.ReasonCodes);
         return failed.ReasonCodes;
     }
 }

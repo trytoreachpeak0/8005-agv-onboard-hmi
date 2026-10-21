@@ -711,10 +711,12 @@
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
+                            AutomationProperties.AutomationId="ReopenOperation"
+                            AutomationProperties.ItemStatus="{Binding ReopenWaitStatus}"
                             IsEnabled="{Binding CanReopenOperation}"
                             Visibility="{Binding CanReopenOperation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnReopenOperationClick"
-                            Content="重新打开仓门" />
+                            Content="重新开门" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

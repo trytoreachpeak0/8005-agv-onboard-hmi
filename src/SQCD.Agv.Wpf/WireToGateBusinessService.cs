@@ -3987,7 +3987,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string detailKey)
     {
         WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
-        string guidance = OperationGuidance(command, progress, StationDeadlinePassed());
+        string guidance = OperationGuidance(
+            command,
+            progress,
+            StationDeadlinePassed(),
+            WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
+                _session.CurrentJourney,
+                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])));
         PublishOperation(command, stage, guidance, detailKey, progress.Active);
         if (command.OperationType == OperationType.Load
             && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
@@ -4144,16 +4150,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     // The text follows the cause the executor states, not a guess from the round number. Past the
     // station departure deadline a load's prompt names the way out as well (program#55,
-    // onboard-hmi#78): the executor keeps reopening, and only the operator's cancel ends the load.
+    // onboard-hmi#78): only the operator's cancel ends the load. A door shut over the opposite
+    // occupancy is held shut until the operator presses 「重新开门」 (onboard-hmi#385); the text says
+    // which button does what, under the cancel button's own caption.
     internal static string OperationGuidance(
         WireToGateSlotOperationCommand command,
         WireToGateOperationProgress progress,
-        bool deadlinePassed) => progress.Phase switch
+        bool deadlinePassed,
+        string loadCancellationCaption = WireToGateLoadCancellationText.MachineCaption) => progress.Phase switch
         {
             "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
             "UNLOCKING" => progress.Cause == WireToGatePromptCause.OppositeReopen
-                ? $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，正在重新打开。"
+                ? $"正在重新打开{FormatSlots(progress.Active)}。"
                 : $"正在打开{FormatSlots(progress.Active)}。",
+            "WAITING_OPERATOR" when progress.Cause is WireToGatePromptCause.ShutOverOpposite
+                or WireToGatePromptCause.ReopenNotReleased =>
+                ShutOverOppositeGuidance(command, progress, loadCancellationCaption),
             "WAITING_OPERATOR" when progress.Cause == WireToGatePromptCause.ReopenHeldBySafety =>
                 $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，但车辆安全状态未确认（急停或未停稳），" +
                 "暂不重新打开；安全状态恢复后自动打开。",
@@ -4167,6 +4179,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",
             _ => $"正在处理{FormatSlots(command.Slots)}。"
         };
+
+    /// <summary>
+    /// The words the user chose on 2026-10-21 (onboard-hmi#385): what happened to the slot, then which button continues
+    /// and, for a load, which one gives up. An unload has no way to give up (REQ-0222).
+    /// </summary>
+    internal static string ShutOverOppositeGuidance(
+        WireToGateSlotOperationCommand command,
+        WireToGateOperationProgress progress,
+        string loadCancellationCaption)
+    {
+        string slots = FormatSlots(progress.Active);
+        bool load = command.OperationType == OperationType.Load;
+        string what = progress.Cause == WireToGatePromptCause.ReopenNotReleased
+            ? $"{slots}门没有打开，可能是开锁时门被按住或又关上了。"
+            : load
+                ? $"{slots}关门时没有放入篮子。"
+                : $"{slots}关门时篮子还在仓里。";
+        string next = load
+            ? $"请按「重新开门」继续装；不装了请按「{loadCancellationCaption}」。"
+            : "请按「重新开门」继续卸。";
+        return what + next + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）");
+    }
 
     private static string FormatSlots(IReadOnlyList<int> slots) =>
         string.Join("、", slots.Order()) + "号仓";

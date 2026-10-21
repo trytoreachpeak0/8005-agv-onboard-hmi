@@ -541,6 +541,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             // The line saying the vehicle has no exit while an unknown result waits for the server (8005-agv-onboard-hmi#370).
             // Its refresh on every cached recovery state goes through this harness's stand-in UI thread (8005-agv-onboard-hmi#375).
             NoOnboardExitNoticeWiring.Configure(viewModel, business, harness.OnUiThread);
+            // 「重新开门」 over a door shut on the opposite occupancy (8005-agv-onboard-hmi#385).
+            SlotReopenWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

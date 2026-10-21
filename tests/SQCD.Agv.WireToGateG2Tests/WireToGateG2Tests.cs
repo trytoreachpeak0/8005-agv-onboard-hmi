@@ -955,10 +955,11 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
-    /// A door shut over an empty slot is reopened with no limit (ADR-cross-0058 decision 1), and the
-    /// operator has to see every round of it. The HMI deduplicates its operation prompts by key, and a
-    /// reopen repeats the previous round's phase and slot sets exactly -- a key without the round in
-    /// it swallows every prompt after the first, and the vehicle reopens a door in silence.
+    /// A door shut over an empty slot is reopened on every press, with no limit (ADR-cross-0058 decision 1
+    /// as CP-0019 rewrote it), and the operator has to see every round of it. The HMI deduplicates its
+    /// operation prompts by key, and a reopen repeats the previous round's phase and slot sets exactly --
+    /// a key without the round in it swallows every prompt after the first, and the vehicle reopens a door
+    /// in silence.
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -1019,6 +1020,7 @@ public sealed partial class WireToGateG2Tests
             }
         };
 
+        await using ReopenPresser presser = ReopenPresser.Start(business, testToken);
         business.Start();
         await session.Client.ConnectAndRecoverAsync(testToken);
         await WaitUntilAsync(() => completed, testToken);
@@ -1039,11 +1041,15 @@ public sealed partial class WireToGateG2Tests
         }
 
         Assert.Equal(
-            ["请在1号仓放入货物并关门。", "请在1号仓放入货物并关门。（第2次提示）", "请在1号仓放入货物并关门。（第3次提示）"],
+            [
+                "请在1号仓放入货物并关门。",
+                "1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。（第2次提示）",
+                "请在1号仓放入货物并关门。（第3次提示）",
+                "1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。（第4次提示）",
+                "请在1号仓放入货物并关门。（第5次提示）"
+            ],
             waiting);
-        Assert.Equal(
-            ["正在打开1号仓。", "1号仓关门时货物状态与预期不符，正在重新打开。", "1号仓关门时货物状态与预期不符，正在重新打开。"],
-            unlocking);
+        Assert.Equal(["正在打开1号仓。", "正在重新打开1号仓。", "正在重新打开1号仓。"], unlocking);
     }
 
     /// <summary>

@@ -75,8 +75,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// 经过真实执行器：操作员三次空关门，执行器读到相反的占用态就重开（ADR-cross-0040），每一轮开锁与等待都还是同一次等待，
-    /// 计时起点一直是这个仓第一次开锁的时刻；装货闭环后撤下。
+    /// 经过真实执行器：操作员三次空关门，每次按「重新开门」重开（ADR-cross-0040，8005-agv-onboard-hmi#385 起空关后等人按），
+    /// 每一轮开锁、等按键与等待都还是同一次等待，计时起点一直是这个仓第一次开锁的时刻（REQ-0358：按键重开不清零）；
+    /// 装货闭环后撤下。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -100,6 +101,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 }
             });
 
+        await using ReopenPresser presser = ReopenPresser.Start(harness.Business, token);
         await harness.WaitForEventAsync("OPERATION_COMPLETED", token);
 
         Assert.Equal(4, harness.Io.UnlockCount);
@@ -110,7 +112,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 or WireToGateHmiOperationStage.WaitingOperator)];
         }
 
-        Assert.Equal(8, waiting.Length);
+        // Four unlocks, four waits at an open door, three waits at a door held shut for the press.
+        Assert.Equal(11, waiting.Length);
         SlotExpectedActionWait first = Assert.IsType<SlotExpectedActionWait>(waiting[0].Wait);
         Assert.All(waiting, item => Assert.Equal(first, item.Wait));
         Assert.Null(harness.Business.CurrentExpectedActionWait);
