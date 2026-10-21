@@ -58,10 +58,12 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// The three ways the sentence reads: a known reason from the table, no reason (as before 3.0.0), and a
-    /// reason the table does not know, shown as it came rather than guessed at.
+    /// reason the table does not know, shown as it came rather than guessed at. The table's second reason is an
+    /// authorization expired, withdrawn or lost with a server restart (8005-agv-onboard-hmi#391, control-server#797).
     /// </summary>
     [Theory]
     [InlineData("RECOVERY_ACTION_RESULT_NOT_RECONCILED", "服务端恢复会话已关闭：恢复动作结果未闭环，需求与旅程仍阻断，请管理员重新发起恢复。")]
+    [InlineData("RECOVERY_AUTHENTICATION_FAILED", "本次恢复已结束：恢复授权已失效。需要继续请联系系统维护人员重新开放。")]
     [InlineData(null, "服务端恢复会话已关闭。")]
     [InlineData("ACTION_NOT_ALLOWED_IN_STATE", "服务端恢复会话已关闭（ACTION_NOT_ALLOWED_IN_STATE）。")]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -133,7 +135,8 @@ public sealed partial class RecoveryVectorG2Tests
 
     private static IReadOnlyList<WireToGateOperatorEvent> ClosedEvents(IEnumerable<WireToGateOperatorEvent> events) =>
         [.. events.Where(item => item.Kind == "RECOVERY_SESSION_UPDATED"
-            && item.Message.StartsWith("服务端恢复会话已关闭", StringComparison.Ordinal))];
+            && (item.Message.StartsWith("服务端恢复会话已关闭", StringComparison.Ordinal)
+                || item.Message.StartsWith("本次恢复已结束", StringComparison.Ordinal)))];
 
     private static Task WaitForClosedEventAsync(
         ConcurrentQueue<WireToGateOperatorEvent> events,

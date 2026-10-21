@@ -431,6 +431,19 @@
                                AutomationProperties.AutomationId="RecoveryReasonCarriedOver"
                                Text="会话已开，原因沿用开会话时填写的"
                                Visibility="{Binding HasRecoveryReasonCarriedOver, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        服务端以 RECOVERY_AUTHENTICATION_FAILED 拒了恢复、或因授权失效关了会话之后常驻，服务端开了会话才撤
+                        （8005-agv-onboard-hmi#391）。ItemStatus 是原始码，屏幕快照据此判读。
+                    -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Foreground="#8A5A00"
+                               AutomationProperties.AutomationId="RecoveryNotOpenNotice"
+                               AutomationProperties.ItemStatus="{Binding RecoveryNotOpenNoticeCode}"
+                               Text="{Binding RecoveryNotOpenNoticeText}"
+                               Visibility="{Binding HasRecoveryNotOpenNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

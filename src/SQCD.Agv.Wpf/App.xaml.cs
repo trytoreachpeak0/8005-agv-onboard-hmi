@@ -330,6 +330,8 @@ public partial class App : System.Windows.Application, IDisposable
                 NoOnboardExitNoticeWiring.Configure(viewModel, _wireToGateBusiness);
                 // 门空关后等操作员按「重新开门」（8005-agv-onboard-hmi#385）。接线在 SlotReopenWiring 里，G2 夹具调的是同一个方法。
                 SlotReopenWiring.Configure(viewModel, _wireToGateBusiness);
+                // 服务端未开放恢复时恢复入口旁那一行（8005-agv-onboard-hmi#391）。接线在 RecoveryNotOpenWiring 里，G2 夹具调的是同一个方法。
+                RecoveryNotOpenWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

@@ -80,6 +80,10 @@ public static class OnboardCommandRejectionText
         ["RECOVERY_AUTHENTICATION_REQUIRED"] = "恢复操作需要管理员凭据，本机尚未配置，请联系维护人员。",
         ["RECOVERY_OPERATOR_MISMATCH"] = "本次恢复由另一位操作员发起，请由该操作员继续，或联系班组长。",
         ["FORCED_RECOVERY_NOT_AUTHORIZED"] = "强制机械取出尚未获得授权，请联系维护人员。",
+        // 服务端的拒绝：维护人员还没在服务端给这辆车、这趟旅程开恢复授权，或者授权外的动作（control-server#797 方案 C、
+        // CP-0022）。服务端用同一个码拒「凭据不对」与「没有授权」，车上分不清，一律说没开放、找谁——原来落到兜底句
+        // 「操作被拒绝……请核对后重试」，弹框又叫人检查凭据，现场读成车坏了（8005-agv-onboard-hmi#391）。
+        ["RECOVERY_AUTHENTICATION_FAILED"] = "恢复尚未开放，请联系系统维护人员。",
 
         // Pressed at a moment that does not accept it. Nothing was sent.
         ["RECOVERY_SESSION_NOT_READY"] = "当前没有可以处理的恢复会话，请等待服务端开启。",
@@ -173,5 +177,11 @@ public static class OnboardCommandRejectionText
     /// </para>
     /// </remarks>
     public static string DescribeRecoveryBlocked(string reasonCode) =>
-        $"{DescribeWithCode(reasonCode)}请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。";
+        $"{DescribeWithCode(reasonCode)}{RecoveryBlockedGuidance}";
+
+    /// <summary>
+    /// 恢复入口被挡下时那半句必须保留的现场指引（见 <see cref="DescribeRecoveryBlocked"/>）。单独拿出来，是给换了前半句的
+    /// 拒绝也接上同一句（8005-agv-onboard-hmi#391：会话里授权外的动作被拒）。
+    /// </summary>
+    public const string RecoveryBlockedGuidance = "请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。";
 }

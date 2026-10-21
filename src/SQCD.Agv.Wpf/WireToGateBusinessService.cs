@@ -470,6 +470,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         ThrowIfDisposed();
         await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        BeginRecoveryPress();
         try
         {
             if (!_recoveryOptions.ResumeAfterRepairEnabled)
@@ -662,6 +663,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             proof),
                         cancellationToken)
                     .ConfigureAwait(false);
+                NoteRecoverySessionOpened(opened.ExceptionRecoverySessionId);
             }
             ObserveRecoverySessionAttempt(
                 opened.ExceptionRecoverySessionId, opened.SlotOperationAttemptId);
@@ -774,10 +776,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复申请未执行：session={recoveryId}，reason={exception.Message}。",
                 exception);
-            // 与 RunRecoveryRequestAsync 同一条：按码查表，不拼裸码（8005-agv-onboard-hmi#171）。
-            PublishOperatorResponse(
-                "RECOVERY_BLOCKED",
-                OnboardCommandRejectionText.DescribeRecoveryBlocked(exception.Message));
+            // 与 RunRecoveryRequestAsync 同一条：按码查表，不拼裸码（8005-agv-onboard-hmi#171）；记下这一次被拒，
+            // 弹框与入口旁那一行按它说（8005-agv-onboard-hmi#391）。
+            PublishOperatorResponse("RECOVERY_BLOCKED", NoteRecoveryRefusal(exception.Message));
             return false;
         }
         finally
@@ -2643,6 +2644,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         // recovery entries coming back depends on exactly that (8005-agv-onboard-hmi#216).
                         if (_announcedClosedRecoverySessions.TryAdd(snapshotKey, 0))
                         {
+                            // Past the deduplication and before the event, which refreshes the screen; a replay of an
+                            // earlier session's close does not light the not-open line again (8005-agv-onboard-hmi#391).
+                            NoteRecoverySessionClosed(
+                                recoverySnapshot.ExceptionRecoverySessionId,
+                                recoverySnapshot.ClosedReason);
                             PublishOperatorEvent(
                                 snapshotKey,
                                 "RECOVERY_SESSION_UPDATED",
@@ -2651,6 +2657,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     }
                     else
                     {
+                        NoteRecoverySessionOpened(recoverySnapshot.ExceptionRecoverySessionId);
                         PublishOperatorEvent(
                             snapshotKey,
                             "RECOVERY_SESSION_UPDATED",

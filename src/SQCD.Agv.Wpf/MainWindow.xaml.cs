@@ -213,8 +213,9 @@ public partial class MainWindow : Window
         bool accepted = await _viewModel.RequestWireToGateRecoveryAsync();
         if (!accepted)
         {
+            // 服务端未开放恢复时说那一句，不叫人检查凭据：现场读成车坏了（8005-agv-onboard-hmi#391）。
             ModalDialogs.Show(
-                "恢复申请未被接受。请检查授权凭据、现场安全条件和服务端恢复会话状态。",
+                _viewModel.DescribeRecoveryRefusal("恢复申请未被接受，原因见操作记录。请确认现场安全条件和服务端恢复会话状态。"),
                 "恢复申请失败",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -346,7 +347,7 @@ public partial class MainWindow : Window
 
         if (!await _viewModel.RequestLoadCompensationAsync())
         {
-            ShowRecoveryFailure("补偿清空请求未被接受。请检查授权、恢复会话和服务端状态。", "补偿清空失败");
+            ShowRecoveryFailure(_viewModel.DescribeRecoveryRefusal("补偿清空请求未被接受。请检查授权、恢复会话和服务端状态。"), "补偿清空失败");
         }
     }
 
@@ -385,7 +386,7 @@ public partial class MainWindow : Window
 
         if (!await _viewModel.RequestFaultCargoHandoffAsync())
         {
-            ShowRecoveryFailure("故障货物交接请求未被接受。请检查授权、恢复会话和服务端状态。", "故障交接失败");
+            ShowRecoveryFailure(_viewModel.DescribeRecoveryRefusal("故障货物交接请求未被接受。请检查授权、恢复会话和服务端状态。"), "故障交接失败");
         }
     }
 
@@ -405,7 +406,7 @@ public partial class MainWindow : Window
 
         if (!await _viewModel.RequestForcedMechanicalRecoveryAsync())
         {
-            ShowRecoveryFailure("强制机械恢复请求未被接受。请检查授权、恢复会话和服务端状态。", "强制机械恢复失败");
+            ShowRecoveryFailure(_viewModel.DescribeRecoveryRefusal("强制机械恢复请求未被接受。请检查授权、恢复会话和服务端状态。"), "强制机械恢复失败");
         }
     }
 
