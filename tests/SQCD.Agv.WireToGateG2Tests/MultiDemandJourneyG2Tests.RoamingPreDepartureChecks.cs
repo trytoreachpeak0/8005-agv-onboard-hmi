@@ -44,7 +44,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
         await using Harness harness = await StartWithBusinessStateAsync(io, [], token);
-        // Settled: nothing more on its way before the roam.
+        await WaitForSafetyReportsToSettleAsync(harness, token);
+        // Nothing more on its way before the roam.
         await Task.Delay(TimeSpan.FromMilliseconds(500), token);
         long beforeRoam = harness.Session.Current.SafetyStateVersion;
 
@@ -121,6 +122,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
         await using Harness harness = await StartWithBusinessStateAsync(io, [], token);
+        await WaitForSafetyReportsToSettleAsync(harness, token);
         await Task.Delay(TimeSpan.FromMilliseconds(500), token);
         long beforeRoam = harness.Session.Current.SafetyStateVersion;
 
