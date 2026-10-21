@@ -1,0 +1,78 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Infrastructure -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.32)
+[xUnit.net 00:00:00.29]   Discovering: SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:00.68]   Discovered:  SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:00.81]   Starting:    SQCD.Agv.WireToGateG2Tests
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateContentBoundaryArchitectureTests.NoFieldOfTheSnapshotCanHoldExcludedText [9 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateContentBoundaryArchitectureTests.TheWalkReachesTheNestedRecords [4 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryEditableInputBoxIsInTheSnapshotWithItsBindings [20 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.NoButtonOrInputBoxSetsItsStateToALiteral [2 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryButtonInTheWindowIsInTheSnapshotWithItsBindings [4 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryPathResolvesOnTheViewModelToWhatTheBuilderReads [1 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryButtonInAWorklistRowIsInTheRowStateWithItsBindings [1 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryRawCodeOutsideATemplateIsInTheSnapshot [2 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateXamlCoverageArchitectureTests.EveryVisibilityBindingTheSnapshotReadsGoesThroughTheBooleanConverter [1 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateBuilderTests.AClickButtonWithNeitherBindingIsReportedVisibleAndEnabled [51 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateBuilderTests.AClickButtonWithoutAnIsEnabledBindingIsReportedEnabled [1 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "Build", loggerThrows: True) [124 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.AClockJumpedAheadDeletesNothing [133 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateWiringTests.SwitchedOnItSubscribesAndWrites [146 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnHeartbeatTick", loggerThrows: True) [174 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateWiringTests.SwitchedOnWithASessionItWritesTheAcceptedSafetyAndASessionChangeAloneIsWritten [154 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.ADayFileStopsAtItsSizeCapAndTheCurrentFileKeepsGoing [191 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.RetentionDeletesOnlyExpiredTimelineFiles [10 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnCommandCanExecuteChanged", loggerThrows: True) [63 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnViewModelPropertyChanged", loggerThrows: True) [61 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnViewModelPropertyChanged", loggerThrows: False) [61 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnActionRefusedForWantOfAuthorizationSaysRecoveryIsNotOpen [546 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnSessionStateChanged", loggerThrows: True) [60 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "Build", loggerThrows: False) [62 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnCollectionChanged", loggerThrows: True) [78 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.AFailingEntryPointNeverReachesTheDispatcherAndLeavesTheScreenAsWithoutASnapshot(failingEntry: "OnFlushTick", loggerThrows: True) [60 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens [263 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheClientSendsMatchesItsFrozenSchema [894 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.AConcurrentReaderAlwaysReadsAWholeDocument [617 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.ASmallClockJumpIsHeldBackByTheNewestFile [19 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.ADisabledSnapshotWritesOneDisabledDocumentAndThenNothing [4 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.TheStateIsBuiltOnTheDispatcherAndWrittenOffIt [343 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheSameClosedArrivingOnTheNextSessionIsNotSaidTwice [469 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheFakeServerSendsMatchesItsFrozenSchema [538 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.AFailingDiskReachesNeitherTheScreenNorTheBusiness(readOnly: True) [613 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: "RECOVERY_ACTION_RESULT_NOT_RECONCILED", expected: "服务端恢复会话已关闭：恢复动作结果未闭环，需求与旅程仍阻断，请管理员重新发起恢复。") [353 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateWiringTests.SwitchedOnWithInvalidParametersTheHmiStartsWithoutTheSnapshotAndSaysWhy [1 s]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: null, expected: "服务端恢复会话已关闭。") [437 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheSessionDrivesEveryImplementedOnboardToServerMessageType [709 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheShapeCheckReportsThePayloadShapesVersionOneSent [2 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.AFailingDiskReachesNeitherTheScreenNorTheBusiness(readOnly: False) [606 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateMonitorDispatcherTests.ABlockedDispatcherStopsWrittenAt [1 s]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.AFileWrittenUnderAWrongClockDoesNotUnlockThePurge [32 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.ACountdownCycleAddsALinePerTierNotPerSecond [99 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateFileWriterTests.TheTimelineGrowsOnlyWhenTheContentChanges [13 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: "RECOVERY_AUTHENTICATION_FAILED", expected: "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新"···) [388 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: "ACTION_NOT_ALLOWED_IN_STATE", expected: "服务端恢复会话已关闭（ACTION_NOT_ALLOWED_IN_STATE）。") [326 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.HmiScreenStateWiringTests.SwitchedOffNothingIsBuiltSubscribedOrWritten [1 s]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsNotAskedAgain [2 s]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnreconciledCloseSaysWhyAndTheNextSessionCanStillBeOpened [271 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.OnceAuthorizedTheNextPressOpensTheSessionAndTheNoticeGoes [208 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsReleased [183 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ASessionClosedForItsAuthorizationSaysSoAndTheNextSessionClearsTheNotice [205 ms]
+[xUnit.net 00:00:37.30]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = '1c76fed745c4e705a7acb0e56a0441fb45a66bf6f92a6ece9e7623fb7f93ee70')
+
+Test Run Successful.
+Total tests: 53
+     Passed: 53
+ Total time: 37.5619 Seconds

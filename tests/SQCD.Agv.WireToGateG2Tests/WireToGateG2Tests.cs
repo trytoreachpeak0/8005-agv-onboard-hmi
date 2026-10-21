@@ -2467,31 +2467,35 @@ public sealed partial class WireToGateG2Tests
         await WaitUntilAsync(
             () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
             testToken);
-        // 重放之后还有第四条：换代要求重新全量上报一份，见
-        // BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle。等的和断的是同一个
-        // 对象——收到的 SafetyStateChanged 条数，不是服务端的受理计数。
-        await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 4, testToken);
-        // 受理计数单独等（onboard-hmi#228）：假服务端先把一行记进 Received、再判它受不受理，第四条「收到」的那一刻
-        // 它还没被判。等的是「至少 3」，下面断的是「恰好 3」，多受理一条照样红。
+        // 重放之后没有第四条：握手快照报的就是此刻读数，换代不再补报一份内容相同的变化（onboard-hmi#399，见
+        // BusinessDoesNotReportAgainWhatTheHandshakeSnapshotHoldsWhileVehicleIdle）。等的和断的是同一个对象——收到的
+        // SafetyStateChanged 条数，不是服务端的受理计数。
+        await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 3, testToken);
+        // 受理计数单独等（onboard-hmi#228）：假服务端先把一行记进 Received、再判它受不受理，第三条「收到」的那一刻
+        // 它还没被判。等的是「至少 2」，下面断的是「恰好 2」，多受理一条照样红。
         try
         {
-            await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 3, testToken);
+            await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 2, testToken);
         }
         catch (OperationCanceledException) when (!testToken.IsCancellationRequested)
         {
             // The shared helper only says "a G2 condition"; this says which one, and where it stopped.
             Assert.Fail(
-                "Timed out waiting for the fake server to judge the fourth SafetyStateChanged: accepted "
+                "Timed out waiting for the fake server to judge the replayed SafetyStateChanged: accepted "
                 + $"{server.AcceptedSafetyStateChangedCount} of {ReceivedCount(server, "SafetyStateChanged")} received.");
         }
 
+        // Two evaluation periods (500 ms) for a fourth to show up, if one were coming.
+        await Task.Delay(TimeSpan.FromSeconds(1), testToken);
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
             .ToArray();
-        Assert.Equal(4, changed.Length);
+        Assert.Equal(3, changed.Length);
         Assert.Equal(changed[1].MessageId, changed[2].MessageId);
-        Assert.NotEqual(changed[2].MessageId, changed[3].MessageId);
-        Assert.Equal(3, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
+        var snapshot = server.ReceivedEnvelopes
+            .Single(item => item.Connection == changed[2].Connection && item.MessageType == "SafetyStateSnapshot");
+        Assert.False(SafetyOf(snapshot.WireLine).DepartureSafe);
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, recovered.Readiness);
         Assert.Equal(0, io.UnlockCount);
         Assert.Empty(server.StaleGenerationRejections);
@@ -2579,24 +2583,23 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
-    /// 会话换代之后，车静止不动——IO 快照与车辆安全信号一个字节都没变——车载端仍必须重新上报一份
-    /// 安全快照。缺陷 20260908-session-recovery-required-never-clears-while-vehicle-idle 就是这条
-    /// 不成立：<c>_lastSafetySignature</c> 是进程内去重状态，换代时不重置，于是服务端换代后手上那份
-    /// <c>departureSafe</c> 永远等不到更新，readiness 卡在 RecoveryRequired /
-    /// DEPARTURE_SAFETY_NOT_READY。MVP 真车上卡了 6 分 36 秒，直到有人重启车载客户端。
+    /// 会话换代之后，车静止不动——IO 快照与车辆安全信号一个字节都没变——服务端手上这一代的安全状态就是握手的
+    /// <c>SafetyStateSnapshot</c>，内容即此刻读数；车载端不再补报一条内容相同的 <c>SafetyStateChanged</c>
+    /// （onboard-hmi#399）。那条补报只会把已接受版本再抬一次，让服务端在途的出发前检查再过期一次。
     ///
-    /// 静止是关键条件。车一动安全签名自然会变，去重就跨过去了——那次五趟实跑里飞行途中掉进去的
-    /// 那趟两分钟就自愈了，停着的那趟没有。
+    /// 原来这条用例断言的正相反（移植自 MVP 线 004891f，缺陷 20260908-session-recovery-required-never-clears-while-vehicle-idle：
+    /// MVP 服务端换代后没有安全快照，readiness 卡在 DEPARTURE_SAFETY_NOT_READY）。v2 服务端把握手快照与变化同样落库、
+    /// 据它判就绪（control-server <c>OnboardMessageProcessor.cs:542-544</c>、<c>WireToGateStore.DecideReadinessAsync</c>），
+    /// 那一形由 <c>MultiDemandJourneyG2Tests.AServerThatForgotTheSafetyStateIsReadyOnTheHandshakeSnapshotAlone</c> 守着。
     ///
-    /// 换代用「安全消息的 ack 丢了」制造，而不是现场那样的干净重连。走重放这条路多盖住一处：重放被
-    /// 服务端认下之后，pending 对账会把 <c>_lastSafetySignature</c> 重新填上，换代重置必须排在它之后
-    /// 才有效。移植自 MVP 线 004891f。
+    /// 换代用「安全消息的 ack 丢了」制造，而不是现场那样的干净重连。走重放这条路多盖住一处：重放被服务端认下之后，
+    /// pending 对账会把 <c>_lastSafetySignature</c> 重新填上，换代时改认握手快照必须排在它之后。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
-    public async Task BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle()
+    public async Task BusinessDoesNotReportAgainWhatTheHandshakeSnapshotHoldsWhileVehicleIdle()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback)
@@ -2654,33 +2657,29 @@ public sealed partial class WireToGateG2Tests
         WireToGateSessionSnapshot recovered = await session.Client.ConnectAndRecoverAsync(testToken);
         Assert.Equal(2L, recovered.SessionGeneration!.Value);
 
-        // 修复前这里会永远停在 2（第一条加它的重放），第三条永远不来：重放被认下之后签名又变回原值，
-        // 而车静止、签名不变，去重把重发挡住了。
-        //
-        // 等到「受理数到 2」，不是「收到 3 条」。替身在分发之前就把消息记进 ReceivedEnvelopes
-        // （FakeControlServer 的 RecordMessage），受理发生在其后的 switch 分支里，中间隔着 await：
-        // 等「收到 3 条」会在第三条还没受理时就放行，而恰恰是第三条把受理数从 1 推到 2
-        // （前两条 messageId 相同，只记一次）。实测红过一次，Expected 2 / Actual 1。
-        //
-        // 反过来等受理数是安全的：受理严格晚于记录，所以受理数到 2 时三条一定都已记下。原注释
-        // 担心的是「等受理数会让安全评估周期（500 ms）多转出一条把断言弄红」——那一条若真会来，
-        // 下面 changed.Length == 3 本来就会红，与等的是哪个量无关。
-        //
-        // 用 >= 而不是 ==：受理数只增不减，所以「到了 2」用 >= 判是等价的，而精确性留给下面那条
-        // Assert.Equal。等待条件与断言写成同一句的话，一旦受理数停在 1，读到的就只是一句泛泛的
-        // 超时，而不是 Expected 2 / Actual 1（2026-09-20 审查 nit）。
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 2, testToken);
+        // 等「受理数到 1」：重放在握手里被认下（前两条 messageId 相同，只记一次）。受理严格晚于记录
+        // （FakeControlServer 的 RecordMessage），所以受理数到 1 时两条一定都已记下。
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 1, testToken);
+        // 两个安全评估周期（500 ms）：第三条若还会来，留出它来的时间。
+        await Task.Delay(TimeSpan.FromSeconds(1), testToken);
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
             .ToArray();
-        Assert.Equal(3, changed.Length);
-        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
-        Assert.Equal([1, 2, 2], changed.Select(item => item.Connection).ToArray());
-        // 前两条是同一条消息的重放，第三条才是换代后重新评估出来的。内容一样但版本变了，
-        // 所以 messageId 不同——服务端按 messageId 去重，原样重放那条到不了任何地方。
+        Assert.Equal(2, changed.Length);
+        Assert.Equal(1, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal([1, 2], changed.Select(item => item.Connection).ToArray());
         Assert.Equal(changed[0].MessageId, changed[1].MessageId);
-        Assert.NotEqual(changed[1].MessageId, changed[2].MessageId);
+        // 服务端这一代手上的是握手快照：版本在重放之上、已被接受，报的是此刻（安全）读数。
+        var snapshot = server.ReceivedEnvelopes
+            .Single(item => item.Connection == 2 && item.MessageType == "SafetyStateSnapshot");
+        long snapshotVersion = WireToGateProtocolSerializer.DeserializeAndValidate(snapshot.WireLine, "AGV-8005-01")
+            .Payload.GetProperty("safetyStateVersion").GetInt64();
+        long replayedVersion = WireToGateProtocolSerializer.DeserializeAndValidate(changed[1].WireLine, "AGV-8005-01")
+            .Payload.GetProperty("safetyStateVersion").GetInt64();
+        Assert.True(snapshotVersion > replayedVersion, $"snapshot v{snapshotVersion} after the replayed v{replayedVersion}");
+        Assert.Equal(snapshotVersion, session.Current.SafetyStateVersion);
+        Assert.True(SafetyOf(snapshot.WireLine).DepartureSafe);
         Assert.Equal(0, io.UnlockCount);
         Assert.Empty(server.StaleGenerationRejections);
     }

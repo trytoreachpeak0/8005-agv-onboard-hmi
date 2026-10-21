@@ -548,6 +548,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             // 「重新开门」 over a door shut on the opposite occupancy (8005-agv-onboard-hmi#385).
             SlotReopenWiring.Configure(viewModel, business);
             RemainingBasketsSkipWiring.Configure(viewModel, business);
+            // The 「恢复尚未开放」 line beside the recovery entries (8005-agv-onboard-hmi#391).
+            RecoveryNotOpenWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

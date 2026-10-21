@@ -798,6 +798,9 @@ public sealed partial class MainViewModel : ViewModelBase
                 RecoveryEntry.ManualChargingReturn,
                 _wireToGateCanRequestManualChargingReturn?.Invoke() == true));
         RefreshManualChargingReturnGuidanceCore();
+        // 「恢复尚未开放」那一行：每个操作员事件都走这里，被拒与会话开关都发事件。显不显示另看上面会开会话的入口
+        // （8005-agv-onboard-hmi#391）。
+        RefreshRecoveryNotOpenCore();
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
@@ -1424,6 +1427,7 @@ public sealed partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
             OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
+            RaiseRecoveryNotOpenNoticeChanged();
             RaiseRecoveryDemandChoiceState();
         }
     }

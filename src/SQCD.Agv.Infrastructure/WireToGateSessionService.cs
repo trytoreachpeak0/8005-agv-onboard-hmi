@@ -96,6 +96,9 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     public WireToGateSessionSnapshot Current => _client.Current;
 
+    /// <inheritdoc cref="WireToGateSessionClient.HandshakeSafety"/>
+    public WireToGateAcceptedSafety? HandshakeSafety => _client.HandshakeSafety;
+
     public WireToGateJourneySnapshot CurrentJourney => _client.CurrentJourney;
 
     public IWireToGateJournal Journal => _journal;

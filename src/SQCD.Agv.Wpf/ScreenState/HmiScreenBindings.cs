@@ -132,6 +132,8 @@ internal static class HmiScreenBindings
         new("SublotRejectionReason", "SublotRejectionReasonCode", "HasSublotRejection"),
         new("DoorHoldNotice", "DoorHoldSlots", "HasDoorHold"),
         new("NoOnboardExitNotice", "NoOnboardExitNoticeStatus", "HasNoOnboardExitNotice"),
+        // 「恢复尚未开放，请联系系统维护人员。」：值为 RECOVERY_AUTHENTICATION_FAILED（8005-agv-onboard-hmi#391）。
+        new("RecoveryNotOpenNotice", "RecoveryNotOpenNoticeCode", "HasRecoveryNotOpenNotice"),
         new("ReopenOperation", "ReopenWaitStatus", "CanReopenOperation"),
         new("RemainingBasketsSkip", "RemainingBasketsSkipStatus", "ShowsRemainingBasketsSkip"),
         new("StationClearanceStatus", "StationClearance.Status", "StationClearance.HasStatus"),

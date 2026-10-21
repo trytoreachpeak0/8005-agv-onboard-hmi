@@ -1,0 +1,82 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.AutomationHost -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Wpf -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.77]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnActionRefusedForWantOfAuthorizationSaysRecoveryIsNotOpen [FAIL]
+[xUnit.net 00:00:03.01]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnActionRefusedForWantOfAuthorizationSaysRecoveryIsNotOpen [612 ms]
+  Error Message:
+   Assert.StartsWith() Failure: String start does not match
+String:         "操作被拒绝（RECOVERY_AUTHENTICATION_FAILED）。请核对后重试，持续出现请"···
+Expected start: "恢复尚未开放，请联系系统维护人员。"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnActionRefusedForWantOfAuthorizationSaysRecoveryIsNotOpen() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 128
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnActionRefusedForWantOfAuthorizationSaysRecoveryIsNotOpen() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 130
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens [236 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 192
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 208
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheScreenSaysRecoveryIsNotOpenBesideTheEntryUntilASessionOpens() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 208
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:03.85]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: "RECOVERY_AUTHENTICATION_FAILED", expected: "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新"···) [FAIL]
+[xUnit.net 00:00:04.30]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsNotAskedAgain [FAIL]
+[xUnit.net 00:00:04.47]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.OnceAuthorizedTheNextPressOpensTheSessionAndTheNoticeGoes [FAIL]
+[xUnit.net 00:00:04.67]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ASessionClosedForItsAuthorizationSaysSoAndTheNextSessionClearsTheNotice [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(closedReason: "RECOVERY_AUTHENTICATION_FAILED", expected: "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新"···) [276 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                     ↓ (pos 10)
+Expected: "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新"···
+Actual:   "服务端恢复会话已关闭（RECOVERY_AUTHENTICATION_FAILED）。"
+                     ↑ (pos 10)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(String closedReason, String expected) in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedReason.cs:line 82
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.TheClosedReasonReadsFromTheTableOrAsItCame(String closedReason, String expected) in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedReason.cs:line 82
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsNotAskedAgain [168 ms]
+  Error Message:
+   Assert.StartsWith() Failure: String start does not match
+String:         "操作被拒绝（RECOVERY_AUTHENTICATION_FAILED）。请核对后重试，持续出现请"···
+Expected start: "恢复尚未开放，请联系系统维护人员。"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsNotAskedAgain() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 48
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeRefusedForWantOfAuthorizationSaysRecoveryIsNotOpenAndIsNotAskedAgain() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 70
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.OnceAuthorizedTheNextPressOpensTheSessionAndTheNoticeGoes [166 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.OnceAuthorizedTheNextPressOpensTheSessionAndTheNoticeGoes() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 83
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.OnceAuthorizedTheNextPressOpensTheSessionAndTheNoticeGoes() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 100
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ASessionClosedForItsAuthorizationSaysSoAndTheNextSessionClearsTheNotice [202 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                     ↓ (pos 10)
+Expected: "服务端恢复会话已关闭：恢复授权已失效（到期、被收回或服务端重启）。需要继续恢复请联系系统维护人员重新"···
+Actual:   "服务端恢复会话已关闭（RECOVERY_AUTHENTICATION_FAILED）。"
+                     ↑ (pos 10)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ASessionClosedForItsAuthorizationSaysSoAndTheNextSessionClearsTheNotice() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 152
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ASessionClosedForItsAuthorizationSaysSoAndTheNextSessionClearsTheNotice() in C:\work\8005-wt\hmi391-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RecoveryNotOpen.cs:line 161
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     6, Passed:     3, Skipped:     0, Total:     9, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
