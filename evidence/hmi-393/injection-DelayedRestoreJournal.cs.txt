@@ -2,16 +2,38 @@ using SQCD.Agv.Core;
 
 namespace SQCD.Agv.WireToGateG2Tests;
 
-// TEMPORARY red injection for onboard-hmi#393; never committed.
+// TEMPORARY red injection for onboard-hmi#393: copied in by apply-injection.sh, never committed to tests/.
+// Writes ARMED, FIRED and DISARMED with their times to the file W2G_HMI393_MARKS names, so every run shows whether the
+// delay took effect (review S1).
 public sealed partial class MultiDemandJourneyG2Tests
 {
     private sealed class DelayedRestoreJournal(IWireToGateJournal inner, TimeSpan delay) : IWireToGateJournal
     {
         private int _armed;
+        private int _fired;
 
-        public void Arm() => Volatile.Write(ref _armed, 1);
+        public bool Fired => Volatile.Read(ref _fired) == 1;
 
-        public void Disarm() => Volatile.Write(ref _armed, 0);
+        public void Arm()
+        {
+            Volatile.Write(ref _armed, 1);
+            Mark("ARMED");
+        }
+
+        public void Disarm()
+        {
+            Volatile.Write(ref _armed, 0);
+            Mark(Fired ? "DISARMED" : "DISARMED-NOT-FIRED");
+        }
+
+        private static void Mark(string what)
+        {
+            string? path = Environment.GetEnvironmentVariable("W2G_HMI393_MARKS");
+            if (!string.IsNullOrEmpty(path))
+            {
+                File.AppendAllText(path, $"{what} {DateTimeOffset.UtcNow:HH:mm:ss.fff}{Environment.NewLine}");
+            }
+        }
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
@@ -54,6 +76,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 && Environment.StackTrace.Contains("TrySettleInterruptedOperationAsync", StringComparison.Ordinal)
                 && Environment.StackTrace.Contains("ResendOperationResultAsync", StringComparison.Ordinal))
             {
+                Volatile.Write(ref _fired, 1);
+                Mark("FIRED");
                 await Task.Delay(delay, cancellationToken);
             }
 
