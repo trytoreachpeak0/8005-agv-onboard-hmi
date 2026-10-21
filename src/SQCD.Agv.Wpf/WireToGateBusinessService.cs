@@ -2130,6 +2130,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         finally
         {
             ReleaseInFlightAttempt(attemptId);
+            ResumeSettlementHeldForRemainingBasketsSkip(attemptId);
         }
     }
 

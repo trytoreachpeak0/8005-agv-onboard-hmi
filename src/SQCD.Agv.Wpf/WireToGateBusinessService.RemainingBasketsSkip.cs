@@ -397,7 +397,13 @@ public sealed partial class WireToGateBusinessService
             return;
         }
 
-        _executor.DecideRemainingBasketsSkip(attemptId, skipRequestId, null);
+        if (!_executor.DecideRemainingBasketsSkip(attemptId, skipRequestId, null))
+        {
+            // No run holds it: after a restart the interrupted settlement waited for this request to end, and with it dropped
+            // that settlement runs now, as on a rejection -- not only at the next session readiness (review M1 of PR #406).
+            TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
+        }
+
         _logger.Write(
             LogSeverity.Warning,
             nameof(WireToGateBusinessService),
@@ -460,8 +466,34 @@ public sealed partial class WireToGateBusinessService
             "REMAINING_BASKETS_SKIP_REQUESTED",
             WireToGateRemainingBasketsSkipText.PendingText);
         await ResubmitPendingRemainingBasketsSkipAsync(cancellationToken).ConfigureAwait(false);
+        // Answered or dropped while it went out -- a ProtocolProblem comes back on the send itself: the settlement runs now,
+        // in this pass. The answer's own restore met this pass's claim and did nothing (review M1 of PR #406).
+        if (Volatile.Read(ref _lastRecoveryState).RemainingBasketsSkip is not { IsPending: true } still
+            || !string.Equals(still.SkipRequestId, pending.SkipRequestId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Volatile.Write(ref _settlementHeldForRemainingBasketsSkip, attemptId);
         EnsureRemainingBasketsSkipResendLoop();
         return true;
+    }
+
+    /// <summary>The attempt whose interrupted settlement waits for its 「剩下的不装」 to end, set while that pass holds its claim.</summary>
+    private string? _settlementHeldForRemainingBasketsSkip;
+
+    /// <summary>
+    /// Called once the settlement's claim on <paramref name="attemptId"/> is released: when the request it waited for ended in
+    /// the moment between the pass's last look and the release, the restore that ending asked for met the claim and did
+    /// nothing, so it is asked for again here.
+    /// </summary>
+    private void ResumeSettlementHeldForRemainingBasketsSkip(string attemptId)
+    {
+        if (Interlocked.CompareExchange(ref _settlementHeldForRemainingBasketsSkip, null, attemptId) == attemptId
+            && Volatile.Read(ref _lastRecoveryState).RemainingBasketsSkip is not { IsPending: true })
+        {
+            TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
+        }
     }
 
     /// <summary>

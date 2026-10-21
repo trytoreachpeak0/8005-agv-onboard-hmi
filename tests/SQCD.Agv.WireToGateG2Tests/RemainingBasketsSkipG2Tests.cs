@@ -393,6 +393,46 @@ public sealed class RemainingBasketsSkipG2Tests
     }
 
     /// <summary>
+    /// The same restart, and the resubmission is answered with a <c>ProtocolProblem</c>: the request is dropped, and the
+    /// interrupted settlement it held back runs at once -- without waiting for a reconnect -- and reports the load as it
+    /// always has after a restart, UNKNOWN, never as skipped (review M1 of PR #406).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-REMAINING-BASKETS-SKIP-DUPLICATE-REQUEST")]
+    public async Task ARestartWhoseResubmissionIsRefusedStillSettlesTheLoad()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = LoadsSlotOneThenShutsSlotTwoEmpty();
+        await using Harness first = await StartAsync(io, token);
+
+        Assert.True(await Press(first, await WaitForOfferAsync(first, token)));
+        await WaitUntilAsync(first, () => first.Server.RemainingBasketsSkipRequests.Count == 1, "the request", token);
+        await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
+        first.Server.NextRemainingBasketsSkipProtocolProblem = "BUSINESS_ID_CONTENT_CONFLICT";
+        first.Server.RespondToRemainingBasketsSkips = true;
+
+        await using Harness second = await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            first.JournalPath,
+            io,
+            operationTimeout: PromptCadence);
+
+        await WaitUntilAsync(
+            second,
+            () => second.Events.Any(item => item.Kind == "REMAINING_BASKETS_SKIP_DROPPED"),
+            "the resubmission dropped by the ProtocolProblem",
+            token);
+        JsonElement result = await WaitForResultAsync(second, token);
+        Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(2, io.UnlockCount);
+        AssertNeverSaid(second, "REMAINING_BASKETS_SKIPPED", "COMPLETED_REMAINING_SKIPPED");
+    }
+
+    /// <summary>
     /// A cancellation asked for with a basket in is refused by the server with <c>LOAD_CANCELLATION_BASKET_LOADED</c>: the
     /// screen says so and names the way to load fewer, the skip is still offered, and the load goes on.
     /// </summary>
