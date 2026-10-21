@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -148,12 +149,19 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// The handshake read the IO in the middle of a change: its snapshot says unsafe, and by the time the session is up
-    /// the doors read locked again, as they did before the roam. The present reading is reported as a change of its own:
-    /// what the server holds is the handshake's reading, not the one reported before the roam.
+    /// The handshake read the IO in the middle of a change: its snapshot says one thing, and by the time the session is
+    /// up the IO reads again what was reported before the roam. The present reading is reported as a change of its own:
+    /// what the server holds is the handshake's reading, not the one reported before the roam -- also when the new
+    /// session repeats the generation number, as after a replaced store (review M1 of PR #401).
     /// </summary>
-    [Fact]
-    public async Task AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain()
+    /// <param name="repeatGeneration">The new session repeats the generation number.</param>
+    /// <param name="safeAtHandshake">The handshake reads safe and the vehicle unsafe after it (the dangerous direction), or the reverse.</param>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain(bool repeatGeneration, bool safeAtHandshake)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
@@ -164,38 +172,49 @@ public sealed partial class MultiDemandJourneyG2Tests
         await WaitForSafetyReportsToSettleAsync(harness, token);
         await Task.Delay(TimeSpan.FromMilliseconds(300), token);
 
+        // Before the roam: the reading the vehicle is back at after the handshake, reported and accepted.
+        bool presentSafe = !safeAtHandshake;
+        SetDoorReadable(io, readable: presentSafe);
+        await WaitForLatestOnFileAsync(harness, departureSafe: presentSafe, token);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+        int first = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+
         TaskCompletionSource readinessHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
         harness.Server.HandshakeReadinessHold = readinessHold.Task;
-        Task<WireToGateSessionSnapshot>? reconnect = null;
         try
         {
             await harness.Session.Client.DisconnectAsync();
-            io.SetUnreadable(0);
-            io.PublishSnapshot();
-            reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+            if (repeatGeneration)
+            {
+                harness.Server.RepeatGenerationOnNextSession();
+            }
+
+            SetDoorReadable(io, readable: safeAtHandshake);
+            Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
             int connection = 0;
             await harness.WaitUntilAsync(
                 () =>
                 {
                     connection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
-                    return OnFile(harness, connection) is [{ MessageType: "SafetyStateSnapshot", DepartureSafe: false }];
+                    return connection != first
+                        && OnFile(harness, connection) is [{ MessageType: "SafetyStateSnapshot" } snapshot]
+                        && snapshot.DepartureSafe == safeAtHandshake;
                 },
-                "the handshake snapshot to go on file unsafe",
+                "the handshake snapshot to go on file with the mid-change reading",
                 token);
 
-            io.CloseDoor(0, cargo: false);
-            io.PublishSnapshot();
+            SetDoorReadable(io, readable: presentSafe);
             readinessHold.SetResult();
             await reconnect;
             await harness.WaitUntilAsync(
                 () => OnFile(harness, connection) is [.., var last]
-                    && last.DepartureSafe
+                    && last.DepartureSafe == presentSafe
                     && harness.Session.Current.SafetyStateVersion == last.Revision,
-                "the present, safe reading to be reported in the new session and accepted",
+                $"the present reading (departureSafe={presentSafe}) to be reported in the new session and accepted",
                 token);
 
             Assert.Equal(
-                [("SafetyStateSnapshot", false), ("SafetyStateChanged", true)],
+                [("SafetyStateSnapshot", safeAtHandshake), ("SafetyStateChanged", presentSafe)],
                 OnFile(harness, connection).Select(entry => (entry.MessageType, entry.DepartureSafe)));
             Assert.Empty(harness.Server.SafetyRevisionConflicts);
         }
@@ -204,6 +223,87 @@ public sealed partial class MultiDemandJourneyG2Tests
             readinessHold.TrySetResult();
             harness.Server.HandshakeReadinessHold = null;
         }
+    }
+
+    /// <summary>
+    /// Only the reason codes move on after the handshake read the IO: the slot reads unknown throughout, and a fatal fault
+    /// latches before the session is up, adding <c>ONBOARD_FATAL_FAULT_LATCHED</c> and nothing else. The present reading
+    /// is reported: the comparison with the handshake's summary covers the reason codes (review L1 of PR #401).
+    /// </summary>
+    [Fact]
+    public async Task AReasonThatAppearedAfterTheHandshakeReadTheIoIsReportedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using Harness harness = await Harness.StartAsync(
+            server => server.ShareSafetyRevisionAcrossChangeAndSnapshot = true,
+            token,
+            io: io);
+        await WaitForSafetyReportsToSettleAsync(harness, token);
+        SetDoorReadable(io, readable: false);
+        await WaitForLatestOnFileAsync(harness, departureSafe: false, token);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+        int first = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+
+        TaskCompletionSource readinessHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.HandshakeReadinessHold = readinessHold.Task;
+        try
+        {
+            await harness.Session.Client.DisconnectAsync();
+            Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+            string? snapshotLine = null;
+            int connection = 0;
+            await harness.WaitUntilAsync(
+                () =>
+                {
+                    connection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+                    snapshotLine = harness.Server.ReceivedEnvelopes
+                        .Where(envelope => envelope.Connection == connection && envelope.MessageType == "SafetyStateSnapshot")
+                        .Select(envelope => envelope.WireLine)
+                        .FirstOrDefault();
+                    return connection != first && snapshotLine is not null;
+                },
+                "the handshake snapshot",
+                token);
+
+            harness.Controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+            readinessHold.SetResult();
+            await reconnect;
+            await harness.WaitUntilAsync(
+                () => harness.Server.ReceivedEnvelopes.Any(envelope => envelope.Connection == connection
+                    && envelope.MessageType == "SafetyStateChanged"
+                    && SafetyReasons(SafetyOf(envelope.WireLine)).Contains(FatalFaultLatched)),
+                "the latched reading to be reported in the new session",
+                token);
+
+            JsonElement handshake = SafetyOf(snapshotLine!);
+            JsonElement reported = SafetyOf(harness.Server.ReceivedEnvelopes
+                .Last(envelope => envelope.Connection == connection && envelope.MessageType == "SafetyStateChanged")
+                .WireLine);
+            Assert.DoesNotContain(FatalFaultLatched, SafetyReasons(handshake));
+            Assert.Equal([.. SafetyReasons(handshake), FatalFaultLatched], SafetyReasons(reported));
+            foreach (string field in (string[])["departureSafe", "vehicleStopped", "allTargetSlotsLocked", "allUnlockOutputsReset", "unknownPresent"])
+            {
+                Assert.Equal(handshake.GetProperty(field).GetBoolean(), reported.GetProperty(field).GetBoolean());
+            }
+        }
+        finally
+        {
+            readinessHold.TrySetResult();
+            harness.Server.HandshakeReadinessHold = null;
+        }
+    }
+
+    /// <summary>Slot 1's door reads locked (safe) or unreadable (unsafe, unknown).</summary>
+    private static void SetDoorReadable(FakeIoModuleClient io, bool readable)
+    {
+        io.CloseDoor(0, cargo: false);
+        if (!readable)
+        {
+            io.SetUnreadable(0);
+        }
+
+        io.PublishSnapshot();
     }
 
     /// <summary>Disconnects and reconnects the session; returns the new connection's number.</summary>
