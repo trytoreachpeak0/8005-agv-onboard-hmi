@@ -210,7 +210,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptB && io.UnlockCount == 1,
             "B to take the executor after A's refusal",
             token);
-        await harness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => OperatorLog(harness).Contains(
                 "操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。"),
             "A's lost acknowledgement to be reported",

@@ -1,0 +1,49 @@
+  Error Message:
+   Timed out after 5s waiting for: the restore's resend of A's result to give up, and the handoff entry over A. UI errors: []
+Stuck on: the vehicle side -- this double read and acknowledged everything the vehicle's outbox still owes (below), and its read loops are idle.
+Wait: started 07:47:17.675, timed out 07:47:22.685.
+Thread pool: 5 threads, 0 work items queued.
+Read loops of this double:
+  connection 1: waiting in ReadLineAsync since 07:47:20.719
+Owed by the vehicle's outbox (not acknowledged, not given up):
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) on file 07:47:14.598
+Sent by the vehicle, last 10:
+  OperationProgress fc83bff4-6e40-a854-ba2e-07fb745d6496 (UNLOCKING) read 07:47:14.270 (sentAt 07:47:14.243) -> DurableAck written 07:47:14.270
+  OperationProgress 0dc4812c-743b-5659-9e84-2a7134a1951e (WAITING_OPERATOR) read 07:47:14.310 (sentAt 07:47:14.291) -> DurableAck written 07:47:14.310
+  OperationProgress d2a560f0-7ecd-815e-89ef-311fbbf6182e (VERIFYING) read 07:47:14.366 (sentAt 07:47:14.351) -> DurableAck written 07:47:14.366
+  OperationProgress ce4764d1-9d7c-7f5c-a79c-74eb95bded3a (UNLOCKING) read 07:47:14.422 (sentAt 07:47:14.408) -> DurableAck written 07:47:14.423
+  OperationProgress a9b7a3f7-73cf-6b58-9539-113897718df9 (WAITING_OPERATOR) read 07:47:14.452 (sentAt 07:47:14.441) -> DurableAck written 07:47:14.452
+  OperationProgress 09b7864f-2e88-4d56-babe-a2b8404a1923 (VERIFYING) read 07:47:14.505 (sentAt 07:47:14.490) -> DurableAck written 07:47:14.505
+  OperationProgress 6c853205-2663-5252-8303-99b2788e485c (SAFE_FINISH) read 07:47:14.561 (sentAt 07:47:14.541) -> DurableAck written 07:47:14.562
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) read 07:47:14.620 (sentAt 07:47:14.595)
+  SafetyStateChanged 5f4f6064-9a06-6357-aa5b-cdf4a4982804 read 07:47:17.991 (sentAt 07:47:17.695) -> DurableAck written 07:47:17.991
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) read 07:47:20.719 (sentAt 07:47:14.595)
+Sent by this double, last 10:
+  DurableAck d2b802bb-ddca-4f52-8483-b47c7f29757c (OperationProgress) written 07:47:14.197
+  DurableAck 4b9b34de-01b3-436e-b945-497c37e39a08 (OperationProgress) written 07:47:14.270
+  DurableAck eff02d93-8df0-4912-9350-dc08542bc0a9 (OperationProgress) written 07:47:14.310
+  DurableAck 84cc8b3c-8c98-4886-a6b0-e89bc5823157 (OperationProgress) written 07:47:14.366
+  DurableAck c8dc8b91-1817-4a71-aa58-62d893709d42 (OperationProgress) written 07:47:14.423
+  DurableAck bb4efffb-4af4-4b11-bd1c-771099f4a605 (OperationProgress) written 07:47:14.452
+  DurableAck eed29bb8-d83b-4903-8253-a8abe3b27b1e (OperationProgress) written 07:47:14.505
+  DurableAck a52a9114-1120-47ba-a918-c5489017d3bd (OperationProgress) written 07:47:14.562
+  SessionReadiness 5b078296-b01a-4bd0-a618-649e551a6217 (RECOVERY_REQUIRED) written 07:47:17.656
+  DurableAck 1f6fb2db-bddd-4cbe-ab94-1a0bd2c2036b (SafetyStateChanged) written 07:47:17.991
+Vehicle log, last entries:
+  07:47:13.699 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=handshake-start∩╝îconnected=False∩╝îgeneration=null∩╝îreadiness=Recovering∩╝îreasonCodes=[]∩╝îsafetyStateVersion=1πÇé
+  07:47:13.865 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=session-accepted∩╝îconnected=True∩╝îgeneration=1∩╝îreadiness=Recovering∩╝îreasonCodes=[]∩╝îsafetyStateVersion=1πÇé
+  07:47:13.885 Information WireToGateSessionClient: µÅíµëïσ«ëσà¿σ┐½τàº∩╝Ügeneration=1∩╝îsafetyStateVersion=1∩╝îdepartureSafe=True∩╝îunknownPresent=False∩╝îreasonCodes=[]∩╝îioConnected=True∩╝îioObservedAt=2026-10-21T07:47:13.5773407+00:00πÇé
+  07:47:13.956 Information WireToGateSessionClient: µö╢σê░SessionReadiness∩╝ÜmessageId=2031efda-acc5-4f6e-9cc1-1d741d5f62dc∩╝îgeneration=1∩╝îreadiness=READY∩╝îreasonCodes=[]∩╝îacceptedSafetyStateVersion=1πÇé
+  07:47:13.956 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=SessionReadiness∩╝îconnected=True∩╝îgeneration=1∩╝îreadiness=Ready∩╝îreasonCodes=[]∩╝îsafetyStateVersion=1πÇé
+  07:47:13.966 Information WireToGateSessionClient: σ«ëσà¿τè╢µÇüσÅÿσîû∩╝Ügeneration=1∩╝îsafetyStateVersion=2∩╝îdepartureSafe=True∩╝îunknownPresent=False∩╝îreasonCodes=[]πÇé
+  07:47:14.092 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=SafetyStateChanged-ack∩╝îconnected=True∩╝îgeneration=1∩╝îreadiness=Ready∩╝îreasonCodes=[]∩╝îsafetyStateVersion=2πÇé
+  07:47:14.094 Information WireToGateBusinessService: σêñµüóσñìσàÑσÅú∩╝Ügeneration=1∩╝îreadiness=Ready∩╝îreasonCodes=[]∩╝îsubject=none∩╝îrecoveryVector=none∩╝îrecoverySession=none∩╝îfaultCargoHandoff=FalseπÇé
+  07:47:14.105 Information WireToGateBusinessService: ΘçìΦ┐₧σÉÄµúÇµƒÑµÄêµ¥âΦ»╖µ▒é∩╝Ügeneration=1∩╝îvector=none/none∩╝îcommandBound=False∩╝îτ╗ôΦ«║=µùáσ╛àµÄêµ¥âτÜäΦíÑσü┐µêûΣ┐«µ¡úπÇé
+  07:47:17.625 Warning WireToGateBusinessService: OperationResultµÜéµ£¬µö╢σê░DurableAck∩╝Üattempt=44444444-0000-4444-8444-00000000000aπÇé
+  07:47:17.656 Information WireToGateSessionClient: µö╢σê░SessionReadiness∩╝ÜmessageId=5b078296-b01a-4bd0-a618-649e551a6217∩╝îgeneration=1∩╝îreadiness=RECOVERY_REQUIRED∩╝îreasonCodes=[SESSION_RECOVERY_REQUIRED]∩╝îacceptedSafetyStateVersion=2πÇé
+  07:47:17.656 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=SessionReadiness∩╝îconnected=True∩╝îgeneration=1∩╝îreadiness=RecoveryRequired∩╝îreasonCodes=[SESSION_RECOVERY_REQUIRED]∩╝îsafetyStateVersion=2πÇé
+  07:47:17.658 Information WireToGateBusinessService: σêñµüóσñìσàÑσÅú∩╝Ügeneration=1∩╝îreadiness=RecoveryRequired∩╝îreasonCodes=[SESSION_RECOVERY_REQUIRED]∩╝îsubject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a∩╝êσ£¿ΘÇöµôìΣ╜£∩╝ë∩╝îrecoveryVector=none∩╝îrecoverySession=none∩╝îfaultCargoHandoff=TrueπÇé
+  07:47:17.658 Information WireToGateSessionClient: σ«ëσà¿τè╢µÇüσÅÿσîû∩╝Ügeneration=1∩╝îsafetyStateVersion=3∩╝îdepartureSafe=True∩╝îunknownPresent=False∩╝îreasonCodes=[]πÇé
+  07:47:18.314 Information WireToGateSessionClient: Σ╝ÜΦ»¥τè╢µÇüσÅæσ╕â∩╝Üsource=SafetyStateChanged-ack∩╝îconnected=True∩╝îgeneration=1∩╝îreadiness=RecoveryRequired∩╝îreasonCodes=[SESSION_RECOVERY_REQUIRED]∩╝îsafetyStateVersion=3πÇé
+
+  Stack Trace:

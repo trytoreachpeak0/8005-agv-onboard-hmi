@@ -263,7 +263,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         // Two waits, not one: A's DurableAck timeout alone is two seconds of the harness's five-second
         // budget, and the restore only starts after it.
-        await harness.WaitUntilAsync(
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => OperatorLog(harness).Contains(ResultAckPendingLine),
             "A's acknowledgement to be given up on",
             token);

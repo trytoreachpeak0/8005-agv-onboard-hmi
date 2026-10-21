@@ -732,12 +732,46 @@ public sealed partial class MultiDemandJourneyG2Tests
             return document.RootElement.GetProperty("payload").Clone();
         }
 
-        public async Task WaitUntilAsync(
+        public Task WaitUntilAsync(
+            Func<bool> predicate,
+            string expectation,
+            CancellationToken cancellationToken) =>
+            WaitUntilAsync(predicate, expectation, TimeSpan.FromSeconds(5), cancellationToken);
+
+        /// <summary>
+        /// A wait for a fact that only lands once the vehicle's own wait for a <c>DurableAck</c> runs out: the usual five
+        /// seconds on top of the session's message timeout, the product's timer, which the fact cannot beat
+        /// (onboard-hmi#393). Not a longer wait for anything else.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="StallAwareDeadline.StallBudget"/>'s remarks bound a single wait by a base timeout of at most 10 s, so
+        /// that no wait runs past 20 s. On a session with the take-over stop's default 30 s message timeout this would be a
+        /// 35 s base, so a base past <see cref="StallAwareDeadline.StallBudget"/> is refused rather than waited out
+        /// (onboard-hmi#393 review S3).
+        /// </remarks>
+        public Task WaitPastMessageTimeoutUntilAsync(
             Func<bool> predicate,
             string expectation,
             CancellationToken cancellationToken)
         {
-            StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
+            TimeSpan baseTimeout = Session.Client.MessageTimeout + TimeSpan.FromSeconds(5);
+            if (baseTimeout > StallAwareDeadline.StallBudget)
+            {
+                throw new InvalidOperationException(
+                    $"WaitPastMessageTimeoutUntilAsync waits the message timeout plus 5s, at most {StallAwareDeadline.StallBudget.TotalSeconds:0.##}s; "
+                    + $"this session's message timeout is {Session.Client.MessageTimeout.TotalSeconds:0.##}s. Start the harness with a shorter one.");
+            }
+
+            return WaitUntilAsync(predicate, expectation, baseTimeout, cancellationToken);
+        }
+
+        private async Task WaitUntilAsync(
+            Func<bool> predicate,
+            string expectation,
+            TimeSpan baseTimeout,
+            CancellationToken cancellationToken)
+        {
+            StallAwareDeadline deadline = new(baseTimeout);
             DateTimeOffset startedAt = DateTimeOffset.UtcNow;
             while (!predicate())
             {
