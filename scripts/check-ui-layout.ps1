@@ -27,7 +27,8 @@ $checks = [ordered]@{
     frontRearSlotGroups = ($xaml -match 'ItemsSource="\{Binding SlotGroups\}"') -and ($xaml -match 'UniformGrid Columns="4"') -and ($xaml -match 'Text="\{Binding OpeningSideText\}"')
     singlePrimaryScanAction = ($xaml -match 'x:Name="ScanTextBox"') -and ($xaml -match 'Content="手动提交"')
     safetyReviewAction = ($xaml -match 'Content="启动安全复核"')
-    recoveryActions = ($xaml -match 'Content="重新上报结果"') -and ($xaml -match 'Content="重新打开仓门"') -and ($xaml -match 'Content="取消本次操作"')
+    # 「重新开门」：原 MVP 的「重新打开仓门」按钮，v2 起门空关后等它（8005-agv-onboard-hmi#385）。
+    recoveryActions = ($xaml -match 'Content="重新上报结果"') -and ($xaml -match 'Content="重新开门"') -and ($xaml -match 'Content="取消本次操作"')
     visibleDepartureFact = ($xaml -match 'Text="\{Binding DepartureText\}"')
     visibleJourneyFact = ($xaml -match 'Text="\{Binding VisitText\}"')
     # 旅程事实一行的方向与任务类型（批次6-03，onboard-hmi#115）：UIA 按 AutomationId 找它们。

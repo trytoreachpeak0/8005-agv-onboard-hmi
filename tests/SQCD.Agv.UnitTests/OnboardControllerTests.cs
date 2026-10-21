@@ -928,7 +928,7 @@ public sealed class OnboardControllerTests
         await controller.SubmitScanAsync("LOAD-002", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         Assert.Equal(1, io.PulseCount);
         Assert.Equal("EARLY_DOOR_CLOSED", controller.Current.ErrorCode);
-        Assert.Contains("重新打开仓门", controller.Current.Guidance);
+        Assert.Contains("“重新开门”", controller.Current.Guidance);
 
         Assert.True(controller.RequestReopenCurrentOperation());
         await WaitUntilAsync(() => controller.Current.ActiveOperation?.ReopenAttempts == 1

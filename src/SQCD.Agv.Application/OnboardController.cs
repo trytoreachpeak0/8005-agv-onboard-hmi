@@ -1111,7 +1111,7 @@ public sealed class OnboardController : IAsyncDisposable
             return $"{operation.SlotIndex + 1}号仓门已关闭，但{state}。重新开门次数已经用完，请取消本次操作或联系维护人员。";
         }
 
-        return $"{operation.SlotIndex + 1}号仓门已关闭，但{state}。请选择“重新打开仓门”继续操作，或取消本次操作。";
+        return $"{operation.SlotIndex + 1}号仓门已关闭，但{state}。请选择“重新开门”继续操作，或取消本次操作。";
     }
 
     private TimeSpan GetRemainingOperationTime(DateTimeOffset deadline)
