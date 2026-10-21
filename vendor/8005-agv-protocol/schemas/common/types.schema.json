@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json",
   "title": "AGV_FULL_PRODUCT common types",
   "$defs": {
     "Id": {
@@ -122,7 +122,10 @@
         "SLOT_FAULT_DECLARED",
         "RECOVERY_ACTION_RESULT_NOT_RECONCILED",
         "ONBOARD_FATAL_FAULT_LATCHED",
-        "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY"
+        "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY",
+        "REMAINING_BASKETS_SKIPPED",
+        "REMAINING_BASKETS_SKIP_NOTHING_LOADED",
+        "LOAD_CANCELLATION_BASKET_LOADED"
       ],
       "examples": [
         "ACTION_NOT_ALLOWED_IN_STATE"
@@ -141,7 +144,7 @@
           "minLength": 1,
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
           "examples": [
-            "5.0.0"
+            "6.0.0"
           ]
         },
         "tag": {
@@ -149,15 +152,15 @@
           "minLength": 1,
           "pattern": "^protocol-v",
           "examples": [
-            "protocol-v5.0.0"
+            "protocol-v6.0.0"
           ]
         },
         "commit": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/CommitSha"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/CommitSha"
         },
         "protocolVersion": {
           "type": "integer",
-          "const": 6
+          "const": 7
         },
         "profileId": {
           "type": "string",
@@ -165,13 +168,13 @@
           "const": "AGV_FULL_PRODUCT"
         },
         "manifestSha256": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Sha256"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Sha256"
         },
         "schemaBundleSha256": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Sha256"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Sha256"
         },
         "vectorsSha256": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Sha256"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Sha256"
         }
       },
       "required": [
@@ -191,7 +194,7 @@
       "type": "object",
       "properties": {
         "reasonCode": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/ErrorCode"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/ErrorCode"
         },
         "fieldPath": {
           "anyOf": [
@@ -227,7 +230,7 @@
       "type": "object",
       "properties": {
         "slotNo": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/SlotNo"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/SlotNo"
         },
         "operability": {
           "type": "string",
@@ -272,7 +275,7 @@
         "reasonCodes": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/ErrorCode"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/ErrorCode"
           },
           "uniqueItems": true
         }
@@ -292,7 +295,7 @@
       "type": "object",
       "properties": {
         "slotNo": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/SlotNo"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/SlotNo"
         },
         "outcome": {
           "type": "string",
@@ -330,7 +333,7 @@
         "reasonCodes": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/ErrorCode"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/ErrorCode"
           },
           "uniqueItems": true
         }
@@ -366,7 +369,7 @@
         "reasonCodes": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/ErrorCode"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/ErrorCode"
           },
           "uniqueItems": true
         }
@@ -396,7 +399,7 @@
           ]
         },
         "verifiedAt": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Instant"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Instant"
         }
       },
       "required": [
@@ -414,14 +417,14 @@
           "minLength": 1
         },
         "messageId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
         },
         "businessId": {
           "type": "string",
           "minLength": 1
         },
         "contentSha256": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Sha256"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Sha256"
         }
       },
       "required": [
@@ -436,7 +439,7 @@
       "type": "object",
       "properties": {
         "reasonCode": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/ErrorCode"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/ErrorCode"
         },
         "subjectType": {
           "type": "string",
@@ -464,7 +467,7 @@
     "SlotNoArray": {
       "type": "array",
       "items": {
-        "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/SlotNo"
+        "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/SlotNo"
       },
       "minItems": 1,
       "maxItems": 8,
@@ -505,7 +508,7 @@
       "type": "object",
       "properties": {
         "alarmId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Id"
         },
         "code": {
           "type": "string",
@@ -520,7 +523,7 @@
           ]
         },
         "raisedAt": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v6/common/types.schema.json#/$defs/Instant"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v7/common/types.schema.json#/$defs/Instant"
         },
         "subjectType": {
           "type": "string",

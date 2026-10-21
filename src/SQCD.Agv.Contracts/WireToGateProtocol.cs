@@ -11,35 +11,24 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names <c>protocol-v5.0.0</c>, an approved release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>18d4fb3495033624cab412a7ee784f675dfe4cc2</c>, the commit the annotated tag
-/// <c>protocol-v5.0.0</c> (object <c>7b108ccb</c>) points at -- on <c>fp/v2-candidate</c> the merge of
-/// <c>8005-agv-protocol#25</c> (tree identical to its head <c>ede2060f</c>; for
-/// <c>8005-agv-control-server#767</c>): <c>protocol-v4.0.0</c> with one value appended to the closed
-/// <c>TransportTaskType</c> enum, <c>WIRE_TO_FULL_INSPECTION</c> (wire bonding machine to the full inspection area),
-/// which is a breaking change and so a new major version; <c>PublicStationFunction</c> is unchanged. Bound first by
-/// 8005-agv-onboard-hmi#360 at <c>4e9f3df8</c> (<c>8005-agv-protocol#21</c>); the second revision of the same
-/// candidate, <c>8005-agv-protocol#23</c>, changes no schema, message or error code: it adds the vector
-/// <c>CV-CURRENT-STOP-DEPARTURE-STALE-REVISION-ACCEPTED</c> (a stale departure request with no material change is
-/// accepted) and words the journey plan as the remaining plan. Rebound here by 8005-agv-onboard-hmi#362, released
-/// together with the control server's 8005-agv-control-server#748. The third revision, <c>8005-agv-protocol#25</c>,
-/// corrects <c>docs/wire-notes.md</c> only (the remaining-plan rule holds for every plan except a clearance move, which
-/// keeps the <c>COMPLETED</c> charger leg it left and from which <c>WireToGateStationClearanceStation.Resolve</c> reads the
-/// charger from; a server may judge departure condition (4) more strictly), so only the vendored manifest changed.
-/// Rebound here by 8005-agv-onboard-hmi for 8005-agv-control-server#767, in one package with the control server. That
-/// commit was released unchanged on 2026-10-18 (<c>8005-agv-control-server#767</c>, tracked in <c>8005-agv-program#195</c>),
-/// with one approval in the external attestation (SHA-256 <c>31d4d732</c>) given by an AI agent the product owner
-/// authorized for that release. The release content is the candidate's byte for byte, so the nine identity values
-/// stayed and only <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>, as
-/// <c>protocol-v4.0.0</c> did (8005-agv-onboard-hmi#358). CI now checks the protocol out by <see cref="Tag"/>. Evidence
-/// produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch
-/// exit.
+/// <b>This names the <c>6.0.0</c> candidate, not a release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>98f172642937994ed01668d81fe41e69cf089e10</c>, on <c>fp/v2-candidate</c> the merge
+/// of <c>8005-agv-protocol#27</c> (tree identical to its head <c>13f52e67</c>; for <c>8005-agv-protocol#26</c>, CP-0021):
+/// <c>protocol-v5.0.0</c> with the remaining-baskets skip -- the messages <c>RemainingBasketsSkipRequested</c> and
+/// <c>RemainingBasketsSkipResult</c>, <c>COMPLETED_REMAINING_SKIPPED</c> appended to the closed
+/// <c>OperationResult.overallOutcome</c> enum and the slot reason <c>REMAINING_BASKETS_SKIPPED</c> -- and the revised load
+/// cancellation (no cancellation once a basket is loaded, <c>LOAD_CANCELLATION_BASKET_LOADED</c>), which is a breaking
+/// change and so a new major version. Bound by 8005-agv-onboard-hmi#388, in one package with the control server's
+/// 8005-agv-control-server#830. The tag <c>protocol-v6.0.0</c> does not exist yet (the user's decision of 2026-10-21:
+/// it is cut only after both ends have run together on the real rig), so <see cref="ApprovalStatus"/> is
+/// <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by <see cref="Commit"/>, and evidence produced on this
+/// identity is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
 /// </para>
 /// <para>
-/// <c>protocol-v4.0.0</c> (<c>3fb214e5</c>, <c>(AGV_FULL_PRODUCT, 5)</c>) was bound before this, and
-/// <c>protocol-v3.0.0</c> (<c>3f091cb2</c>, <c>(AGV_FULL_PRODUCT, 4)</c>) before that. The two ends have no version
-/// negotiation, so a vehicle on this identity and a control server still on v4 refuse each other's session; the
-/// control server moved in <c>8005-agv-control-server#737</c>, in the same package.
+/// <c>protocol-v5.0.0</c> (<c>18d4fb34</c>, <c>(AGV_FULL_PRODUCT, 6)</c>) was bound before this,
+/// <c>protocol-v4.0.0</c> (<c>3fb214e5</c>, <c>(AGV_FULL_PRODUCT, 5)</c>) before that. The two ends have no version
+/// negotiation, so a vehicle on this identity and a control server still on v5 refuse each other's session; both
+/// outboxes are drained and both ends are replaced together.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -48,13 +37,13 @@ namespace SQCD.Agv.Contracts;
 /// <see cref="WireToGateProtocolSerializer.DeserializeAndValidate"/>'s -- therefore compares the
 /// whole <see cref="ProtocolReleaseIdentity"/>, and every log or evidence field that records a
 /// protocol version writes the pair <c>(profileId, protocolVersion)</c>, here
-/// <c>(AGV_FULL_PRODUCT, 6)</c>.
+/// <c>(AGV_FULL_PRODUCT, 7)</c>.
 /// </para>
 /// <para>
 /// <b>These nine values have to match the control server's.</b> <c>ProtocolCandidateIdentity</c>
 /// in <c>8005-agv-control-server</c> is the other copy; the handshake compares <c>commit</c>,
 /// <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the session on any
-/// difference. That end moved to this identity in <c>8005-agv-control-server#713</c>. Neither end
+/// difference. That end moves to this identity in <c>8005-agv-control-server#830</c>. Neither end
 /// copies the other: both read the protocol's published manifest.
 /// </para>
 /// <para>
@@ -66,16 +55,16 @@ namespace SQCD.Agv.Contracts;
 /// </remarks>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 6;
+    public const int ProtocolVersion = 7;
     public const string ProfileId = "AGV_FULL_PRODUCT";
-    public const string ReleaseVersion = "5.0.0";
+    public const string ReleaseVersion = "6.0.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v5.0.0";
-    public const string Commit = "18d4fb3495033624cab412a7ee784f675dfe4cc2";
-    public const string ManifestSha256 = "dd973918cc9c4fdf28ee2ad2ec4ad522bdcc6f2b6ecaa4a4fa1c57a29f29f5aa";
-    public const string SchemaBundleSha256 = "d51abe44036f32b5b2c28fd1bea6ec7a89cf3b4dea0f0b1d6c9daaf52f350933";
-    public const string VectorsSha256 = "291311b24bfcac75818ca9e4a888d436523e6ee14db661f6ba792ab8cc383e4a";
-    public const string ApprovalStatus = "APPROVED_RELEASE";
+    public const string Tag = "protocol-v6.0.0";
+    public const string Commit = "98f172642937994ed01668d81fe41e69cf089e10";
+    public const string ManifestSha256 = "a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1";
+    public const string SchemaBundleSha256 = "0dab682174e2d3e4f931b3c0e87c7fa55bd2cb3395356d7845e595d8bfb1c795";
+    public const string VectorsSha256 = "e06ca9ea1d4445cd7d70fc190b0cf606a8e33cb7760d848c0270df24e2594c91";
+    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
