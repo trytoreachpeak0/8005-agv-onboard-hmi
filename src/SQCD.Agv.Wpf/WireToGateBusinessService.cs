@@ -4167,8 +4167,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 or WireToGatePromptCause.ReopenNotReleased =>
                 ShutOverOppositeGuidance(command, progress, loadCancellationCaption),
             "WAITING_OPERATOR" when progress.Cause == WireToGatePromptCause.ReopenHeldBySafety =>
-                $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，但车辆安全状态未确认（急停或未停稳），" +
-                "暂不重新打开；安全状态恢复后自动打开。",
+                $"{FormatSlots(progress.Active)}暂不能重新开门：车辆安全状态未确认（急停或未停稳）。" +
+                "安全状态恢复后请再按「重新开门」。",
             "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
                 ? deadlinePassed
                     ? WireToGateStationDeadlineText.LoadPrompt(progress.Active)
@@ -4199,7 +4199,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string next = load
             ? $"请按「重新开门」继续装；不装了请按「{loadCancellationCaption}」。"
             : "请按「重新开门」继续卸。";
-        return what + next + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）");
+        // No round number: the round counts from the slot's first unlock, so the first of these prompts would already read
+        // 「第2次提示」 (review L1 of PR #390). It is a standing instruction while the slot is held, repeated as it is.
+        return what + next;
     }
 
     private static string FormatSlots(IReadOnlyList<int> slots) =>

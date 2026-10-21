@@ -1742,7 +1742,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// <para>
     /// With no deadline, a press can come long after the command did, so every reopen pulse first asks the vehicle
     /// safety fact. While it says no, the slot is held: the door is shut and locked, nothing is pulsed, and the operator
-    /// is told why on the prompt cadence.
+    /// is told why on the prompt cadence. When it allows a pulse again, the run goes back to waiting for a press rather
+    /// than pulsing on the one it held: an emergency stop can last long, and the person who pressed may have gone, so a
+    /// door that sprang open by itself when the stop cleared would be the automatic reopen CP-0019 removed (review M3 of
+    /// PR #390).
     /// </para>
     /// </remarks>
     private async Task<LockerSnapshot> DriveSlotToTargetStateAsync(
@@ -1789,12 +1792,16 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             if (unlockNeeded && cause == WireToGatePromptCause.OppositeReopen && !_reopenPermitted())
             {
+                // The press is spent on the hold. Once a pulse is allowed again the operator is asked anew; nothing opens
+                // by itself (see the remarks).
                 promptRound = await HoldReopenUntilPermittedAsync(
                     physicalSlot,
                     completed,
                     promptRound,
                     progress,
                     cancellationToken).ConfigureAwait(false);
+                cause = WireToGatePromptCause.ShutOverOpposite;
+                continue;
             }
 
             if (unlockNeeded)
@@ -2115,7 +2122,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// <summary>
     /// Waits, without pulsing, until the vehicle safety fact allows the reopen. Prompts once at once
     /// and again every <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each as a
-    /// round of its own. Returns the round the reopen itself uses.
+    /// round of its own. Returns the last round it prompted, the one the wait for the next press follows.
     /// </summary>
     private async Task<int> HoldReopenUntilPermittedAsync(
         int physicalSlot,
@@ -2143,7 +2150,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
         }
 
-        return promptRound + 1;
+        return promptRound;
     }
 
     private enum SlotWaitOutcome

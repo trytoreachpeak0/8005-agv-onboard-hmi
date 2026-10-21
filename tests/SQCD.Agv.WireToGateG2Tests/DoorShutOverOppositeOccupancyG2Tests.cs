@@ -275,6 +275,66 @@ public sealed class DoorShutOverOppositeOccupancyG2Tests
         AssertNoResult(harness);
     }
 
+    /// <summary>
+    /// 真的不可信照旧 UNKNOWN：按键开锁后锁反馈一直抖（放开 0.1 秒、锁上 0.1 秒，持续 5 秒，输出已复位），哪一态都撑不满
+    /// 300 毫秒稳定窗口。不能当成「门又被关上」退回等按键（审查 M1：退回判定的稳定窗口改成 0 时原有用例全存活；单元测试的
+    /// 替身 IO 不看稳定窗口，只能在这里守）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AReopenWhoseLockKeepsBouncingIsStillUnknown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensThenShut(cargo: false));
+        List<ScriptStep> bounce = [new(TimeSpan.FromMilliseconds(300), (fake, slot) => fake.SetUnlockOutput(slot, energised: false))];
+        for (int step = 0; step < 50; step++)
+        {
+            bool locked = step % 2 == 1;
+            bounce.Add(new(TimeSpan.FromMilliseconds(100 * (step + 1)), (fake, slot) => fake.SetLockFeedback(slot, locked)));
+        }
+
+        io.ScriptPulse(2, [.. bounce.OrderBy(item => item.After)]);
+        await using Harness harness = await StartAsync(io, "LOAD", token);
+
+        await WaitForReopenOfferAsync(harness, token);
+        Assert.True(await Press(harness));
+
+        JsonElement slotResult = AssertSingleUnknownSlot(await WaitForResultAsync(harness, token));
+        Assert.Equal(["SLOT_INOPERABLE"], ReasonCodes(slotResult));
+        Assert.Equal(2, io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 「取消装货」按下、等着答复时，取消拥有这次装货：「重新开门」不再给出，按了也不开锁（审查 M1：去掉这一判断时原有
+    /// 用例全存活）。替身服务端不答复取消，取消一直停在待答。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task APendingLoadCancellationTakesTheReopenAway()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensThenShut(cargo: false));
+        await using Harness harness = await StartAsync(io, "LOAD", token);
+
+        await WaitForReopenOfferAsync(harness, token);
+        Task<bool> cancellation = harness.Business.RequestLoadCancellationAsync("现场不装了。", cancellationToken: token);
+
+        await WaitUntilAsync(
+            harness,
+            () => !harness.Business.CanReopenWaitingSlot && !harness.OnUi(() => harness.ViewModel.CanReopenOperation),
+            "「重新开门」 taken away while the cancellation waits for its answer",
+            token);
+        Assert.Equal(string.Empty, harness.OnUi(() => harness.ViewModel.ReopenWaitStatus));
+        Assert.False(await Press(harness));
+        Assert.False(await harness.Business.RequestSlotReopenAsync(token));
+        Assert.Equal(1, io.UnlockCount);
+        Assert.False(cancellation.IsCompleted);
+    }
+
     private static ScriptStep[] OpensThenShut(bool cargo) =>
     [
         // agv02 02:32:04.378 pulse; 04.419 lock 1->0; 04.982 DO 1->0. The operator shuts the door a moment later.

@@ -306,4 +306,162 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Null(fixture.Executor.OperatorRequestWait);
         Assert.Equal(1, fixture.Io.UnlockCount(0));
     }
+
+    /// <summary>
+    /// A slot that turns unreadable while it is held for the press -- here the light curtain stops reading -- is decision 2
+    /// at once: UNKNOWN under <c>SLOT_STATE_UNKNOWN</c>, not a prompt about an empty slot until somebody presses or cancels
+    /// (review M1 of PR #390, the reviewer's probe).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ASlotThatTurnsUnreadableWhileHeldIsUnknown()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Cause == WireToGatePromptCause.ShutOverOpposite)
+                {
+                    fixture.Io.LoseOccupancyReading(0);
+                }
+                else if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(0, cargo: false);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], Assert.Single(result.SlotResults).ReasonCodes);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Null(fixture.Executor.OperatorRequestWait);
+    }
+
+    /// <summary>
+    /// A slot fault declaration on the slot held for the press is applied: the run settles it UNKNOWN under the
+    /// declaration's reason, with no pulse after the first (the reviewer's probe of PR #390).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task ADeclarationOnTheSlotHeldForThePressIsApplied()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<WireToGateOperationExecutionResult> run = fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Cause == WireToGatePromptCause.ShutOverOpposite)
+                {
+                    held.TrySetResult();
+                }
+                else if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(0, cargo: false);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+        await held.Task.WaitAsync(token);
+
+        WireToGateSlotFaultDeclarationOutcome outcome = await fixture.Executor.DeclareSlotFaultAsync(
+            Declaration(command, 1),
+            () => Task.CompletedTask,
+            token);
+        WireToGateOperationExecutionResult result = await run.WaitAsync(token);
+
+        Assert.Equal(WireToGateSlotFaultDeclarationOutcome.Applied, outcome);
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal(
+            [WireToGateSlotOperationExecutor.SlotFaultDeclaredReason],
+            Assert.Single(result.SlotResults).ReasonCodes);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Null(fixture.Executor.OperatorRequestWait);
+    }
+
+    /// <summary>
+    /// 「重新开门」 pressed while the vehicle is not proven stopped: the press is spent on the hold, nothing is pulsed, and when
+    /// the safety fact allows a pulse again the slot is held for a press again -- the button comes back, and the door does
+    /// not spring open by itself, maybe long after the person who pressed has gone. Only the next press opens it (review M3
+    /// of PR #390, the coordinator's ruling).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task APressSpentOnTheSafetyHoldOpensNothingWhenTheHoldEndsAndTheButtonComesBack()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            token,
+            operationTimeout: TimeSpan.FromMilliseconds(300));
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        TaskCompletionSource heldBySafety = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource askedAgain = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int shutPrompts = 0;
+        WireToGateOperatorRequestWait? waitDuringHold = new("x", 0, WireToGatePromptCause.FirstOpen);
+        WireToGateOperatorRequestWait? waitAfterHold = null;
+        Task<WireToGateOperationExecutionResult> run = fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Cause == WireToGatePromptCause.ShutOverOpposite && ++shutPrompts == 1)
+                {
+                    fixture.Gate.Permitted = false;
+                    PressReopenWhenAsked(fixture.Executor, command, progress);
+                }
+                else if (progress.Cause == WireToGatePromptCause.ShutOverOpposite)
+                {
+                    waitAfterHold = fixture.Executor.OperatorRequestWait;
+                    askedAgain.TrySetResult();
+                }
+                else if (progress.Cause == WireToGatePromptCause.ReopenHeldBySafety)
+                {
+                    waitDuringHold = fixture.Executor.OperatorRequestWait;
+                    heldBySafety.TrySetResult();
+                }
+                else if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(0, cargo: fixture.Io.UnlockCount(0) >= 2);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+        await heldBySafety.Task.WaitAsync(token);
+        Assert.Null(waitDuringHold);
+
+        fixture.Gate.Permitted = true;
+        await askedAgain.Task.WaitAsync(token);
+        // A full prompt cadence after the hold ended, still one pulse: nothing opened by itself.
+        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            new WireToGateOperatorRequestWait(command.SlotOperationAttemptId, 1, WireToGatePromptCause.ShutOverOpposite),
+            waitAfterHold);
+        Assert.False(run.IsCompleted);
+
+        Assert.True(fixture.Executor.SubmitOperatorRequest(
+            command.SlotOperationAttemptId,
+            1,
+            WireToGateOperatorSlotRequest.Reopen));
+        WireToGateOperationExecutionResult result = await run.WaitAsync(token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(2, fixture.Io.UnlockCount(0));
+    }
 }

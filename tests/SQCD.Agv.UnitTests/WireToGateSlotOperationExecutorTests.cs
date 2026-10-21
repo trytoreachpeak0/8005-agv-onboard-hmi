@@ -1011,12 +1011,14 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task ALoadDoorShutEmptyIsReopenedOnEveryPressUntilTheBasketIsIn()
     {
+        CancellationToken limit = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource boundedScope = bounded;
         // ADR-cross-0058 decision 1 as CP-0019 rewrote it: a door shut over an empty slot is not a
         // failure and not recovery. The slot stays shut until the operator presses 「重新开门」
         // (8005-agv-onboard-hmi#385). Three empty rounds before the basket goes in -- more than two,
         // because having no limit on the presses is the point (ADR-cross-0040).
         await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
-            TestContext.Current.CancellationToken);
+            limit);
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
         List<(string Phase, int PromptRound, WireToGatePromptCause Cause)> phases = [];
 
@@ -1033,7 +1035,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
                 return Task.CompletedTask;
             },
-            TestContext.Current.CancellationToken);
+            limit);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
         WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
@@ -1461,8 +1463,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task AnUnloadDoorShutOverTheBasketIsReopenedUntilTheSlotIsEmpty()
     {
+        CancellationToken limit = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource boundedScope = bounded;
         await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
-            TestContext.Current.CancellationToken);
+            limit);
         fixture.Io.CloseDoor(0, cargo: true);
         List<string> phases = [];
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Unload, [1], expectedOccupied: false);
@@ -1480,7 +1484,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
                 return Task.CompletedTask;
             },
-            TestContext.Current.CancellationToken);
+            limit);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
         WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
@@ -1495,8 +1499,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task ASlotAlreadyLoadedIsNotReopenedWhileAnotherKeepsBeingReopened()
     {
+        CancellationToken limit = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource boundedScope = bounded;
         await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
-            TestContext.Current.CancellationToken);
+            limit);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Load,
             [1, 2, 3],
@@ -1522,7 +1528,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
                 return Task.CompletedTask;
             },
-            TestContext.Current.CancellationToken);
+            limit);
 
         AssertCompletedMeetsServerCompletionCondition(command, result);
         Assert.Equal(1, fixture.Io.UnlockCount(0));
@@ -1899,11 +1905,14 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task AReopenIsHeldWithoutAPulseWhileTheVehicleSafetyFactSaysNo()
     {
-        // The door is shut over an empty slot while the vehicle is in an emergency stop (the safety
-        // projection is not STOPPED). No reopen pulse goes out; the operator is told why; once the
-        // fact allows it the slot is reopened and the load completes.
+        CancellationToken limit = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource boundedScope = bounded;
+        // The door is shut over an empty slot and the operator presses 「重新开门」 while the vehicle
+        // is in an emergency stop (the safety projection is not STOPPED). No reopen pulse goes out; the
+        // operator is told why; once the fact allows it the slot is held for a press again, and only
+        // the second press reopens it (review M3 of PR #390).
         await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
-            TestContext.Current.CancellationToken);
+            limit);
         List<(string Phase, WireToGatePromptCause Cause)> phases = [];
         int unlocksWhileHeld = -1;
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
@@ -1940,7 +1949,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
                 return Task.CompletedTask;
             },
-            TestContext.Current.CancellationToken);
+            limit);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
         Assert.Equal(1, unlocksWhileHeld);
@@ -1951,6 +1960,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                 ("WAITING_OPERATOR", WireToGatePromptCause.FirstOpen),
                 ("WAITING_OPERATOR", WireToGatePromptCause.ShutOverOpposite),
                 ("WAITING_OPERATOR", WireToGatePromptCause.ReopenHeldBySafety),
+                ("WAITING_OPERATOR", WireToGatePromptCause.ShutOverOpposite),
                 ("UNLOCKING", WireToGatePromptCause.OppositeReopen),
                 ("WAITING_OPERATOR", WireToGatePromptCause.OppositeReopen)
             ],
