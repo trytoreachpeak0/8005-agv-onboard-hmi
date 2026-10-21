@@ -2528,12 +2528,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         handshake is { Safety: { } held }
         && handshake.SessionGeneration == session.SessionGeneration
         && handshake.SafetyStateVersion == session.SafetyStateVersion
-        && held.DepartureSafe == present.DepartureSafe
-        && held.VehicleStopped == present.VehicleStopped
-        && held.AllTargetSlotsLocked == present.AllTargetSlotsLocked
-        && held.AllUnlockOutputsReset == present.AllUnlockOutputsReset
-        && held.UnknownPresent == present.UnknownPresent
-        && held.ReasonCodes.SequenceEqual(present.ReasonCodes, StringComparer.Ordinal);
+        && WireToGateSafetyEvaluator.SameSummary(held, present);
 
     private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
         session.Connected
