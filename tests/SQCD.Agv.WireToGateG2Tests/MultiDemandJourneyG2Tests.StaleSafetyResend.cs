@@ -187,10 +187,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             TestContext.Current.TestOutputHelper?.WriteLine(sequence);
 
             // The handshake did not carry the missing change -- the case this test is about -- and its snapshot said
-            // what the IO said: unsafe, at the revision already accepted.
+            // what the IO said: unsafe, at a revision of its own above the one already accepted (onboard-hmi#394; before
+            // it, the accepted revision itself). That is the missing change's own number when the change never reached
+            // the wire, and the business service gives the change up when it sees its number passed.
             FakeControlServer.SafetyOnFile handshake = second[0];
             Assert.Equal("SafetyStateSnapshot", handshake.MessageType);
-            Assert.Equal(acceptedBefore, handshake.Revision);
+            Assert.True(
+                handshake.Revision > acceptedBefore,
+                $"the handshake snapshot kept the accepted revision {acceptedBefore}");
             Assert.False(handshake.DepartureSafe);
 
             // The defect: the IO read unsafe throughout the second session, and the server had "safe" on file anyway,

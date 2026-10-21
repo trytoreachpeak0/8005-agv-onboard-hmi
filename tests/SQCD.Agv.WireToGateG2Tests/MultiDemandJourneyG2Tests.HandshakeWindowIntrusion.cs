@@ -122,32 +122,47 @@ public sealed partial class MultiDemandJourneyG2Tests
                 "the new session to become Ready",
                 token);
 
-            // Not lost: once the new session is Ready, the same report -- the same messageId, the same
-            // safetyStateVersion -- goes out on the new connection and is acknowledged. Refusing it is only safe because
-            // this happens; a refusal that dropped the report would leave the server without that change.
-            // Two independent triggers resend it, so switching off one leaves this green: the session turning Ready
+            // Not lost: once the new session is Ready, what the refused report said goes out on the new connection and is
+            // acknowledged. Refusing it is only safe because this happens; a refusal that dropped the report would leave
+            // the server without that change.
+            //
+            // Since onboard-hmi#394 it goes out under a version of its own, not its old identity: the new handshake's
+            // snapshot numbers itself above everything the session wrote, and the refused report was never written, so
+            // the snapshot takes the report's number. Its row is then given up (no later handshake replays it) and the
+            // present reading -- here the same safety -- is reported as a change above the snapshot.
+            // Two independent triggers report it, so switching off one leaves this green: the session turning Ready
             // (OnSessionStateChanged) and #197's line, which judges the safety again on every OnboardController
-            // StateChanged. Only with both off does the IoSnapshot cell go red here (the FatalFaultLatch cell then
-            // never reports at all and stops at its precondition). Dropping the refused report instead goes red in both.
+            // StateChanged.
+            string refusedSafety = SafetyOf(refused.WireLine).GetRawText();
+            long handshakeVersion = SafetyStateVersionOf(harness.Server.ReceivedEnvelopes
+                .Single(envelope => envelope.Connection == secondConnection && envelope.MessageType == "SafetyStateSnapshot")
+                .WireLine);
+            Assert.True(handshakeVersion >= refusedVersion, $"the handshake snapshot went out at v{handshakeVersion}");
             await harness.WaitUntilAsync(
                 () => harness.Server.ReceivedEnvelopes.Any(envelope =>
-                    envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId),
-                $"the refused report {refused.MessageId} to be sent again on the new connection",
+                    envelope.Connection == secondConnection
+                    && envelope.MessageType == "SafetyStateChanged"
+                    && SafetyOf(envelope.WireLine).GetRawText() == refusedSafety),
+                $"what the refused report {refused.MessageId} said to be reported on the new connection",
                 token);
-            // Exactly once, and deterministically so: the two triggers run one after the other under _safetySendGate,
-            // and whichever comes second finds the row acknowledged and sends nothing. The session client's own resend
-            // of rows a handshake missed (RequestStaleResend) leaves SafetyStateChanged to this service.
-            var resent = Assert.Single(
+            var reported = harness.Server.ReceivedEnvelopes.First(envelope =>
+                envelope.Connection == secondConnection
+                && envelope.MessageType == "SafetyStateChanged"
+                && SafetyOf(envelope.WireLine).GetRawText() == refusedSafety);
+            Assert.True(SafetyStateVersionOf(reported.WireLine) > handshakeVersion);
+            Assert.Equal(secondGeneration, GenerationOf(reported.WireLine));
+            // The refused row itself never goes out again, and is no longer owed.
+            Assert.DoesNotContain(
                 harness.Server.ReceivedEnvelopes,
-                envelope => envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId);
-            Assert.Equal("SafetyStateChanged", resent.MessageType);
-            Assert.Equal(refusedVersion, SafetyStateVersionOf(resent.WireLine));
-            Assert.Equal(secondGeneration, GenerationOf(resent.WireLine));
+                envelope => envelope.MessageId == refused.MessageId);
+            Assert.True(
+                await race.ReadOutgoingByMessageIdAsync(refused.MessageId, token) is { Acknowledged: true },
+                $"the refused report {refused.MessageId} is still owed");
             await harness.WaitUntilAsync(
-                () => race.ReadOutgoingByMessageIdAsync(refused.MessageId, token).GetAwaiter().GetResult()
-                    is { Acknowledged: true },
-                $"the refused report {refused.MessageId} to be acknowledged",
+                () => harness.Session.Current.SafetyStateVersion >= SafetyStateVersionOf(reported.WireLine),
+                "the report of the present reading to be acknowledged",
                 token);
+            SafetyRevisionContent.AssertNone(harness.Server.ReceivedEnvelopes);
             // Room for a late disconnect or a late write to show itself; the report above has already settled, so this is
             // only for something the fix failed to stop.
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);

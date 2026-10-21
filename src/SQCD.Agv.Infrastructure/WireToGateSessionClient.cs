@@ -86,6 +86,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // Nothing in the session or the business reads it; see RegisterAcceptedSafety.
     private readonly WireToGateAcceptedSafetyRegister _acceptedSafety;
 
+    // Every safety version written to a connection, for the handshake to number above (onboard-hmi#394). Recorded in
+    // SendLineAsync; see WireToGateWrittenSafetyStates.
+    private readonly WireToGateWrittenSafetyStates _writtenSafety = new();
+
     // The generation of the last session this client had, for a message put on file while none is up: the envelope
     // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
     private long _lastSessionGeneration;
@@ -955,6 +959,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Whether the <c>SafetyStateChanged</c> sent under this version and observation was acknowledged: its outbox row is on
+    /// file, settled and not given up for good (8005-agv-onboard-hmi#394).
+    /// </summary>
+    /// <remarks>
+    /// For a change the business service still holds whose version the accepted one has reached. Since a reconnect
+    /// handshake numbers its snapshot above everything written, the accepted version reaching it no longer says the change
+    /// itself was taken: the handshake may have gone past a change that never left the vehicle.
+    /// </remarks>
+    public async Task<bool> WasSafetyStateChangedAcknowledgedAsync(
+        long safetyStateVersion,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default)
+    {
+        WireToGateDurableMessage? row = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return row is { Acknowledged: true, Abandoned: false };
+    }
+
     private string SafetyStateChangedDeduplicationKey(long safetyStateVersion, DateTimeOffset observedAt)
     {
         string journalEpoch = Volatile.Read(ref _journalEpoch)
@@ -1050,7 +1076,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
             List<WireToGateDurableMessage> supersededReports = [];
-            bool resentSafetyStateChange = false;
             foreach (WireToGateDurableMessage pending in unacknowledged)
             {
                 if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
@@ -1069,10 +1094,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
-                resentSafetyStateChange |= string.Equals(
-                    pending.MessageType,
-                    "SafetyStateChanged",
-                    StringComparison.Ordinal);
                 await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1103,17 +1124,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
 
             // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
-            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
-            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
-            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
-            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
-            // 开始，那个号在这一代里还没对应任何内容。
+            // 快照的内容是此刻现算的，所以它取一个本进程还没写出过的号：已写出的最大号与已接受的号，取大者加一
+            // （WireToGateWrittenSafetyStates）。上面补发过的 SafetyStateChanged 也算写出过，所以补发之后快照照样
+            // 在它之上（onboard-hmi#206：安全变化与安全快照在服务端共用同一个号、按整行哈希比）。
+            //
+            // 以前没补发时沿用已接受的号，理由是服务端每一代从零开始、那个号在这一代里还没对应任何内容。服务端确实
+            // 不拒，但同一个号在车载端日志、服务端日志里就对着两份内容：10-21 agv03 上一代的 v94 是全锁，代次 116
+            // 握手又以 v94 报了 SLOT_STATE_UNKNOWN，排查先从错的那一份读起（onboard-hmi#394）。确认丢了的握手快照
+            // 也算写出过：服务端可能已经收下，已接受的号却没动。只有本进程什么都没写出过时才用已接受的号——那是
+            // 配置里的起点，还没对应任何内容。
             IoSnapshot io = _ioModule.CurrentSnapshot;
             WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
-            long safetyStateVersion = resentSafetyStateChange
-                ? checked(acceptedSafetyStateVersion + 1)
-                : acceptedSafetyStateVersion;
+            long safetyStateVersion = _writtenSafety.NextHandshakeVersion(Volatile.Read(ref _acceptedSafetyStateVersion));
             RecordSafetySummary("握手安全快照", generation, safetyStateVersion, safety, io);
             RememberSafety(safetyStateVersion, safety);
             await SendSnapshotAndRequireAckAsync(
@@ -4968,6 +4990,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
             }
 
+            // Before the write, not after it: a line cut off half way may still have reached the server, and a version
+            // counted spent that was not is only a number skipped (onboard-hmi#394).
+            RecordWrittenSafetyState(normalized);
             try
             {
                 await connection.Writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
@@ -5163,6 +5188,32 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             + (io is null
                 ? "。"
                 : $"，ioConnected={io.IsConnected}，ioObservedAt={io.ObservedAt.ToString("O", CultureInfo.InvariantCulture)}。"));
+
+    /// <summary>
+    /// Records a safety state about to be written (<see cref="WireToGateWrittenSafetyStates"/>). Observation of the line,
+    /// like <see cref="RegisterAcceptedSafety"/>: a failure here is a diagnostic, never a failed send.
+    /// </summary>
+    private void RecordWrittenSafetyState(string line)
+    {
+        try
+        {
+            if (_writtenSafety.Record(line) is { } conflict)
+            {
+                RecordDiagnostic(conflict);
+            }
+        }
+        catch (Exception failure)
+        {
+            try
+            {
+                RecordDiagnostic($"记录已写出的安全状态版本失败：{failure.GetType().Name}。");
+            }
+            catch (Exception)
+            {
+                // A diagnostic subscriber can throw; the send goes on.
+            }
+        }
+    }
 
     private void RecordDiagnostic(string line) =>
         DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
