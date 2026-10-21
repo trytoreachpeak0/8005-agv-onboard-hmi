@@ -1,0 +1,293 @@
+Injection runs (apply-injection.sh, 3500 ms delay on the first LoadCompensationResult save-before-send, CPU affinity 0xF, Invoke-HeavyLocal.ps1).
+pre-fix = the two test files as on w2g/fp-v2-impl 226c6fd (git checkout HEAD~1 -- <file>); fixed = 519b2cd. Marks: W2G_HMI396_MARKS.
+
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 1: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:48:23.721 FIRED 08:48:26.056 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 2: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:49:28.423 FIRED 08:49:30.789 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 3: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:50:35.890 FIRED 08:50:38.981 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 4: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:52:00.918 FIRED 08:52:03.278 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 5: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:53:03.566 FIRED 08:53:05.984 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 6: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:54:01.181 FIRED 08:54:03.593 | Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 1: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:55:20.988 FIRED 08:55:21.288 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 2: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:56:01.711 FIRED 08:56:01.990 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 3: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:56:39.997 FIRED 08:56:40.199 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 4: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:57:11.529 FIRED 08:57:11.768 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 5: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:57:49.579 FIRED 08:57:49.838 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+prefix AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 6: exit 1 | Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 08:58:23.919 FIRED 08:58:24.096 | Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+
+Fixed (519b2cd) with the same injection:
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 1: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:00:44.054 FIRED 09:00:46.436 DISARMED 09:00:49.981 
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 2: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:01:29.610 FIRED 09:01:31.989 DISARMED 09:01:35.524 
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 3: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:02:14.695 FIRED 09:02:17.017 DISARMED 09:02:20.553 
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 4: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:03:00.143 FIRED 09:03:02.416 DISARMED 09:03:05.959 
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 5: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:03:42.434 FIRED 09:03:44.726 DISARMED 09:03:48.249 
+fixed AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked run 6: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:04:38.691 FIRED 09:04:41.142 DISARMED 09:04:44.664 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 1: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:05:26.076 FIRED 09:05:26.358 DISARMED 09:05:32.973 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 2: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:06:12.605 FIRED 09:06:12.849 DISARMED 09:06:18.393 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 3: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:06:54.532 FIRED 09:06:54.754 DISARMED 09:07:00.297 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 4: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:07:40.177 FIRED 09:07:40.462 DISARMED 09:07:46.041 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 5: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:08:24.749 FIRED 09:08:25.099 DISARMED 09:08:30.651 
+fixed AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect run 6: Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) | ARMED 09:09:13.515 FIRED 09:09:13.714 DISARMED 09:09:19.247 
+
+Without injection, at 519b2cd (tests unchanged since), CPU affinity 0xF, Invoke-HeavyLocal.ps1:
+  G2 MultiDemandJourneyG2Tests + ArchitectureTests: Passed!  - Failed:     0, Passed:   208, Skipped:     0, Total:   208, Duration: 4 m 44 s - exit 0
+  G2 RecoveryVectorG2Tests:                         Passed!  - Failed:     0, Passed:   225, Skipped:     0, Total:   225, Duration: 4 m 11 s - exit 0
+  UnitTests ArchitectureTests:                      Passed!  - Failed:     0, Passed:   203, Skipped:     0, Total:   203, Duration: 3 s - exit 0
+  dotnet format SQCD_8005AGV.sln --verify-no-changes: exit 0
+  Before that, the two classes and G2 ArchitectureTests in one dotnet test (433 tests on 4 cores, twice the #393 load):
+  431 passed, 2 failed, neither touched here and each green 3/3 alone afterwards --
+  MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect
+  ("the handoff to open slot 1": the vehicle's PREPARING progress, sentAt 09:14:25.133, read by the double 09:14:28.991)
+  and RecoveryVectorG2Tests.AfterARestartTheShownCorrectionPressReachesTheServerAsTheSameCorrection
+  ("the business pump to surface the seeded recovery state", harness start-up). No product timer in either window;
+  reported to the coordinator as out of scope.
+
+== Review M1: the four waits in HandoffOverUnrecordedLoad.cs (apply-injection-m1.sh, 3500 ms, CPU affinity 0xF, Invoke-HeavyLocal.ps1) ==
+One dotnet test per round with the five cases (one class, so they run one after another). pre-fix = that file at bc0447d; fixed = 5a8166a.
+prefix round 1:
+  Failed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [5 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [5 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [5 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [5 s]
+  Timed out after 5s waiting for: the UNKNOWN handoff to be forgotten once acknowledged
+  Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult
+  Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+  Timed out after 5s waiting for: the refused handoff to wait for a maintainer's manual check
+  mark marked-settlement ARMED 10:04:37.106
+  mark marked-settlement FIRED 10:04:40.636
+  mark handoff-late-ack-False ARMED 10:04:42.861
+  mark handoff-late-ack-False FIRED 10:04:45.962
+  mark handoff-late-ack-True ARMED 10:04:48.603
+  mark handoff-late-ack-True FIRED 10:04:51.275
+  mark refused-handoff ARMED 10:04:54.204
+  mark refused-handoff FIRED 10:04:56.370
+  mark compensation-recorded ARMED 10:04:59.980
+  mark compensation-recorded FIRED 10:05:02.175
+prefix round 2:
+  Failed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [5 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [5 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [7 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [5 s]
+  Timed out after 5s waiting for: the UNKNOWN handoff to be forgotten once acknowledged
+  Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult
+  Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+  Timed out after 5s waiting for: the refused handoff to wait for a maintainer's manual check
+  mark marked-settlement ARMED 10:05:50.230
+  mark marked-settlement FIRED 10:05:52.428
+  mark handoff-late-ack-False ARMED 10:05:56.000
+  mark handoff-late-ack-False FIRED 10:05:58.208
+  mark handoff-late-ack-True ARMED 10:06:01.739
+  mark handoff-late-ack-True FIRED 10:06:03.919
+  mark refused-handoff ARMED 10:06:08.876
+  mark refused-handoff FIRED 10:06:11.060
+  mark compensation-recorded ARMED 10:06:14.626
+  mark compensation-recorded FIRED 10:06:16.810
+prefix round 3:
+  Failed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [6 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [6 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [6 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [5 s]
+  Timed out after 5s waiting for: the UNKNOWN handoff to be forgotten once acknowledged
+  Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult
+  Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+  Timed out after 5s waiting for: the refused handoff to wait for a maintainer's manual check
+  mark marked-settlement ARMED 10:07:02.888
+  mark marked-settlement FIRED 10:07:05.174
+  mark handoff-late-ack-False ARMED 10:07:09.099
+  mark handoff-late-ack-False FIRED 10:07:11.301
+  mark handoff-late-ack-True ARMED 10:07:15.382
+  mark handoff-late-ack-True FIRED 10:07:17.697
+  mark refused-handoff ARMED 10:07:21.469
+  mark refused-handoff FIRED 10:07:24.317
+  mark compensation-recorded ARMED 10:07:27.399
+  mark compensation-recorded FIRED 10:07:29.851
+prefix round 4:
+  Failed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [5 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [6 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [5 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [5 s]
+  Timed out after 5s waiting for: the UNKNOWN handoff to be forgotten once acknowledged
+  Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult
+  Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+  Timed out after 5s waiting for: the refused handoff to wait for a maintainer's manual check
+  mark marked-settlement ARMED 10:08:16.628
+  mark marked-settlement FIRED 10:08:18.876
+  mark handoff-late-ack-False ARMED 10:08:22.608
+  mark handoff-late-ack-False FIRED 10:08:24.794
+  mark handoff-late-ack-True ARMED 10:08:28.673
+  mark handoff-late-ack-True FIRED 10:08:30.882
+  mark refused-handoff ARMED 10:08:34.428
+  mark refused-handoff FIRED 10:08:36.605
+  mark compensation-recorded ARMED 10:08:40.242
+  mark compensation-recorded FIRED 10:08:42.437
+prefix round 5:
+  Failed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [5 s]
+  Failed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [5 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [6 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [6 s]
+  Timed out after 5s waiting for: the UNKNOWN handoff to be forgotten once acknowledged
+  Timed out after 5s waiting for: the control server to receive FaultCargoRecoveryResult
+  Timed out after 5s waiting for: the control server to receive LoadCompensationResult
+  Timed out after 5s waiting for: the refused handoff to wait for a maintainer's manual check
+  mark marked-settlement ARMED 10:09:34.545
+  mark marked-settlement FIRED 10:09:36.820
+  mark handoff-late-ack-False ARMED 10:09:40.452
+  mark handoff-late-ack-False FIRED 10:09:45.058
+  mark handoff-late-ack-True ARMED 10:09:46.404
+  mark handoff-late-ack-True FIRED 10:09:48.644
+  mark refused-handoff ARMED 10:09:52.402
+  mark refused-handoff FIRED 10:09:54.878
+  mark compensation-recorded ARMED 10:09:58.630
+  mark compensation-recorded FIRED 10:10:00.813
+fixed round 1:
+  Passed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [13 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [7 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [9 s]
+  Passed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [6 s]
+  Failed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [7 s]
+  Timed out after 7s waiting for: the control server to receive LoadCompensationResult, past the compensation's operation timeout
+  mark marked-settlement ARMED 10:11:19.254
+  mark marked-settlement FIRED 10:11:21.599
+  mark marked-settlement DISARMED 10:11:25.779
+  mark handoff-late-ack-False ARMED 10:11:26.627
+  mark handoff-late-ack-False FIRED 10:11:28.820
+  mark handoff-late-ack-False DISARMED 10:11:32.362
+  mark handoff-late-ack-True ARMED 10:11:33.684
+  mark handoff-late-ack-True FIRED 10:11:36.907
+  mark handoff-late-ack-True DISARMED 10:11:40.448
+  mark refused-handoff ARMED 10:11:43.098
+  mark refused-handoff FIRED 10:11:45.273
+  mark refused-handoff DISARMED 10:11:48.825
+  mark compensation-recorded ARMED 10:11:49.535
+  mark compensation-recorded FIRED 10:11:53.867
+fixed round 2:
+  Passed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [8 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [6 s]
+  Passed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [6 s]
+  Passed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [6 s]
+  mark marked-settlement ARMED 10:12:39.761
+  mark marked-settlement FIRED 10:12:41.996
+  mark marked-settlement DISARMED 10:12:45.549
+  mark handoff-late-ack-False ARMED 10:12:46.169
+  mark handoff-late-ack-False FIRED 10:12:49.593
+  mark handoff-late-ack-False DISARMED 10:12:53.116
+  mark handoff-late-ack-True ARMED 10:12:54.642
+  mark handoff-late-ack-True FIRED 10:12:56.846
+  mark handoff-late-ack-True DISARMED 10:13:00.364
+  mark refused-handoff ARMED 10:13:01.904
+  mark refused-handoff FIRED 10:13:04.144
+  mark refused-handoff DISARMED 10:13:07.702
+  mark compensation-recorded ARMED 10:13:08.387
+  mark compensation-recorded FIRED 10:13:10.595
+  mark compensation-recorded DISARMED 10:13:14.112
+fixed round 3:
+  Passed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [6 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [7 s]
+  Passed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [8 s]
+  Passed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [7 s]
+  mark marked-settlement ARMED 10:13:56.679
+  mark marked-settlement FIRED 10:13:59.066
+  mark marked-settlement DISARMED 10:14:02.623
+  mark handoff-late-ack-False ARMED 10:14:03.170
+  mark handoff-late-ack-False FIRED 10:14:05.360
+  mark handoff-late-ack-False DISARMED 10:14:08.901
+  mark handoff-late-ack-True ARMED 10:14:09.959
+  mark handoff-late-ack-True FIRED 10:14:12.359
+  mark handoff-late-ack-True DISARMED 10:14:15.900
+  mark refused-handoff ARMED 10:14:17.236
+  mark refused-handoff FIRED 10:14:19.413
+  mark refused-handoff DISARMED 10:14:24.382
+  mark compensation-recorded ARMED 10:14:26.051
+  mark compensation-recorded FIRED 10:14:29.231
+  mark compensation-recorded DISARMED 10:14:33.118
+fixed round 4:
+  Passed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [12 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [7 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [6 s]
+  Passed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [6 s]
+  Passed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [6 s]
+  mark marked-settlement ARMED 10:15:13.543
+  mark marked-settlement FIRED 10:15:15.790
+  mark marked-settlement DISARMED 10:15:19.338
+  mark handoff-late-ack-False ARMED 10:15:20.253
+  mark handoff-late-ack-False FIRED 10:15:22.407
+  mark handoff-late-ack-False DISARMED 10:15:25.935
+  mark handoff-late-ack-True ARMED 10:15:26.877
+  mark handoff-late-ack-True FIRED 10:15:29.018
+  mark handoff-late-ack-True DISARMED 10:15:32.543
+  mark refused-handoff ARMED 10:15:33.437
+  mark refused-handoff FIRED 10:15:36.161
+  mark refused-handoff DISARMED 10:15:39.709
+  mark compensation-recorded ARMED 10:15:40.672
+  mark compensation-recorded FIRED 10:15:42.842
+  mark compensation-recorded DISARMED 10:15:46.369
+fixed round 5:
+  Passed TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [13 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [8 s]
+  Passed AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [6 s]
+  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [9 s]
+  Passed AnUnknownCompensationOverARecordedLoadKeepsItsAttemptAndDoorAcrossAReconnect [6 s]
+  Timed out after 7s waiting for: the control server to receive FaultCargoRecoveryResult, past the handoff's operation timeout
+  mark marked-settlement ARMED 10:16:27.771
+  mark marked-settlement FIRED 10:16:30.009
+  mark marked-settlement DISARMED 10:16:33.562
+  mark handoff-late-ack-False ARMED 10:16:34.132
+  mark handoff-late-ack-False FIRED 10:16:37.194
+  mark handoff-late-ack-False DISARMED 10:16:40.728
+  mark handoff-late-ack-True ARMED 10:16:42.424
+  mark handoff-late-ack-True FIRED 10:16:44.560
+  mark handoff-late-ack-True DISARMED 10:16:48.098
+  mark refused-handoff ARMED 10:16:49.336
+  mark refused-handoff FIRED 10:16:52.187
+  mark compensation-recorded ARMED 10:16:58.748
+  mark compensation-recorded FIRED 10:17:01.444
+  mark compensation-recorded DISARMED 10:17:04.961
+
+Without injection, after the review's rework, CPU affinity 0xF, Invoke-HeavyLocal.ps1, each family in its own process:
+  at 5a8166a: G2 MultiDemandJourneyG2Tests + ArchitectureTests 208/208 exit 0; G2 RecoveryVectorG2Tests 225/225 exit 0;
+              UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0
+  at aa66480 (only RecoveryVectorG2Tests.cs changed since): G2 ArchitectureTests 13/13 exit 0; G2 RecoveryVectorG2Tests
+              225/225 exit 0; UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0
+
+== AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn, thread-pool stall (apply-injection-pool.sh, minimum 64, CPU affinity 0xF, Invoke-HeavyLocal.ps1; one dotnet test per round, both cases) ==
+pre-fix = WaitFailureScene.cs at 8703ec2; fixed = 8635410.
+prefix round 1: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [6 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 2: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=26 
+prefix round 3: Failed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 4: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [6 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 5: Failed (stallTheThreadPool: True) [5 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+fixed round 1: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 2: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 3: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=64 
+fixed round 4: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 5: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 6: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 7: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 8: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 9: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 10: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=64 
+plain round 1: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 2: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [6 s]  | no injection
+plain round 3: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [6 s]  | no injection
+plain round 4: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 5: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [9 s]  | no injection
+plain round 6: Passed (stallTheThreadPool: True) [17 s] Passed (stallTheThreadPool: False) [13 s]  | no injection
+plain round 7: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 8: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 9: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 10: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+
+Without injection, at 8635410 (only WaitFailureScene.cs changed since aa66480), CPU affinity 0xF, Invoke-HeavyLocal.ps1:
+  G2 MultiDemandJourneyG2Tests + ArchitectureTests: 207/208, exit 1. The red is
+  AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished (RecoveryEntryAfterDisplayFrees.cs:246,
+  "A's slot to be unlocked and waiting on the operator"), a test this ticket does not touch, green 3/3 alone afterwards:
+  the vehicle's SafetyStateChanged was acknowledged by the double 43 ms after it was sent, and the vehicle still gave
+  it up 2 s later and disconnected. No product timer in the window of this ticket's shape; reported to the coordinator.
+  UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0.
+  The same class was 208/208 at 519b2cd and at 5a8166a.

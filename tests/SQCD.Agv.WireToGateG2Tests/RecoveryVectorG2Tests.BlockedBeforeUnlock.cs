@@ -262,7 +262,9 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
         await harness.WaitForResultAsync("LoadCompensationResult", token);
-        await RecoveryVectorHarness.WaitUntilAsync(
+        // The refusal's vector is released only once its result's send has given up on the dropped ack, after the
+        // session's message timeout (onboard-hmi#396).
+        await harness.WaitPastMessageTimeoutUntilAsync(
             () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
             "the unacknowledged refusal to release its vector and session",
             token);

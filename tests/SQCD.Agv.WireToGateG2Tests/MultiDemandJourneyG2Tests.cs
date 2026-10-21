@@ -282,6 +282,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// <summary>What the vehicle logged, for a test whose assertion is about which failure was caught.</summary>
         public RecordingLogger Logger { get; private init; } = null!;
 
+        /// <summary>The options the business service's slot and vector executors run with, for a wait that has to outlast their timers.</summary>
+        public WireToGateSlotOperationExecutorOptions SlotOperationOptions { get; private init; } = null!;
+
         /// <summary>What <c>App.OnDispatcherUnhandledException</c> would have caught on the UI thread.</summary>
         public IReadOnlyList<Exception> UiErrors
         {
@@ -434,18 +437,19 @@ public sealed partial class MultiDemandJourneyG2Tests
                 "agv02",
                 // Slots 1-4 front, 5-8 rear: the layout the side of a worklist item is read from.
                 OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()));
+            WireToGateSlotOperationExecutorOptions slotOperationOptions = new(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                operationTimeout ?? TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30));
             WireToGateBusinessService business = new(
                 session,
                 io,
                 logger,
                 new SystemClock(),
                 () => safety.Read().MotionState == VehicleMotionState.Stopped,
-                new WireToGateSlotOperationExecutorOptions(
-                    TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(1),
-                    operationTimeout ?? TimeSpan.FromSeconds(2),
-                    TimeSpan.FromMilliseconds(10),
-                    TimeSpan.FromSeconds(30)),
+                slotOperationOptions,
                 operatorIdEnvironmentVariable ?? OperatorVariable,
                 safety,
                 TimeSpan.FromSeconds(30),
@@ -454,7 +458,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
                 // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
                 fatalFaultLatched: () => controller.IsFatalFaultLatched);
-            Harness harness = new(server, io, journalPath, session, business, controller, viewModel) { Logger = logger };
+            Harness harness = new(server, io, journalPath, session, business, controller, viewModel) { Logger = logger, SlotOperationOptions = slotOperationOptions };
             // As the App wires it (8005-agv-onboard-hmi#197).
             controller.StateChanged += (_, _) => business.RefreshSafetyAfterFatalFaultLatchChange();
 
@@ -760,6 +764,31 @@ public sealed partial class MultiDemandJourneyG2Tests
                 throw new InvalidOperationException(
                     $"WaitPastMessageTimeoutUntilAsync waits the message timeout plus 5s, at most {StallAwareDeadline.StallBudget.TotalSeconds:0.##}s; "
                     + $"this session's message timeout is {Session.Client.MessageTimeout.TotalSeconds:0.##}s. Start the harness with a shorter one.");
+            }
+
+            return WaitUntilAsync(predicate, expectation, baseTimeout, cancellationToken);
+        }
+
+        /// <summary>
+        /// A wait for a fact that only lands once an executor's wait at a door runs out: the usual five seconds on top of
+        /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, the product's timer, which the fact
+        /// cannot beat (onboard-hmi#396). Not a longer wait for anything else.
+        /// </summary>
+        /// <remarks>
+        /// Bounded as <see cref="WaitPastMessageTimeoutUntilAsync"/> is: a base past
+        /// <see cref="StallAwareDeadline.StallBudget"/> is refused rather than waited out.
+        /// </remarks>
+        public Task WaitPastOperationTimeoutUntilAsync(
+            Func<bool> predicate,
+            string expectation,
+            CancellationToken cancellationToken)
+        {
+            TimeSpan baseTimeout = SlotOperationOptions.OperationTimeout + TimeSpan.FromSeconds(5);
+            if (baseTimeout > StallAwareDeadline.StallBudget)
+            {
+                throw new InvalidOperationException(
+                    $"WaitPastOperationTimeoutUntilAsync waits the operation timeout plus 5s, at most {StallAwareDeadline.StallBudget.TotalSeconds:0.##}s; "
+                    + $"this harness's operation timeout is {SlotOperationOptions.OperationTimeout.TotalSeconds:0.##}s. Start the harness with a shorter one.");
             }
 
             return WaitUntilAsync(predicate, expectation, baseTimeout, cancellationToken);

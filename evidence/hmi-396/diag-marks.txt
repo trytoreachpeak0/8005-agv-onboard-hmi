@@ -1,0 +1,114 @@
+Diagnostic rounds (fixed + apply-injection-m1.sh + temporary marks, not committed): the fake IO's door wait start/timeout
+(late-ms = how far past its own deadline it gave up) and every journal UpdateRecoveryStateAsync over 200 ms while a test ran.
+Round 4 was red: refused-handoff (journal write 2.19 s after the timer, then the injected 3.5 s).
+
+diag round 1: 
+  marked-settlement ARMED 10:18:53.394
+  io WAIT-TIMEOUT slot=1 late-ms=3 10:18:55.667
+  marked-settlement FIRED 10:18:55.727
+  marked-settlement DISARMED 10:18:59.282
+  handoff-late-ack-False ARMED 10:18:59.772
+  io WAIT-TIMEOUT slot=1 late-ms=10 10:19:01.865
+  handoff-late-ack-False FIRED 10:19:01.909
+  handoff-late-ack-False DISARMED 10:19:05.452
+  handoff-late-ack-True ARMED 10:19:06.687
+  io WAIT-TIMEOUT slot=1 late-ms=14 10:19:08.805
+  handoff-late-ack-True SLOW-Update1 10:19:08.806 -> 10:19:10.039
+  handoff-late-ack-True FIRED 10:19:10.075
+  handoff-late-ack-True DISARMED 10:19:13.600
+  refused-handoff ARMED 10:19:14.520
+  io WAIT-TIMEOUT slot=1 late-ms=13 10:19:16.615
+  refused-handoff FIRED 10:19:16.660
+  refused-handoff DISARMED 10:19:20.231
+  compensation-recorded ARMED 10:19:20.987
+  io WAIT-TIMEOUT slot=1 late-ms=12 10:19:23.098
+  compensation-recorded FIRED 10:19:23.150
+  compensation-recorded DISARMED 10:19:26.665
+diag round 2: 
+  marked-settlement ARMED 10:20:04.787
+  marked-settlement SLOW-Update2 10:20:04.793 -> 10:20:05.074
+  io WAIT-TIMEOUT slot=1 late-ms=4 10:20:07.184
+  marked-settlement FIRED 10:20:07.243
+  marked-settlement DISARMED 10:20:10.794
+  handoff-late-ack-False ARMED 10:20:11.269
+  io WAIT-TIMEOUT slot=1 late-ms=8 10:20:13.369
+  handoff-late-ack-False FIRED 10:20:13.431
+  handoff-late-ack-False DISARMED 10:20:16.950
+  handoff-late-ack-True ARMED 10:20:17.867
+  io WAIT-TIMEOUT slot=1 late-ms=6 10:20:19.950
+  handoff-late-ack-True FIRED 10:20:20.156
+  handoff-late-ack-True DISARMED 10:20:23.701
+  handoff-late-ack-True SLOW-Update2 10:20:23.892 -> 10:20:24.747
+  refused-handoff ARMED 10:20:25.583
+  io WAIT-TIMEOUT slot=1 late-ms=5 10:20:27.677
+  refused-handoff FIRED 10:20:27.732
+  refused-handoff DISARMED 10:20:31.284
+  compensation-recorded ARMED 10:20:31.885
+  io WAIT-TIMEOUT slot=1 late-ms=5 10:20:33.978
+  compensation-recorded FIRED 10:20:34.034
+  compensation-recorded DISARMED 10:20:37.645
+diag round 3: 
+  marked-settlement ARMED 10:21:16.246
+  io WAIT-TIMEOUT slot=1 late-ms=15 10:21:18.392
+  marked-settlement FIRED 10:21:18.460
+  marked-settlement SLOW-Update2 10:21:22.003 -> 10:21:22.383
+  marked-settlement DISARMED 10:21:22.385
+  handoff-late-ack-False ARMED 10:21:23.048
+  io WAIT-TIMEOUT slot=1 late-ms=0 10:21:25.152
+  handoff-late-ack-False FIRED 10:21:25.220
+  handoff-late-ack-False DISARMED 10:21:28.808
+  handoff-late-ack-True ARMED 10:21:29.764
+  io WAIT-TIMEOUT slot=1 late-ms=13 10:21:31.858
+  handoff-late-ack-True FIRED 10:21:31.903
+  handoff-late-ack-True DISARMED 10:21:35.440
+  refused-handoff ARMED 10:21:36.525
+  io WAIT-TIMEOUT slot=1 late-ms=9 10:21:38.633
+  refused-handoff FIRED 10:21:38.688
+  refused-handoff DISARMED 10:21:42.383
+  compensation-recorded ARMED 10:21:43.231
+  io WAIT-TIMEOUT slot=1 late-ms=6 10:21:45.316
+  compensation-recorded FIRED 10:21:45.361
+  compensation-recorded DISARMED 10:21:48.880
+diag round 4:  Failed ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [7 s];
+  marked-settlement ARMED 10:22:25.002
+  io WAIT-TIMEOUT slot=1 late-ms=11 10:22:27.164
+  marked-settlement FIRED 10:22:28.574
+  marked-settlement DISARMED 10:22:32.293
+  handoff-late-ack-False ARMED 10:22:33.478
+  io WAIT-TIMEOUT slot=1 late-ms=10 10:22:35.813
+  handoff-late-ack-False FIRED 10:22:35.858
+  handoff-late-ack-False DISARMED 10:22:39.539
+  handoff-late-ack-True ARMED 10:22:40.824
+  io WAIT-TIMEOUT slot=1 late-ms=15 10:22:42.929
+  handoff-late-ack-True FIRED 10:22:42.974
+  handoff-late-ack-True DISARMED 10:22:46.501
+  refused-handoff ARMED 10:22:47.531
+  io WAIT-TIMEOUT slot=1 late-ms=7 10:22:49.624
+  refused-handoff SLOW-Update1 10:22:49.624 -> 10:22:51.812
+  refused-handoff FIRED 10:22:51.847
+  compensation-recorded ARMED 10:22:55.291
+  io WAIT-TIMEOUT slot=1 late-ms=14 10:22:57.419
+  compensation-recorded FIRED 10:22:57.475
+  compensation-recorded DISARMED 10:23:00.997
+diag round 5: 
+  marked-settlement ARMED 10:23:40.521
+  io WAIT-TIMEOUT slot=1 late-ms=7 10:23:42.634
+  marked-settlement FIRED 10:23:42.692
+  marked-settlement DISARMED 10:23:46.235
+  handoff-late-ack-False ARMED 10:23:46.717
+  io WAIT-TIMEOUT slot=1 late-ms=1 10:23:48.802
+  handoff-late-ack-False FIRED 10:23:48.847
+  handoff-late-ack-False DISARMED 10:23:52.370
+  handoff-late-ack-True ARMED 10:23:53.477
+  io WAIT-TIMEOUT slot=1 late-ms=4 10:23:55.575
+  handoff-late-ack-True SLOW-Update1 10:23:55.576 -> 10:23:56.278
+  handoff-late-ack-True FIRED 10:23:56.313
+  handoff-late-ack-True DISARMED 10:23:59.838
+  refused-handoff ARMED 10:24:01.004
+  io WAIT-TIMEOUT slot=1 late-ms=10 10:24:03.087
+  refused-handoff FIRED 10:24:03.131
+  refused-handoff DISARMED 10:24:06.803
+  compensation-recorded ARMED 10:24:07.349
+  io WAIT-TIMEOUT slot=1 late-ms=7 10:24:09.438
+  compensation-recorded FIRED 10:24:09.493
+  compensation-recorded DISARMED 10:24:13.035
