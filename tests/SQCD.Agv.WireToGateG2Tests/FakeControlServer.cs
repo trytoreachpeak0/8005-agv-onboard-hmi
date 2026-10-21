@@ -108,6 +108,12 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public bool WithholdForcedMechanicalRecoveryResultAck { get; set; }
 
     /// <summary>
+    /// Records every <c>PreDepartureSafetyCheckResult</c> and acknowledges none while set: the answers stay owed in the vehicle's
+    /// outbox, for a restart to replay (8005-agv-onboard-hmi#386 review L2). Cleared, the next delivery is acknowledged.
+    /// </summary>
+    public bool WithholdPreDepartureSafetyCheckResultAck { get; set; }
+
+    /// <summary>
     /// How many <c>SlotFaultDeclarationResult</c> acknowledgements to leave unsent: the answer reached the server,
     /// its ack did not reach the vehicle (8005-agv-onboard-hmi#215).
     /// </summary>
@@ -2498,6 +2504,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
                         break;
                     case "ForcedMechanicalRecoveryResult" when WithholdForcedMechanicalRecoveryResultAck:
+                        break;
+                    case "PreDepartureSafetyCheckResult" when WithholdPreDepartureSafetyCheckResultAck:
                         break;
                     case "SlotFaultDeclarationResult" when SlotFaultDeclarationResultAcksToDrop > 0:
                         SlotFaultDeclarationResultAcksToDrop--;

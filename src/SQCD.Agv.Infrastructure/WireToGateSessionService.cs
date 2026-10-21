@@ -87,6 +87,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             vehicleSafetyClockSkewTolerance);
         _client.StateChanged += OnClientStateChanged;
         _client.DiagnosticRecorded += OnClientDiagnosticRecorded;
+        _client.DurableContentConflictRecorded += OnClientDurableContentConflictRecorded;
         _client.JourneyChanged += OnClientJourneyChanged;
         _client.ServerCommandReceived += OnClientServerCommandReceived;
         _client.DurableMessageAbandoned += OnClientDurableMessageAbandoned;
@@ -441,6 +442,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         _disposed = true;
         _client.StateChanged -= OnClientStateChanged;
         _client.DiagnosticRecorded -= OnClientDiagnosticRecorded;
+        _client.DurableContentConflictRecorded -= OnClientDurableContentConflictRecorded;
         _client.JourneyChanged -= OnClientJourneyChanged;
         _client.ServerCommandReceived -= OnClientServerCommandReceived;
         _client.DurableMessageAbandoned -= OnClientDurableMessageAbandoned;
@@ -469,6 +471,9 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     private void OnClientDiagnosticRecorded(object? sender, ValueChangedEventArgs<string> args) =>
         _logger.Write(LogSeverity.Information, nameof(WireToGateSessionClient), args.Value);
+
+    private void OnClientDurableContentConflictRecorded(object? sender, ValueChangedEventArgs<string> args) =>
+        _logger.Write(LogSeverity.Warning, nameof(WireToGateSessionClient), args.Value);
 
     private void OnClientJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args) =>
         JourneyChanged?.Invoke(this, args);
