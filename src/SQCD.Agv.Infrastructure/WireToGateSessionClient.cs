@@ -90,6 +90,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // SendLineAsync; see WireToGateWrittenSafetyStates.
     private readonly WireToGateWrittenSafetyStates _writtenSafety = new();
 
+    // The latest handshake's SafetyStateSnapshot, once acknowledged: what the server holds for that generation until the
+    // next safety message (onboard-hmi#399). Read by the business service; see HandshakeSafety.
+    private WireToGateAcceptedSafety? _handshakeSafety;
+
     // SafetyStateChanged rows a handshake settled instead of replaying them, their version spent on other content (#394
     // review M1). Marked acknowledged in the journal like a row the business service gives up; kept here so that
     // WasSafetyStateChangedAcknowledgedAsync does not take them for delivered.
@@ -1198,11 +1202,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
             AdvanceSafetyStateVersion(safetyStateVersion);
-            RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+            WireToGateAcceptedSafety handshakeSafety = new(
                 safetyStateVersion,
                 generation,
                 safety,
-                WireToGateAcceptedSafetySource.HandshakeSnapshot));
+                WireToGateAcceptedSafetySource.HandshakeSnapshot);
+            Volatile.Write(ref _handshakeSafety, handshakeSafety);
+            RegisterAcceptedSafety(() => handshakeSafety);
 
             await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =
@@ -5438,6 +5444,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// (onboard-hmi#314). Observation only: nothing in the session or the business reads it.
     /// </summary>
     public WireToGateAcceptedSafety AcceptedSafety => _acceptedSafety.Current;
+
+    /// <summary>
+    /// The latest handshake's <c>SafetyStateSnapshot</c> once the server acknowledged it -- version, generation and the
+    /// summary it carried -- or null before the first (onboard-hmi#399). The real server applies it like a
+    /// <c>SafetyStateChanged</c> and decides readiness on it, so while the accepted version is still its version it is
+    /// what the server holds for that generation.
+    /// </summary>
+    public WireToGateAcceptedSafety? HandshakeSafety => Volatile.Read(ref _handshakeSafety);
 
     /// <summary>
     /// Registers what the server accepted, next to <see cref="AdvanceSafetyStateVersion"/>. Observation must not change

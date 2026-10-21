@@ -175,6 +175,20 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
     private int _repeatGenerationOnNextSession;
 
+    /// <summary>
+    /// Forgets the safety state on file, as a restarted server or a replaced store holds none for the vehicle's next
+    /// session: the real server clears <c>DepartureSafe</c> when a generation begins (control-server
+    /// <c>WireToGateStore.BeginSessionRecoveryAsync</c>), so readiness is decided on what that session reports
+    /// (onboard-hmi#399).
+    /// </summary>
+    public void ForgetSafetyOnFile()
+    {
+        lock (_sync)
+        {
+            _latestSafetyDepartureSafe = false;
+        }
+    }
+
     /// <summary>One write of <see cref="SafetyWrittenOnFile"/>.</summary>
     public sealed record SafetyOnFile(
         int Connection,

@@ -413,6 +413,51 @@ public sealed class SafetyRulesTests
         Assert.Equal("SLOT_NOT_LOCKED", Validate(authorization, snapshot));
     }
 
+    /// <summary>
+    /// The comparison that decides whether a handshake snapshot already carried the present reading
+    /// (8005-agv-onboard-hmi#399, review L1 of PR #401): a summary equal in every field, its reason codes in other
+    /// instances, is the same; one field changed alone, or the reason codes alone, is not.
+    /// </summary>
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
+    [InlineData(null)]
+    [InlineData("departureSafe")]
+    [InlineData("vehicleStopped")]
+    [InlineData("allTargetSlotsLocked")]
+    [InlineData("allUnlockOutputsReset")]
+    [InlineData("unknownPresent")]
+    [InlineData("reasonCodes")]
+    [InlineData("reasonCodeOrder")]
+    public void SameSummaryComparesEveryField(string? changed)
+    {
+        WireToGateSafetySummaryPayload left = new(
+            false,
+            true,
+            false,
+            true,
+            true,
+            ["SLOT_STATE_UNKNOWN", "LOCK_NOT_CLOSED"]);
+        WireToGateSafetySummaryPayload right = changed switch
+        {
+            null => left with { ReasonCodes = ["SLOT_STATE_UNKNOWN", "LOCK_NOT_CLOSED"] },
+            "departureSafe" => left with { DepartureSafe = true },
+            "vehicleStopped" => left with { VehicleStopped = false },
+            "allTargetSlotsLocked" => left with { AllTargetSlotsLocked = true },
+            "allUnlockOutputsReset" => left with { AllUnlockOutputsReset = false },
+            "unknownPresent" => left with { UnknownPresent = false },
+            "reasonCodes" => left with
+            {
+                ReasonCodes = ["SLOT_STATE_UNKNOWN", "LOCK_NOT_CLOSED", WireToGateSafetyEvaluator.FatalFaultLatchedReason]
+            },
+            "reasonCodeOrder" => left with { ReasonCodes = ["LOCK_NOT_CLOSED", "SLOT_STATE_UNKNOWN"] },
+            _ => throw new ArgumentOutOfRangeException(nameof(changed))
+        };
+
+        Assert.Equal(changed is null, WireToGateSafetyEvaluator.SameSummary(left, right));
+        Assert.Equal(changed is null, WireToGateSafetyEvaluator.SameSummary(right, left));
+    }
+
     private static string? Validate(ScanAuthorization authorization, IoSnapshot snapshot)
     {
         return SafetyRules.ValidateBeforeUnlock(

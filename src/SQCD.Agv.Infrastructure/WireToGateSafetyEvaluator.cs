@@ -98,4 +98,23 @@ public static class WireToGateSafetyEvaluator
             slotUnknown || vehicleUnknown,
             reasons.Distinct(StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>
+    /// Whether two summaries say the same thing on the wire: every field equal, the reason codes in the same order
+    /// (8005-agv-onboard-hmi#399).
+    /// </summary>
+    /// <remarks>
+    /// Record equality for every field but the list, which a record compares by reference; so a field added to the
+    /// summary is compared without anyone remembering to (review L1 of PR #401).
+    /// </remarks>
+    public static bool SameSummary(WireToGateSafetySummaryPayload left, WireToGateSafetySummaryPayload right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+        return left with { ReasonCodes = NoReasonCodes } == right with { ReasonCodes = NoReasonCodes }
+            && left.ReasonCodes.SequenceEqual(right.ReasonCodes, StringComparer.Ordinal);
+    }
+
+    // One instance on both sides of SameSummary's record comparison, so the list never decides it.
+    private static readonly string[] NoReasonCodes = [];
 }
