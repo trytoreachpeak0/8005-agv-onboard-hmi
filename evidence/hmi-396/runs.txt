@@ -254,3 +254,40 @@ Without injection, after the review's rework, CPU affinity 0xF, Invoke-HeavyLoca
               UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0
   at aa66480 (only RecoveryVectorG2Tests.cs changed since): G2 ArchitectureTests 13/13 exit 0; G2 RecoveryVectorG2Tests
               225/225 exit 0; UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0
+
+== AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn, thread-pool stall (apply-injection-pool.sh, minimum 64, CPU affinity 0xF, Invoke-HeavyLocal.ps1; one dotnet test per round, both cases) ==
+pre-fix = WaitFailureScene.cs at 8703ec2; fixed = 8635410.
+prefix round 1: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [6 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 2: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=26 
+prefix round 3: Failed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 4: Failed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [6 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+prefix round 5: Failed (stallTheThreadPool: True) [5 s] Passed (stallTheThreadPool: False) [5 s] Not found: "given back for process stalls" | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=25 
+fixed round 1: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 2: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 3: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=64 
+fixed round 4: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 5: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 6: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 7: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 8: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 9: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=65 
+fixed round 10: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | POOL stall=True min 4->64 threads=3 POOL stall=False min 64->64 threads=64 
+plain round 1: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 2: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [6 s]  | no injection
+plain round 3: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [6 s]  | no injection
+plain round 4: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 5: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [9 s]  | no injection
+plain round 6: Passed (stallTheThreadPool: True) [17 s] Passed (stallTheThreadPool: False) [13 s]  | no injection
+plain round 7: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 8: Passed (stallTheThreadPool: True) [6 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 9: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+plain round 10: Passed (stallTheThreadPool: True) [7 s] Passed (stallTheThreadPool: False) [5 s]  | no injection
+
+Without injection, at 8635410 (only WaitFailureScene.cs changed since aa66480), CPU affinity 0xF, Invoke-HeavyLocal.ps1:
+  G2 MultiDemandJourneyG2Tests + ArchitectureTests: 207/208, exit 1. The red is
+  AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished (RecoveryEntryAfterDisplayFrees.cs:246,
+  "A's slot to be unlocked and waiting on the operator"), a test this ticket does not touch, green 3/3 alone afterwards:
+  the vehicle's SafetyStateChanged was acknowledged by the double 43 ms after it was sent, and the vehicle still gave
+  it up 2 s later and disconnected. No product timer in the window of this ticket's shape; reported to the coordinator.
+  UnitTests ArchitectureTests 203/203 exit 0; dotnet format --verify-no-changes exit 0.
+  The same class was 208/208 at 519b2cd and at 5a8166a.

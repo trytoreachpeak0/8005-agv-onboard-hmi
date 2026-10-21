@@ -109,6 +109,28 @@ Without injection: see `runs.txt` (each family in its own process, G2 and UnitTe
 (433 tests on 4 cores) had two reds in tests this ticket does not touch, with no product timer in their windows; see
 `runs.txt`.
 
+## The stall test that could not stall (`AWaitThatRunsOutNamesTheMessageTheVehicleIsStuckOn(stallTheThreadPool: True)`)
+
+Added to this ticket by the coordinator: CI run 39572046925 (PR #397) went red at `WaitFailureScene.cs:312`,
+`Not found: "given back for process stalls"`, with "Thread pool: 25 threads, 0 work items queued" in the scene.
+
+Cause: the test makes the stall by queueing `ThreadPool.ThreadCount + 2 x cores + 8` tasks that each sleep 800 ms, so
+that the wait's poll continuation queues behind them past `StallThreshold`. Below the pool's minimum worker count the
+pool starts a thread for each queued item at once. With a raised minimum, sleepers counted from a small `ThreadCount`
+all get threads of their own, and threads are left over for the poll, so no poll runs late and nothing is given back.
+Whether the test can go red therefore depends on the pool's minimum when it runs. Fix (`StallThePoolOnceAsync`):
+count from `max(ThreadCount, minimum worker threads)`. Above the minimum the pool adds threads slowly, so the extra
+sleepers queue ahead of the poll for a whole sleep. Test only.
+
+Red / green (`apply-injection-pool.sh`, test side: raises the minimum to 64 at the start of the test and marks the
+minimum and the pool's size; CPU affinity 0xF via `Invoke-HeavyLocal.ps1`; one `dotnet test` per round, both cases;
+`runs.txt`):
+- pre-fix (`WaitFailureScene.cs` at `8703ec2`): 5/5 red on the stall case, each with CI's message; the stall case started with 3 threads and the
+  minimum raised from 4 to 64, and the next case found 25 threads, CI's number.
+- fixed (`8635410`): 10/10 rounds green, both cases each round (the next case found 64-65 threads: the stall now
+  queues past the raised minimum).
+- fixed, no injection: 10/10 rounds green, both cases each round.
+
 ## Not handled here
 
 - Residual risk: the 5 s left after the timer also has to absorb the latency the section above found right after it:
