@@ -249,6 +249,52 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// The server's answer can come before the run has reached its wait for it -- the hold and the decision in one breath, as
+    /// here, inside the prompt that offered the skip. The decision is still taken, once, and the load ends on it.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-REMAINING-BASKETS-SKIP-AUTHORIZED")]
+    public async Task ADecisionThatComesBeforeTheRunWaitsForItIsStillTaken()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        List<bool> decisions = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase != "WAITING_OPERATOR")
+                {
+                    return Task.CompletedTask;
+                }
+
+                if (progress.Cause == WireToGatePromptCause.ShutOverOpposite)
+                {
+                    Assert.True(fixture.Executor.HoldForRemainingBasketsSkip(command.SlotOperationAttemptId, SkipRequestId, [1]));
+                    decisions.Add(fixture.Executor.DecideRemainingBasketsSkip(command.SlotOperationAttemptId, SkipRequestId, [1]));
+                    decisions.Add(fixture.Executor.DecideRemainingBasketsSkip(command.SlotOperationAttemptId, SkipRequestId, null));
+                }
+                else if (progress.Cause != WireToGatePromptCause.RemainingBasketsSkipPending)
+                {
+                    int slotIndex = progress.Active.Single() - 1;
+                    fixture.Io.CloseDoor(slotIndex, cargo: slotIndex == 0);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("COMPLETED_REMAINING_SKIPPED", result.OverallOutcome);
+        Assert.Equal([true, false], decisions);
+        Assert.Equal(1, fixture.Io.UnlockCount(1));
+        Assert.Null(fixture.Executor.HeldRemainingBasketsSkipRequestId);
+    }
+
+    /// <summary>
     /// A rejected (or dropped) skip lets go of the hold: the run goes back to waiting for 「重新开门」, which opens the slot
     /// again, and the load completes normally; a later press of the skip would be a new request.
     /// </summary>

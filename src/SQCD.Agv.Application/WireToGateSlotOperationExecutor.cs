@@ -535,14 +535,17 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         lock (active)
         {
+            // The hold stays published until the run's wait takes it off: a decision that comes before the run has reached
+            // that wait -- a server that answers within milliseconds -- is still found there (found by the G2 injection of
+            // 8005-agv-onboard-hmi#388). A decided hold takes no second decision.
             if (active.SkipHold is not { } hold
+                || hold.Decision.Task.IsCompleted
                 || !string.Equals(hold.SkipRequestId, skipRequestId, StringComparison.Ordinal)
                 || authorizedSlots is not null && !hold.LoadedSlots.SequenceEqual(authorizedSlots.Order()))
             {
                 return false;
             }
 
-            active.SkipHold = null;
             return hold.Decision.TrySetResult(authorizedSlots is null ? null : [.. authorizedSlots.Order()]);
         }
     }
