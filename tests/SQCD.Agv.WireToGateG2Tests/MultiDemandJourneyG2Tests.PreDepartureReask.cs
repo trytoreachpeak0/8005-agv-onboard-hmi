@@ -152,11 +152,107 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.DoesNotContain("payload.safety", line, StringComparison.Ordinal);
     }
 
-    private static async Task<Harness> StartPreDepartureStopAsync(CancellationToken token, FakeIoModuleClient? io = null)
+    /// <summary>
+    /// 日志簿那一侧（审查 L2）：同一条检查答了两次而服务端都还没确认，两份各占发件箱一行、messageId 不同；车载端重启后
+    /// 握手按原 messageId、原内容（<c>observedAt</c> 不重取）把两份都重放一遍，服务端确认后两行都记为已确认。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
+    public async Task TwoUnacknowledgedAnswersToOneCheckAreReplayedAsTheyWereAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness first = await StartPreDepartureStopAsync(
+            token,
+            io,
+            server => server.WithholdPreDepartureSafetyCheckResultAck = true);
+        await Task.Delay(300, token);
+
+        long version = first.Session.Current.SafetyStateVersion;
+        string checkId = Guid.NewGuid().ToString("D");
+        string requestId = Guid.NewGuid().ToString("D");
+        await SendDepartureCheckAsync(first, requestId, checkId, version);
+        await WaitForPreDepartureResultsAsync(first, 1, token);
+        await Task.Delay(50, token);
+        await SendDepartureCheckAsync(first, requestId, checkId, version);
+        (string MessageId, string? CorrelationId, JsonElement Payload)[] answered =
+            await WaitForPreDepartureResultsAsync(first, 2, token);
+        Assert.NotEqual(answered[0].MessageId, answered[1].MessageId);
+
+        await first.StopVehicleAsync();
+        WireToGateDurableMessage[] owed;
+        await using (SqliteWireToGateJournal journal = new(first.JournalPath))
+        {
+            owed =
+            [
+                .. (await journal.ReadUnacknowledgedOutgoingAsync(token))
+                    .Where(row => row.MessageType == "PreDepartureSafetyCheckResult")
+            ];
+        }
+
+        Assert.Equal(
+            answered.Select(answer => answer.MessageId).Order(StringComparer.Ordinal),
+            owed.Select(row => row.MessageId).Order(StringComparer.Ordinal));
+        Assert.All(owed, row => Assert.StartsWith($"predeparture:{checkId}:", row.DeduplicationKey, StringComparison.Ordinal));
+
+        int deliveredBefore = first.Server.ReceivedEnvelopes.Count(item => item.MessageType == "PreDepartureSafetyCheckResult");
+        first.Server.WithholdPreDepartureSafetyCheckResultAck = false;
+        first.Server.SimulateOnboardProcessRestart();
+        await using Harness second = await Harness.StartAgainstAsync(first.Server, token, first.JournalPath, io);
+        await second.WaitUntilAsync(
+            () => second.Server.ReceivedEnvelopes.Count(item => item.MessageType == "PreDepartureSafetyCheckResult")
+                >= deliveredBefore + 2,
+            "both owed answers to be replayed after the restart",
+            token);
+
+        (string MessageId, string? CorrelationId, JsonElement Payload)[] all =
+            await WaitForPreDepartureResultsAsync(second, deliveredBefore + 2, token);
+        foreach ((string messageId, _, JsonElement payload) in answered)
+        {
+            (_, _, JsonElement replayed) = Assert.Single(all.Skip(deliveredBefore), item => item.MessageId == messageId);
+            Assert.Equal(
+                payload.GetProperty("observedAt").GetDateTimeOffset(),
+                replayed.GetProperty("observedAt").GetDateTimeOffset());
+            Assert.Equal(
+                payload.GetProperty("validUntil").GetDateTimeOffset(),
+                replayed.GetProperty("validUntil").GetDateTimeOffset());
+        }
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            bool acknowledged = true;
+            await using (SqliteWireToGateJournal journal = new(first.JournalPath))
+            {
+                foreach (WireToGateDurableMessage row in owed)
+                {
+                    acknowledged &= await journal.ReadOutgoingByDeduplicationKeyAsync(row.DeduplicationKey, token)
+                        is { Acknowledged: true };
+                }
+            }
+
+            if (acknowledged)
+            {
+                break;
+            }
+
+            Assert.True(DateTimeOffset.UtcNow < deadline, "Timed out waiting for both replayed answers to be acknowledged on file.");
+            await Task.Delay(100, token);
+        }
+        Assert.DoesNotContain(second.Server.Received, item => item.MessageType == "ProtocolProblem");
+        Assert.Empty(second.UiErrors);
+    }
+
+    private static async Task<Harness> StartPreDepartureStopAsync(
+        CancellationToken token,
+        FakeIoModuleClient? io = null,
+        Action<FakeControlServer>? configure = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
             {
+                configure?.Invoke(server);
                 server.SendJourneySnapshotsAfterRecovery = true;
                 server.JourneySnapshotPayloads = new Dictionary<string, object>
                 {
