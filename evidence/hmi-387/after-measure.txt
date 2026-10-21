@@ -1,0 +1,16 @@
+[after machine-pickup] column viewport=275 extent=431
+  row0 h=55 top=22 fullyVisible=True | 'Q26056680-14' fs=18 w=218/124 | '取货    待送→焊线机台    2 篮' fs=14 w=218/180 | '前侧' fs=15 w=30/36 TRIMMED
+  row1 h=55 top=77 fullyVisible=True | 'Q260566829-12' fs=18 w=218/135 | '取货    装片→焊线待送    12 篮' fs=14 w=218/188 | '后侧' fs=15 w=30/36 TRIMMED
+  row2 h=55 top=131 fullyVisible=True | 'Q260566829-123' fs=18 w=203/145 | '取货    焊线→质检关卡    2 篮' fs=14 w=203/180 | '待分配' fs=15 w=45/51 TRIMMED
+  row3 h=55 top=186 fullyVisible=True | 'Q2605668291-123' fs=18 w=218/156 | '取货    焊线→氮气柜    2 篮' fs=14 w=218/166 | '前侧' fs=15 w=30/36 TRIMMED
+  row4 h=55 top=240 fullyVisible=True | 'Q26056682912-123' fs=18 w=218/166 | '取货    装片→焊线待送    2 篮' fs=14 w=218/180 | '后侧' fs=15 w=30/36 TRIMMED
+  row5 h=55 top=295 fullyVisible=True | 'FIELD-1009-AGV02-01' fs=18 w=203/189 | '取货    焊线→全检    2 篮' fs=14 w=203/152 | '待分配' fs=15 w=45/51 TRIMMED
+  row6 h=55 top=349 fullyVisible=True | 'L2-CS-20260916T110453970Z-0' fs=18 w=218/271 TRIMMED | '取货    待送→焊线机台    2 篮' fs=14 w=218/180 | '前侧' fs=15 w=30/36 TRIMMED
+[after staging-pickup] column viewport=275 extent=310
+  row0 h=37 top=22 fullyVisible=True | 'Q26056680-14' fs=18 w=153/124 | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25
+  row1 h=37 top=59 fullyVisible=True | 'Q260566829-12' fs=18 w=145/135 | '12 篮' fs=15 w=35/41 TRIMMED | button fs=16 w=56 h=25
+  row2 h=37 top=97 fullyVisible=True | 'Q260566829-123' fs=18 w=153/145 | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25
+  row3 h=37 top=134 fullyVisible=True | 'Q2605668291-123' fs=18 w=153/156 TRIMMED | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25
+  row4 h=37 top=171 fullyVisible=True | 'Q26056682912-123' fs=18 w=153/166 TRIMMED | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25
+  row5 h=37 top=208 fullyVisible=True | 'FIELD-1009-AGV02-01' fs=18 w=153/189 TRIMMED | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25
+  row6 h=37 top=246 fullyVisible=True | 'L2-CS-20260916T110453970Z-0' fs=18 w=153/271 TRIMMED | '2 篮' fs=15 w=27/33 TRIMMED | button fs=16 w=56 h=25

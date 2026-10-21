@@ -1,0 +1,230 @@
+// SCRATCH for hmi#387 screenshots. Never commit.
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Markup;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using SQCD.Agv.Application;
+using SQCD.Agv.Core;
+using SQCD.Agv.Wpf.ViewModels;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+public sealed class Hmi387ScreenshotScratch
+{
+    private static readonly string[] Sublots =
+    [
+        "Q26056680-14",
+        "Q260566829-12",
+        "Q260566829-123",
+        "Q2605668291-123",
+        "Q26056682912-123",
+        "FIELD-1009-AGV02-01",
+        "L2-CS-20260916T110453970Z-0",
+    ];
+
+    private static readonly string[] TaskTypes = ["待送→焊线机台", "装片→焊线待送", "焊线→质检关卡", "焊线→氮气柜", "装片→焊线待送", "焊线→全检", "待送→焊线机台"];
+    private static readonly string[] Sides = ["前侧", "后侧", "待分配", "前侧", "后侧", "待分配", "前侧"];
+
+    [Fact]
+    public async Task Render()
+    {
+        string xamlPath = Environment.GetEnvironmentVariable("HMI387_XAML")!;
+        string outDir = Environment.GetEnvironmentVariable("HMI387_OUT")!;
+        string tag = Environment.GetEnvironmentVariable("HMI387_TAG")!;
+        Directory.CreateDirectory(outDir);
+        StringBuilder report = new();
+        foreach (bool staging in new[] { false, true })
+        {
+            await using OnboardController controller = MultiDemandViewModelTests.Controller();
+            MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+            viewModel.UpdateWireToGateJourney(MultiDemandViewModelTests.Journey(MultiDemandViewModelTests.Worklist(
+                1,
+                [.. Enumerable.Range(0, Sublots.Length).Select(i => MultiDemandViewModelTests.Item(
+                    $"aaaaaaaa-0000-4000-8000-{i:D12}", Sublots[i], WireToGateStagingPickupStop.StagingToWire, "PICKUP", 2))])));
+            viewModel.WorklistItems.Clear();
+            for (int i = 0; i < Sublots.Length; i++)
+            {
+                viewModel.WorklistItems.Add(new WorklistItemRow(
+                    $"aaaaaaaa-0000-4000-8000-{i:D12}",
+                    Sublots[i],
+                    "取货",
+                    TaskTypes[i],
+                    i == 1 ? 12 : 2,
+                    staging ? "待分配" : Sides[i],
+                    staging ? "UNASSIGNED" : "FRONT",
+                    OffersCancellation: staging,
+                    CanPressCancellation: staging)
+                { AtStagingPickupStop = staging });
+            }
+
+            string scenario = staging ? "staging-pickup" : "machine-pickup";
+            OnSta(() =>
+            {
+                Window window = (Window)XamlReader.Parse(Loadable(xamlPath));
+                FrameworkElement root = (FrameworkElement)window.Content;
+                window.Content = null;
+                root.Resources.MergedDictionaries.Add(window.Resources);
+                root.DataContext = viewModel;
+                root.Measure(new Size(1004, 660));
+                root.Arrange(new Rect(0, 0, 1004, 660));
+                root.UpdateLayout();
+                Save(root, Path.Combine(outDir, $"{tag}-{scenario}-screen.png"));
+                ListBox list = Find<ListBox>(root, e => AutomationProperties.GetAutomationId(e) == "WorklistItems")!;
+                ScrollViewer column = Ancestor<ScrollViewer>(list)!;
+                Border border = Ancestor<Border>(column)!;
+                Save(border, Path.Combine(outDir, $"{tag}-{scenario}-left-column.png"));
+                report.AppendLine(CultureInfo.InvariantCulture, $"[{tag} {scenario}] column viewport={column.ViewportHeight:F0} extent={column.ExtentHeight:F0}");
+                for (int i = 0; i < list.Items.Count; i++)
+                {
+                    ListBoxItem item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(i);
+                    List<TextBlock> blocks = [];
+                    Collect(item, blocks);
+                    Button? cancel = Find<Button>(item, _ => true);
+                    double visibleTop = item.TranslatePoint(new Point(0, 0), column).Y;
+                    StringBuilder line = new();
+                    line.Append(CultureInfo.InvariantCulture, $"  row{i} h={item.ActualHeight:F0} top={visibleTop:F0} fullyVisible={visibleTop >= 0 && visibleTop + item.ActualHeight <= column.ViewportHeight}");
+                    foreach (TextBlock block in blocks.Where(b => b.Visibility == Visibility.Visible && !string.IsNullOrEmpty(TextOf(b))))
+                    {
+                        block.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                        double natural = block.DesiredSize.Width;
+                        block.InvalidateMeasure();
+                        root.UpdateLayout();
+                        bool trimmed = natural > block.ActualWidth + 0.5;
+                        line.Append(CultureInfo.InvariantCulture, $" | '{TextOf(block)}' fs={block.FontSize} w={block.ActualWidth:F0}/{natural:F0}{(trimmed ? " TRIMMED" : string.Empty)}");
+                    }
+
+                    if (cancel is { Visibility: Visibility.Visible })
+                    {
+                        line.Append(CultureInfo.InvariantCulture, $" | button fs={cancel.FontSize} w={cancel.ActualWidth:F0} h={cancel.ActualHeight:F0}");
+                    }
+
+                    report.AppendLine(line.ToString());
+                }
+            });
+        }
+
+        File.WriteAllText(Path.Combine(outDir, $"{tag}-measure.txt"), report.ToString());
+    }
+
+    private static string TextOf(TextBlock block) =>
+        block.Inlines.Count > 0 ? string.Concat(block.Inlines.OfType<System.Windows.Documents.Run>().Select(r => r.Text)) : block.Text;
+
+    private static void Collect(DependencyObject root, List<TextBlock> found)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+            if (child is TextBlock block && Ancestor<Button>(block) is null)
+            {
+                found.Add(block);
+            }
+
+            Collect(child, found);
+        }
+    }
+
+    private static void Save(FrameworkElement element, string path)
+    {
+        const double scale = 1.0;
+        RenderTargetBitmap bitmap = new((int)Math.Ceiling(element.ActualWidth * scale), (int)Math.Ceiling(element.ActualHeight * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        DrawingVisual visual = new();
+        using (DrawingContext context = visual.RenderOpen())
+        {
+            context.DrawRectangle(new SolidColorBrush(Color.FromRgb(0xE8, 0xED, 0xF3)), null, new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            context.DrawRectangle(new VisualBrush(element), null, new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+        }
+
+        bitmap.Render(visual);
+        PngBitmapEncoder encoder = new();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using FileStream stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private static string Loadable(string xamlPath)
+    {
+        string repo = RepositoryRoot();
+        string app = File.ReadAllText(Path.Combine(repo, "src", "SQCD.Agv.Wpf", "App.xaml"));
+        string resources = Regex.Match(app, @"<Application\.Resources>(?<r>[\s\S]*)</Application\.Resources>").Groups["r"].Value;
+        string xaml = File.ReadAllText(xamlPath);
+        xaml = xaml
+            .Replace("x:Class=\"SQCD.Agv.Wpf.MainWindow\"", string.Empty, StringComparison.Ordinal)
+            .Replace("clr-namespace:SQCD.Agv.Wpf.ViewModels\"", "clr-namespace:SQCD.Agv.Wpf.ViewModels;assembly=SQCD.Agv.Wpf\"", StringComparison.Ordinal)
+            .Replace("Background=\"{StaticResource PageBackgroundBrush}\"", string.Empty, StringComparison.Ordinal);
+        xaml = Regex.Replace(xaml, @"\sClick=""[A-Za-z]+""", string.Empty);
+        int body = xaml.IndexOf('>', xaml.IndexOf("<Window", StringComparison.Ordinal)) + 1;
+        return xaml[..body] + "<Window.Resources>" + resources + "</Window.Resources>" + xaml[body..];
+    }
+
+    private static void OnSta(Action work)
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                work();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (failure is not null)
+        {
+            throw new InvalidOperationException("STA work failed", failure);
+        }
+    }
+
+    private static T? Find<T>(DependencyObject root, Func<T, bool> match)
+        where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+            if (child is T typed && match(typed))
+            {
+                return typed;
+            }
+
+            if (Find(child, match) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static T? Ancestor<T>(DependencyObject element)
+        where T : DependencyObject
+    {
+        DependencyObject? current = VisualTreeHelper.GetParent(element);
+        while (current is not null and not T)
+        {
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return current as T;
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory!.FullName;
+    }
+}
