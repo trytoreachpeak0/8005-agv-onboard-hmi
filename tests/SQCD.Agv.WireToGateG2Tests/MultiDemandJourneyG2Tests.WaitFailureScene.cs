@@ -61,6 +61,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         DateTimeOffset timedOutAt)
     {
         var received = server.ReceivedEnvelopes;
+        var receivedAt = server.ReceivedAt;
         var sent = server.SentEnvelopes;
         // The ack of each message of the vehicle's this double has queued, by the vehicle's messageId: the ack's own id,
         // for when it was written.
@@ -152,10 +153,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
 
         scene.AppendLine(CultureInfo.InvariantCulture, $"Sent by the vehicle, last {SceneMessages}:");
-        foreach (var envelope in received.TakeLast(SceneMessages))
+        for (int index = Math.Max(0, received.Count - SceneMessages); index < received.Count; index++)
         {
+            var envelope = received[index];
             string ack = acknowledgedTypes.Contains(envelope.MessageType) ? $" -> {AckState(envelope.MessageId)}" : string.Empty;
-            scene.AppendLine(CultureInfo.InvariantCulture, $"  {Line(envelope)}{ack}");
+            scene.AppendLine(CultureInfo.InvariantCulture, $"  {Line(envelope, receivedAt[index])}{ack}");
         }
 
         scene.AppendLine(CultureInfo.InvariantCulture, $"Sent by this double, last {SceneMessages}:");
@@ -180,12 +182,19 @@ public sealed partial class MultiDemandJourneyG2Tests
         return $"{envelope.MessageType} {envelope.MessageId}{(document is null ? string.Empty : Detail(document.RootElement))}";
     }
 
-    /// <summary>A message of the vehicle's as this double read it, with the <c>sentAt</c> the vehicle stamped on it.</summary>
-    private static string Line((int Connection, string MessageType, string MessageId, string WireLine) envelope)
+    /// <summary>
+    /// A message of the vehicle's as this double read it: when it was read, which is when it reached the wire as near as this
+    /// side can tell, and the <c>sentAt</c> the vehicle stamped on it. Not <c>sentAt</c> alone: a resend carries the first
+    /// copy's, so an <c>OperationResult</c> resent seconds later read as sent at the same instant twice
+    /// (8005-agv-onboard-hmi#393 review S4).
+    /// </summary>
+    private static string Line(
+        (int Connection, string MessageType, string MessageId, string WireLine) envelope,
+        DateTimeOffset readAt)
     {
         using JsonDocument? document = TryParse(envelope.WireLine);
         DateTimeOffset? sentAt = document is null ? null : SentAt(document.RootElement);
-        return $"{Name(envelope)} sent {(sentAt is { } at ? Clock(at) : "?")}";
+        return $"{Name(envelope)} read {Clock(readAt)} (sentAt {(sentAt is { } at ? Clock(at) : "?")})";
     }
 
     private static string Clock(DateTimeOffset at) => at.ToUniversalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
@@ -323,7 +332,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.Matches(
                 new Regex($@"Owed by the vehicle's outbox[^\n]*\n(  [^\n]*\n)*  OperationProgress {progressId} \(PREPARING\) on file "),
                 failure.Message);
-            Assert.Contains($"OperationProgress {progressId} (PREPARING) sent ", failure.Message);
+            Assert.Contains($"OperationProgress {progressId} (PREPARING) read ", failure.Message);
             Assert.Matches(new Regex(@"DurableAck [0-9a-f-]+ \(OperationProgress\) written \d\d:"), failure.Message);
             Assert.Contains("Vehicle log, last entries:", failure.Message);
         }
