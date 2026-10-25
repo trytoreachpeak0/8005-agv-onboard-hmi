@@ -236,7 +236,7 @@ public sealed class DoorShutOverOppositeOccupancyG2Tests
 
     /// <summary>
     /// 装货空关后等按键时，「取消装货」照常可用：授权之后原执行器停下、不再开锁，取消执行器接手这扇关着的空门，报
-    /// <c>ALL_EMPTY</c>，原装货不发结果。
+    /// <c>ALL_EMPTY</c>，原装货不发结果。授权是空范围（协议 6.0.0，8005-agv-onboard-hmi#392）。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -252,11 +252,7 @@ public sealed class DoorShutOverOppositeOccupancyG2Tests
             io,
             "LOAD",
             token,
-            server =>
-            {
-                server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [Slot];
-            });
+            server => server.RespondToLoadCancellationRequests = true);
 
         await WaitForReopenOfferAsync(harness, token);
         Assert.True(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));

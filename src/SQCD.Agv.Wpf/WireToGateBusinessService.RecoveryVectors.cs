@@ -1443,7 +1443,7 @@ public sealed partial class WireToGateBusinessService
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
                 $"取消装货未申请、未开仓门：attempt={operation.SlotOperationAttemptId}，原因={refusal}。");
-            PublishOperatorResponse("RECOVERY_BLOCKED", WireToGateLoadCancellationText.Blocked(refusal) + "。 ");
+            PublishOperatorResponse("RECOVERY_BLOCKED", $"{WireToGateLoadCancellationText.Blocked(refusal)}（{refusal}）。 ");
             return true;
         }
 

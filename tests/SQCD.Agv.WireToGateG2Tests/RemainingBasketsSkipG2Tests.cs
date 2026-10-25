@@ -478,8 +478,10 @@ public sealed class RemainingBasketsSkipG2Tests
     }
 
     /// <summary>
-    /// A cancellation asked for with a basket in is refused by the server with <c>LOAD_CANCELLATION_BASKET_LOADED</c>: the
-    /// screen says so and names the way to load fewer, the skip is still offered, and the load goes on.
+    /// A cancellation pressed with a basket in is refused with <c>LOAD_CANCELLATION_BASKET_LOADED</c>: the screen says so and
+    /// names the way to load fewer, the skip is still offered, and the load goes on. Since 8005-agv-onboard-hmi#392 the vehicle
+    /// refuses it itself and asks nothing; the server's own refusal, should it be asked, is shown in the same words
+    /// (<see cref="LoadCancellationEmptyScopeG2Tests"/>).
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -512,7 +514,9 @@ public sealed class RemainingBasketsSkipG2Tests
         WireToGateRemainingBasketsSkipOffer offer = await WaitForOfferAsync(harness, token);
         Assert.Equal([1], offer.LoadedSlots);
         AssertNoResult(harness);
-        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationResult");
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType is "LoadCancellationStartRequested" or "LoadCancellationResult");
     }
 
     /// <summary>Pulse 1 opens slot 1 and the operator puts a basket in; pulse 2 opens slot 2 and it is shut empty.</summary>
