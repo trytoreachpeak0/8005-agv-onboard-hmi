@@ -53,6 +53,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         HmiButtonState abandon = ButtonOf(harness.ScreenState(), "OnAbandonResumeClick");
         Assert.Equal((true, true), (abandon.Visible, abandon.Enabled));
         Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+        // 提示与可按的按钮一致：续行里没有「取消装货」，放弃的那一个按钮叫「不装了」（10-22 屏上写着「不装了请按取消」）。
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentOperationSnapshot?.Guidance
+                == "1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「不装了」。",
+            "the resume's prompt to name the button that gives up",
+            token);
 
         Assert.True(await harness.ViewModel.AbandonResumeAsync(token));
         string resumeResultId = FakeControlServerIdentifiers.StableUuid(
