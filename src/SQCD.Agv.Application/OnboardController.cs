@@ -373,7 +373,7 @@ public sealed class OnboardController : IAsyncDisposable
             await _ioModule.WaitForLockerAsync(
                 slotIndex,
                 locker => locker.IsKnown
-                    && locker.ObservedAt >= unlockedLocker.ObservedAt
+                    && locker.IsObservedNoEarlierThan(unlockedLocker)
                     && locker.UnlockOutputRaw is false,
                 _options.UnlockOutputResetTimeout,
                 _options.FeedbackStableWindow,
@@ -924,7 +924,7 @@ public sealed class OnboardController : IAsyncDisposable
             await _ioModule.WaitForLockerAsync(
                 operation.SlotIndex,
                 locker => locker.IsKnown
-                    && locker.ObservedAt >= unlockedLocker.ObservedAt
+                    && locker.IsObservedNoEarlierThan(unlockedLocker)
                     && locker.UnlockOutputRaw is false,
                 MinTimeout(_options.UnlockOutputResetTimeout, GetRemainingOperationTime(deadline)),
                 _options.FeedbackStableWindow,

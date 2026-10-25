@@ -2310,7 +2310,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 await WaitForOutputResetAsync(
                     slotIndex,
                     locker => locker.IsKnown
-                        && locker.ObservedAt >= unlocked.ObservedAt
+                        && locker.IsObservedNoEarlierThan(unlocked)
                         && locker.UnlockOutputRaw is false,
                     cancellationToken).ConfigureAwait(false);
             }

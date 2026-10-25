@@ -108,10 +108,17 @@ public sealed record LockerSnapshot(
     /// <summary>
     /// Whether this reading was taken no earlier than <paramref name="other"/> (8005-agv-onboard-hmi#404).
     /// </summary>
+    /// <remarks>
+    /// Compared on <see cref="ObservedTimestamp"/> when both carry one: after the wall clock is stepped back, a reading
+    /// taken later has the earlier <see cref="ObservedAt"/>, and a wait for one taken after an unlock went on until the
+    /// wall clock caught up. On <see cref="ObservedAt"/> only when either does not, as for readings no IO module took.
+    /// </remarks>
     public bool IsObservedNoEarlierThan(LockerSnapshot other)
     {
         ArgumentNullException.ThrowIfNull(other);
-        return ObservedAt >= other.ObservedAt;
+        return ObservedTimestamp is { } observed && other.ObservedTimestamp is { } otherObserved
+            ? observed >= otherObserved
+            : ObservedAt >= other.ObservedAt;
     }
 
     // 未知仓位

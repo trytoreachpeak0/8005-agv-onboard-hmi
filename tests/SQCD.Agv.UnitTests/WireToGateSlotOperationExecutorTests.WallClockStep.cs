@@ -86,6 +86,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// </remarks>
     [Theory]
     [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     [InlineData(-3_000)]
     [InlineData(31_000)]

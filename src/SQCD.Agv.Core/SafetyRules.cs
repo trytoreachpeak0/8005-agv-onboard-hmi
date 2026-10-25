@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace SQCD.Agv.Core;
 
 public static class SafetyRules
@@ -107,13 +109,42 @@ public static class SafetyRules
         return IsSnapshotFresh(snapshot, clock.Now, clock.GetTimestamp(), snapshotMaxAge);
     }
 
+    /// <summary>
+    /// Whether <paramref name="snapshot"/> is no older than <paramref name="snapshotMaxAge"/>, measured on the monotonic
+    /// clock (8005-agv-onboard-hmi#404).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reading the IO module took carries its <see cref="IoSnapshot.ObservedTimestamp"/>, and its age is
+    /// <paramref name="nowTimestamp"/> less that: the wall clock stepped by workspace#55's hourly <c>Set-Date -Adjust</c>
+    /// neither ages it past the maximum nor makes it come "from the future", which on the wall clock left a precheck
+    /// refused as <c>SLOT_STATE_UNKNOWN</c> and a safe finish recorded as an active unlock set. A timestamp after
+    /// <paramref name="nowTimestamp"/> is a reading published after the caller read its clock, the freshest there is.
+    /// </para>
+    /// <para>
+    /// A snapshot without one -- the unknown snapshot before the first reading, or a test double's -- is measured on the
+    /// wall clock as before: <paramref name="now"/> less its <see cref="IoSnapshot.ObservedAt"/>, and stale when that is
+    /// in the future.
+    /// </para>
+    /// </remarks>
     public static bool IsSnapshotFresh(
         IoSnapshot snapshot,
         DateTimeOffset now,
         long nowTimestamp,
         TimeSpan snapshotMaxAge)
     {
-        if (snapshotMaxAge <= TimeSpan.Zero || snapshot.ObservedAt > now)
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshotMaxAge <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        if (snapshot.ObservedTimestamp is { } observed)
+        {
+            return nowTimestamp <= observed || Stopwatch.GetElapsedTime(observed, nowTimestamp) <= snapshotMaxAge;
+        }
+
+        if (snapshot.ObservedAt > now)
         {
             return false;
         }
