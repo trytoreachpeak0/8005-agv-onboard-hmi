@@ -76,7 +76,14 @@ public enum WireToGateOperatorSlotRequest
     /// <see cref="WireToGateSlotOperationExecutor.HoldForRemainingBasketsSkip"/>, which checks what the skip needs first; a
     /// <see cref="WireToGateSlotOperationExecutor.SubmitOperatorRequest"/> of this value is refused (8005-agv-onboard-hmi#388).
     /// </summary>
-    RemainingBasketsSkip
+    RemainingBasketsSkip,
+
+    /// <summary>
+    /// 「不装了」 in a resume over empty slots: the run ends with what the slots read, opening nothing. Handed over only by
+    /// <see cref="WireToGateSlotOperationExecutor.AbandonResume"/>, which checks what it needs first; a
+    /// <see cref="WireToGateSlotOperationExecutor.SubmitOperatorRequest"/> of this value is refused (8005-agv-onboard-hmi#410).
+    /// </summary>
+    AbandonResume
 }
 
 /// <summary>
@@ -315,6 +322,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         public CancellationTokenSource Abort { get; } = abort;
 
+        /// <summary>Whether this run is a <c>RESUME_AFTER_REPAIR</c>, the one run 「不装了」 is offered in (8005-agv-onboard-hmi#410).</summary>
+        public bool IsResume { get; init; }
+
         /// <summary>
         /// The slot this run is driving and has not yet closed or failed -- the one a declaration may name.
         /// Read and written only under <see cref="_declarationGate"/>.
@@ -394,7 +404,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateOperatorSlotRequest request)
     {
         ActiveOperation? active = Volatile.Read(ref _activeOperation);
-        if (request == WireToGateOperatorSlotRequest.RemainingBasketsSkip
+        if (request is WireToGateOperatorSlotRequest.RemainingBasketsSkip or WireToGateOperatorSlotRequest.AbandonResume
             || active is null
             || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
         {
@@ -549,6 +559,84 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return hold.Decision.TrySetResult(authorizedSlots is null ? null : [.. authorizedSlots.Order()]);
         }
     }
+
+    /// <summary>
+    /// The attempt 「不装了」 would end now, or <c>null</c> when it is not offered (8005-agv-onboard-hmi#410): a resumed load held
+    /// shut for 「重新开门」, nothing loaded in this run, and every target slot read fresh, known, locked, its unlock output
+    /// reset and empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only in a resume.</b> The first run of a load has 「取消装货」, which the server authorizes. A resume runs over a load
+    /// whose own result is with the server, which refuses that cancellation and a 「剩下的不装」 alike; without this, a resume
+    /// with nothing to load had no way to end but the door reopened on every press (agv01 2026-10-22).
+    /// </para>
+    /// <para>
+    /// <b>Only over empty slots, read off the IO as it is now.</b> Ended here, the load is settled by 「补偿清空」, which proves
+    /// every slot empty; a basket in a slot would be cargo this load no longer claims. A slot completed earlier in the run is
+    /// a basket loaded, so that rules it out as well.
+    /// </para>
+    /// </remarks>
+    public string? ResumeAbandonableAttempt
+    {
+        get
+        {
+            ActiveOperation? active = Volatile.Read(ref _activeOperation);
+            if (active is null)
+            {
+                return null;
+            }
+
+            lock (active)
+            {
+                return AbandonableOver(active, _ioModule.CurrentSnapshot) ? active.SlotOperationAttemptId : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The operator pressed 「不装了」 over <paramref name="slotOperationAttemptId"/>: the run ends with what the slots read and
+    /// opens nothing more. True when the run took the press; false, and nothing changes, when it is not offered now
+    /// (<see cref="ResumeAbandonableAttempt"/>) or is another attempt's.
+    /// </summary>
+    /// <remarks>Taken in the same lock that takes a 「重新开门」, so the two presses of one wait cannot both win.</remarks>
+    public bool AbandonResume(string slotOperationAttemptId)
+    {
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
+        if (active is null
+            || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (active)
+        {
+            if (!AbandonableOver(active, _ioModule.CurrentSnapshot) || active.OperatorRequest is not { } pending)
+            {
+                return false;
+            }
+
+            active.OperatorRequest = null;
+            return pending.Answer.TrySetResult(WireToGateOperatorSlotRequest.AbandonResume);
+        }
+    }
+
+    /// <summary>Whether 「不装了」 is offered over <paramref name="active"/> as <paramref name="snapshot"/> reads. Under its lock.</summary>
+    private bool AbandonableOver(ActiveOperation active, IoSnapshot snapshot) =>
+        active.IsResume
+        && active.SkipHold is null
+        && active.OperatorRequest is { Command.OperationType: OperationType.Load, Completed.Count: 0 } pending
+        && AllTargetSlotsReadEmptyAndShut(pending.Command, snapshot);
+
+    private bool AllTargetSlotsReadEmptyAndShut(WireToGateSlotOperationCommand command, IoSnapshot snapshot) =>
+        IsFresh(snapshot)
+        && command.Slots.All(slot => TryGetLocker(snapshot, slot - 1) is
+        {
+            IsKnown: true,
+            IsLocked: true,
+            UnlockOutputRaw: false,
+            HasCargo: false
+        });
 
     /// <summary>The skip offered over <paramref name="pending"/> as <paramref name="snapshot"/> reads, or <c>null</c>.</summary>
     private WireToGateRemainingBasketsSkipOffer? SkipOfferOver(PendingOperatorRequest pending, IoSnapshot snapshot)
@@ -808,7 +896,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Volatile.Write(ref _activeOperation, new ActiveOperation(resume.SlotOperationAttemptId, abort));
+        Volatile.Write(ref _activeOperation, new ActiveOperation(resume.SlotOperationAttemptId, abort) { IsResume = true });
         cancellationToken = abort.Token;
         try
         {
@@ -1707,6 +1795,31 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     physicalSlot,
                     authorized.AuthorizedSlots).ConfigureAwait(false);
             }
+            catch (ResumeAbandonedException)
+            {
+                // The operator's 「不装了」 in a resume over empty slots (8005-agv-onboard-hmi#410). A declaration applied
+                // first still owns its slot.
+                if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
+                {
+                    return await SettleDeclaredAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        progress,
+                        physicalSlot).ConfigureAwait(false);
+                }
+
+                return await SettleResumeAbandonedAsync(
+                    command,
+                    context,
+                    existingState,
+                    completed,
+                    results,
+                    progress,
+                    physicalSlot).ConfigureAwait(false);
+            }
             catch (FatalFaultLatchedException latched)
             {
                 if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
@@ -1827,6 +1940,75 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             .ConfigureAwait(false);
         return CreateResult(command, "COMPLETED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
     }
+
+    /// <summary>
+    /// Ends a resume on the operator's 「不装了」 (8005-agv-onboard-hmi#410) with what the slots read now: <c>FAILED</c> -- the
+    /// slot held shut <c>FAILED</c>, the slots the run had not reached <c>NOT_STARTED</c>, none with a reason code -- at the
+    /// safe finish, with no door opened on the way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>FAILED, not UNKNOWN</b>, for the reason a latch refusal is FAILED (<see cref="SettleRefusedByLatchAsync"/>): every
+    /// slot is read, shut, locked and reset, so nothing about it is in doubt. It carries no <c>OPERATOR_TIMEOUT</c>, so the
+    /// server never settles it as a determinate failure: it judges the replacement not reconciled, keeps the load
+    /// RecoveryRequired and closes the session, and 「补偿清空」 settles the load next. No protocol reason code says "the
+    /// operator gave up", and none is borrowed.
+    /// </para>
+    /// <para>
+    /// <b>When the slots no longer read so</b> -- changed in the milliseconds since the press was taken -- the held slot is
+    /// reported <c>UNKNOWN</c> under the reason its reading gives, as any other reading that cannot be trusted is.
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateOperationExecutionResult> SettleResumeAbandonedAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        int physicalSlot)
+    {
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        bool proven = AllTargetSlotsReadEmptyAndShut(command, snapshot);
+        LockerSnapshot held = ReadLocker(snapshot, physicalSlot - 1);
+        UpsertResult(
+            results,
+            proven
+                ? CreateSlotResult(held, "FAILED", [])
+                : CreateSlotResult(held, "UNKNOWN", [UnprovenReason(held)]));
+        foreach (int notStarted in command.Slots
+            .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
+        {
+            UpsertResult(results, CreateSlotResult(ReadLocker(snapshot, notStarted - 1), "NOT_STARTED", []));
+        }
+
+        bool safeFinish = IsSafeFinish(snapshot, physicalSlot - 1);
+        WireToGateRecoveryCheckpoint checkpoint = safeFinish
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        IReadOnlyList<int> active = safeFinish ? [] : [physicalSlot];
+        await WriteCheckpointAsync(
+            context,
+            checkpoint,
+            active,
+            completed,
+            results,
+            existingState,
+            CancellationToken.None).ConfigureAwait(false);
+        await SendProgressAsync(
+                progress,
+                new(safeFinish ? "SAFE_FINISH" : "PAUSED", active, completed),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return CreateResult(command, proven ? "FAILED" : "UNKNOWN", results, checkpoint);
+    }
+
+    /// <summary>Why a slot read for a settlement is not proven shut and reset, in the wire's reason codes.</summary>
+    private static string UnprovenReason(LockerSnapshot locker) =>
+        !locker.IsKnown ? "SLOT_STATE_UNKNOWN"
+        : !locker.IsLocked ? "LOCK_NOT_CLOSED"
+        : locker.UnlockOutputRaw is not false ? "UNLOCK_OUTPUT_NOT_RESET"
+        : "SLOT_STATE_UNKNOWN";
 
     /// <summary>
     /// Ends the load on the server's authorization of 「剩下的不装」 (8005-agv-onboard-hmi#388, CP-0021 REQ-0367): with the slots
@@ -2217,6 +2399,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     unlockNeeded = false;
                     cause = WireToGatePromptCause.PromptCadence;
                 }
+                else if (waited == OperatorWaitOutcome.ResumeAbandoned)
+                {
+                    // Nothing pulsed: the run ends with what the slots read (8005-agv-onboard-hmi#410).
+                    throw new ResumeAbandonedException();
+                }
                 else if (waited == OperatorWaitOutcome.DoorReleased)
                 {
                     // The lock reads released with nobody having pressed: the door was not latched after all, and it
@@ -2364,7 +2551,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         DoorReleased,
 
         /// <summary>The operator pressed 「剩下的不装」, and the run is held for the server's decision.</summary>
-        RemainingBasketsSkipHeld
+        RemainingBasketsSkipHeld,
+
+        /// <summary>The operator pressed 「不装了」 in a resume over empty slots (8005-agv-onboard-hmi#410).</summary>
+        ResumeAbandoned
     }
 
     /// <summary>
@@ -2442,9 +2632,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     Task winner = await Task.WhenAny(pressed, released, unknown, latched).ConfigureAwait(false);
                     if (winner == pressed)
                     {
-                        return (await pressed.ConfigureAwait(false) == WireToGateOperatorSlotRequest.RemainingBasketsSkip
-                                ? OperatorWaitOutcome.RemainingBasketsSkipHeld
-                                : OperatorWaitOutcome.ReopenPressed,
+                        return (await pressed.ConfigureAwait(false) switch
+                            {
+                                WireToGateOperatorSlotRequest.RemainingBasketsSkip => OperatorWaitOutcome.RemainingBasketsSkipHeld,
+                                WireToGateOperatorSlotRequest.AbandonResume => OperatorWaitOutcome.ResumeAbandoned,
+                                _ => OperatorWaitOutcome.ReopenPressed
+                            },
                             promptRound + 1);
                     }
 
@@ -3118,6 +3311,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         public IReadOnlyList<int> AuthorizedSlots { get; } = authorizedSlots;
     }
+
+    /// <summary>The operator's 「不装了」 ended the resume's wait (8005-agv-onboard-hmi#410); see <see cref="SettleResumeAbandonedAsync"/>.</summary>
+    private sealed class ResumeAbandonedException() : Exception("RESUME_ABANDONED");
 
     /// <summary>
     /// The code a latch refusal carries on the wire, in a slot result's <c>reasonCodes</c>.
