@@ -1,0 +1,28 @@
+# commit c6724d3 (tests only, implementation unchanged)
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter WireToGateSublotRejectionTextTests|SublotRejectedAfterEntryG2Tests|SublotRejectionViewModelTests|WireToGateHmiPresentationTests
+# exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "STATION_MISMATCH", canEnterAgain: False, expectedReason: "车此刻不在本站上（可能被移开过），不能录入", expectedNextStep: "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。") [3 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "车此刻不在本站上（可能被移开过），不能录入"
+Actual:   "未识别的拒收原因（STATION_MISMATCH）"
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "STATION_MISMATCH", canEnterAgain: True, expectedReason: "车此刻不在本站上（可能被移开过），不能录入", expectedNextStep: "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。") [< 1 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "车此刻不在本站上（可能被移开过），不能录入"
+Actual:   "未识别的拒收原因（STATION_MISMATCH）"
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "VEHICLE_NOT_READY", canEnterAgain: False, expectedReason: "车还没就绪（仍在移动或位置未确认），暂时不能录入", expectedNextStep: "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。") [< 1 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "车还没就绪（仍在移动或位置未确认），暂时不能录入"
+Actual:   "未识别的拒收原因（VEHICLE_NOT_READY）"
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "VEHICLE_NOT_READY", canEnterAgain: True, expectedReason: "车还没就绪（仍在移动或位置未确认），暂时不能录入", expectedNextStep: "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。") [< 1 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "车还没就绪（仍在移动或位置未确认），暂时不能录入"
+Actual:   "未识别的拒收原因（VEHICLE_NOT_READY）"
+  Failed SQCD.Agv.WireToGateG2Tests.SublotRejectionViewModelTests.AVehicleNotReadyRejectionTellsTheOperatorToWaitForTheVehicleEvenWhenTheEntryRequestIsKept [210 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "子批 SUBLOT-001 被服务端拒收：车还没就绪（仍在移动或位置未确认），暂时不能录入。"
+Actual:   "子批 SUBLOT-001 被服务端拒收：未识别的拒收原因（VEHICLE_NOT_READY）。"
+  Failed SQCD.Agv.WireToGateG2Tests.SublotRejectedAfterEntryG2Tests.AStationMismatchRejectionTellsTheOperatorToBringTheVehicleBackRatherThanScanAgain [142 ms]
+   Assert.Equal() Failure: Strings differ
+Expected: "子批 SUBLOT-001 被服务端拒收：车此刻不在本站上（可能被移开过），不能录入。请把车开回本站"···
+Actual:   "子批 SUBLOT-001 被服务端拒收：未识别的拒收原因（STATION_MISMATCH）。请核"···
+Failed!  - Failed:     6, Passed:    37, Skipped:     0, Total:    43, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
