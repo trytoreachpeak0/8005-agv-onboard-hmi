@@ -30,6 +30,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// </summary>
     public const string LoadCancellationWouldOpenReason = "ACTION_NOT_ALLOWED_IN_STATE";
 
+    /// <summary>
+    /// The reason on a slot whose operator wait ran out with its door shut and locked over the basket still in: the slot
+    /// is read and known, and none of the recovery results may carry <c>OPERATOR_TIMEOUT</c>, which the registry allows on
+    /// <c>OperationResult</c> only (8005-agv-onboard-hmi#392).
+    /// </summary>
+    public const string OperatorDidNotClearReason = "ACTION_NOT_ALLOWED_IN_STATE";
+
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;

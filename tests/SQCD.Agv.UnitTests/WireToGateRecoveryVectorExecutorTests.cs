@@ -1142,6 +1142,9 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         /// <summary>Physical slots the operator shuts again without taking the basket out.</summary>
         public HashSet<int> NeverEmptiedSlots { get; } = [];
 
+        /// <summary>Physical slots whose lock stays latched on the pulse while the output falls back (8005-agv-onboard-hmi#392).</summary>
+        public HashSet<int> LockNeverReleasesSlots { get; } = [];
+
         /// <summary>
         /// Physical slots the operator empties whose lock never reports closed again: the light curtain
         /// reads EMPTY and the lock feedback stays UNLOCKED (8005-agv-onboard-hmi#219).
@@ -1188,11 +1191,13 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
                 slotIndex + 1,
                 _lockers.Where(locker => locker.SlotIndex != slotIndex)
                     .All(locker => locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false)));
-            UpdateLocker(slotIndex, locker => locker with
-            {
-                LockFeedbackRaw = false,
-                UnlockOutputRaw = true
-            });
+            UpdateLocker(slotIndex, locker => LockNeverReleasesSlots.Contains(slotIndex + 1)
+                ? locker with { UnlockOutputRaw = false }
+                : locker with
+                {
+                    LockFeedbackRaw = false,
+                    UnlockOutputRaw = true
+                });
         }
 
         public Task<LockerSnapshot> WaitForLockerAsync(
