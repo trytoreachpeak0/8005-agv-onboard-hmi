@@ -29,7 +29,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <summary>The demand that load command names.</summary>
     private const string DemandId = "11111111-1111-1111-1111-111111111111";
 
-    private const string ExpiredPrompt = "请放入货物并关闭1号仓门；不装了请按取消。";
+    private const string ExpiredPrompt = "请放入货物并关闭1号仓门；不装了请先关好仓门，再按「取消装货」。";
 
     /// <summary>
     /// Named apart from every other G2 class: environment variables are process-wide and xUnit runs the

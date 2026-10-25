@@ -2001,7 +2001,7 @@ public sealed partial class WireToGateBusinessService
                 $"load-cancellation-unanswered:{pending.CancellationId}",
                 "RECOVERY_AUTHORIZATION_UNKNOWN",
                 $"车辆 {_session.Client.AgvId} 上次按下的装货取消没有收到服务端答复，{trigger}，车辆不会自动重新申请。"
-                + $"服务端一旦授权，车辆就会开锁清空目标仓位，请到车旁确认仓门附近安全后再按一次「{LoadCancellationCaptionHere()}」。 ");
+                + $"如仍要取消，请到车旁确认后再按一次「{LoadCancellationCaptionHere()}」；取消不会打开仓门。 ");
             return;
         }
 

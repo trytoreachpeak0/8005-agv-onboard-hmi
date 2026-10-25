@@ -656,6 +656,8 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             // the door-unproven settlement. A door that never unlocked or whose output never fell back after
             // the pulse is still UNKNOWN.
             bool awaitingOperator = false;
+            // Which wait a timeout ran out in, so its reason says so (8005-agv-onboard-hmi#392).
+            ClearWait wait = ClearWait.Operator;
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
@@ -674,12 +676,14 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     ThrowIfFatalFaultLatched();
                     pulseSent = true;
                     await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    wait = ClearWait.Unlock;
                     LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown && !locker.IsLocked,
                         MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
                         _options.FeedbackStableWindow,
                         cancellationToken).ConfigureAwait(false);
+                    wait = ClearWait.OutputReset;
                     await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown
@@ -697,6 +701,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     completed,
                     cancellationToken).ConfigureAwait(false);
                 awaitingOperator = true;
+                wait = ClearWait.Operator;
                 LockerSnapshot completedLocker = correction
                     ? await WaitForCorrectionAsync(slotIndex, deadline, cancellationToken)
                     : await _ioModule.WaitForLockerAsync(
@@ -802,7 +807,9 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         settledAt);
                 }
 
-                string reason = MapFailureReason(exception);
+                string reason = exception is TimeoutException
+                    ? TimeoutReason(wait, ReadPhysicalSlot(failureSnapshot, physicalSlot))
+                    : MapFailureReason(exception);
                 UpsertResult(
                     results,
                     CreateSlotResult(ReadPhysicalSlot(failureSnapshot, physicalSlot), "UNKNOWN", [reason]));
@@ -1573,9 +1580,47 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>The wait of one slot of a clear a timeout can run out in.</summary>
+    private enum ClearWait
+    {
+        /// <summary>For the lock to read released after the pulse.</summary>
+        Unlock,
+
+        /// <summary>For the unlock output to fall back after the lock released.</summary>
+        OutputReset,
+
+        /// <summary>For the operator to empty -- or correct -- the slot and shut it, locked with the output reset.</summary>
+        Operator
+    }
+
+    /// <summary>
+    /// Which wait ran out, as the slot reads now (8005-agv-onboard-hmi#392, as 8005-agv-onboard-hmi#385 did for the slot
+    /// executor's): none of them is <c>ACTION_NOT_ALLOWED_IN_STATE</c>, which every timeout here used to be, except the one
+    /// with no registered code of its own (<see cref="OperatorDidNotClearReason"/>).
+    /// </summary>
+    /// <remarks>
+    /// Unreadable is <c>SLOT_STATE_UNKNOWN</c> and an output still energised <c>UNLOCK_OUTPUT_NOT_RESET</c>, whatever the wait.
+    /// After the pulse, a readable lock that would not release with its output back is <c>SLOT_INOPERABLE</c>. Waiting for the
+    /// operator, a door that does not read locked is <c>LOCK_NOT_CLOSED</c>; one shut and locked over a slot not yet as the
+    /// clear needs it is <see cref="OperatorDidNotClearReason"/>.
+    /// </remarks>
+    private static string TimeoutReason(ClearWait wait, LockerSnapshot locker) =>
+        !locker.IsKnown
+            ? "SLOT_STATE_UNKNOWN"
+            : locker.UnlockOutputRaw is not false
+                ? "UNLOCK_OUTPUT_NOT_RESET"
+                : wait switch
+                {
+                    ClearWait.Unlock => "SLOT_INOPERABLE",
+                    ClearWait.OutputReset => "UNLOCK_OUTPUT_NOT_RESET",
+                    _ => locker.IsLocked ? OperatorDidNotClearReason : "LOCK_NOT_CLOSED"
+                };
+
     private static string MapFailureReason(Exception exception) => exception switch
     {
-        TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
+        // Every wait's own timeout is TimeoutReason's (8005-agv-onboard-hmi#392); none should arrive here. One that does is a
+        // slot this run could not read in time.
+        TimeoutException => "SLOT_STATE_UNKNOWN",
         IOException => "SLOT_STATE_UNKNOWN",
         // Raised with the reason code itself, by the single-door check before a pulse.
         InvalidDataException { Message: "UNLOCK_OUTPUT_NOT_RESET" or "LOCK_NOT_CLOSED" } invalid

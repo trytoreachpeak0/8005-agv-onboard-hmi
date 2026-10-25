@@ -13,11 +13,14 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// </summary>
 public sealed partial class MultiDemandJourneyG2Tests
 {
-    /// <summary>机台取货装货中取消的确认框正文，照本票之前 <c>MainWindow.OnLoadCancellationClick</c> 里的原文。</summary>
+    /// <summary>
+    /// 机台取货装货中取消的确认框正文，照本票之前 <c>MainWindow.OnLoadCancellationClick</c> 里的原文；最后一句随协议 6.0.0
+    /// 改成取消不开门（8005-agv-onboard-hmi#392）。
+    /// </summary>
     private static string MachineLoadCancellationConfirmationText(string taskTypeText) =>
         "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n"
         + $"将要取消的任务：子批 SUBLOT-A，{taskTypeText}，2 篮。"
-        + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？";
+        + "\n\n取消时不会打开任何仓门，只核对目标仓位为空、门已锁好。是否继续？";
 
     /// <summary>
     /// 验收 1：待送点有开着的录入请求、两条需求、什么都没装，按钮不出现，旁边也不提示「先选需求」；「出发」在，说明车认出了待送点。
@@ -109,7 +112,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             "请确认车辆已停稳，并由授权人员确认要撤销这一次开仓。\n\n"
             + "将要撤销的是：子批 SUBLOT-A，待送→焊线机台，2 篮。"
-            + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；这一篮这趟不带走。"
+            + "\n\n取消时不会打开任何仓门；这趟不带走这条需求的料。"
             + "这条需求不会取消，会放回待派，之后还会再派车来装。是否继续？",
             press.Text);
         Assert.Equal("撤销开仓未被接受。请检查授权、车辆停稳信号和服务端状态。", press.FailureText);
