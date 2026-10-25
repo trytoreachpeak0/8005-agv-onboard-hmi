@@ -46,20 +46,20 @@
     "pointer": "#/payload/decision",
     "keyword": "const",
     "actual": "\"AUTHORIZED\"",
-    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
+    "deliberate": "LoadCancellationEmptyScopeG2Tests.AnAuthorizationNamingSlotsIsRefusedAndOpensNothing"
   },
   {
     "messageType": "LoadCancellationAuthorization",
     "pointer": "#/payload/slots",
     "keyword": "maxItems",
-    "actual": "*",
-    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
+    "actual": "[1]",
+    "deliberate": "LoadCancellationEmptyScopeG2Tests.AnAuthorizationNamingSlotsIsRefusedAndOpensNothing"
   },
   {
     "messageType": "LoadCancellationAuthorization",
     "pointer": "#/payload",
     "keyword": "else",
-    "actual": "*",
-    "issue": "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392"
+    "actual": "{\"cancellationId\":\"5cf02b51-2bd3-825b-87de-4c79de081e12\",\"decision\":\"AUTHORIZED\",\"demandId\":\"11111111-1111-1111-1111-111111111111\",\"slotOperationAttemptId\":\"44444444-4444-4444-4444-444444444444\",\"slot...",
+    "deliberate": "LoadCancellationEmptyScopeG2Tests.AnAuthorizationNamingSlotsIsRefusedAndOpensNothing"
   }
 ]

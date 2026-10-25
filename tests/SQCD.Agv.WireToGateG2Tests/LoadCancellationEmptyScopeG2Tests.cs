@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 using Harness = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness;
 using ScriptStep = SQCD.Agv.WireToGateG2Tests.FakeIoModuleClient.ScriptStep;
@@ -96,6 +97,14 @@ public sealed class LoadCancellationEmptyScopeG2Tests
         Assert.Equal(
             WireToGateLoadCancellationText.ShutTheDoorFirst,
             harness.OnUi(() => harness.ViewModel.LoadCancellationBlockedHintText));
+        // The screen-state snapshot reports it: the entry visible and disabled, the reason as a raw code beside it.
+        HmiScreenState screen = harness.ScreenState();
+        HmiButtonState entry = Assert.Single(screen.Buttons, button => button.Key == "OnLoadCancellationClick");
+        Assert.True(entry.Visible);
+        Assert.False(entry.Enabled);
+        HmiRawCodeState blocked = Assert.Single(screen.RawCodes, code => code.AutomationId == "LoadCancellationBlocked");
+        Assert.True(blocked.Visible);
+        Assert.Equal("LOCK_NOT_CLOSED", blocked.Value);
 
         Assert.True(await harness.Business.RequestLoadCancellationAsync("现场不装了。", cancellationToken: token));
         Assert.DoesNotContain(
@@ -144,6 +153,86 @@ public sealed class LoadCancellationEmptyScopeG2Tests
         Assert.Contains(harness.Events, item => item.Message.Contains(WireToGateLoadCancellationText.BasketLoaded, StringComparison.Ordinal));
         Assert.Equal(2, io.UnlockCount);
         AssertNoOperationResult(harness);
+    }
+
+    /// <summary>
+    /// 票面第 2 条：车载端读数满足、按了取消，服务端按自己的读数拒绝（这里是它的读数过期，<c>SLOT_STATE_UNKNOWN</c>，
+    /// control-server#837）。屏上说拒绝原因，不进恢复：没有恢复向量、没有 <c>OperationResult</c>，装货照旧等「重新开门」，
+    /// 一扇门也没开。
+    /// </summary>
+    [Theory]
+    [InlineData("SLOT_STATE_UNKNOWN")]
+    [InlineData("LOCK_NOT_CLOSED")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task AServerRefusalIsShownAndTheLoadGoesOn(string reasonCode)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensThenShut(cargo: false));
+        await using Harness harness = await StartAsync(
+            io,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+                server.LoadCancellationRejectionReasonCode = reasonCode;
+            });
+
+        await WaitForReopenOfferAsync(harness, token);
+        Assert.True(harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation));
+        _ = await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token));
+
+        string expected = $"{WireToGateLoadCancellationText.Blocked(reasonCode)}（{reasonCode}）";
+        await WaitUntilAsync(
+            harness,
+            () => harness.Events.Any(item => item.Message.Contains(expected, StringComparison.Ordinal)),
+            "the refusal shown in its own words",
+            token);
+        Assert.Single(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationStartRequested");
+        Assert.Null((await harness.Session.Journal.ReadRecoveryStateAsync(token)).RecoveryVector);
+        Assert.Null((await harness.Session.Journal.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+        Assert.True(harness.OnUi(() => harness.ViewModel.CanReopenOperation));
+        Assert.Equal(1, io.UnlockCount);
+        AssertNoOperationResult(harness);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationResult");
+    }
+
+    /// <summary>
+    /// v5 形状的授权（<c>AUTHORIZED</c> 带仓位）不执行：协议 6.0.0 只授权空范围，带仓位的授权就是叫车为取消开门。车载端按
+    /// <c>RECOVERY_RESPONSE_SCOPE_MISMATCH</c> 拒，不中止装货、不开门、不报取消结果。这一行是替身服务端故意发的越界授权，
+    /// 在 <c>schema-known-violations.json</c> 登记为 deliberate。
+    /// </summary>
+    /// <remarks>
+    /// 只守「不执行」。之后待答取消仍在日志里、「重新开门」随之收起，是协议违规路径上原有的样子，本票不改也不钉住它。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AnAuthorizationNamingSlotsIsRefusedAndOpensNothing()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensThenShut(cargo: false));
+        io.ScriptPulse(2, OpensThenShut(cargo: false));
+        await using Harness harness = await StartAsync(
+            io,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationAuthorizedSlots = [Slot];
+            });
+
+        await WaitForReopenOfferAsync(harness, token);
+        Assert.False(await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token)));
+
+        Assert.Contains(harness.Events, item => item.Message.Contains("RECOVERY_RESPONSE_SCOPE_MISMATCH", StringComparison.Ordinal));
+        Assert.Null((await harness.Session.Journal.ReadRecoveryStateAsync(token)).RecoveryVector);
+        Assert.Equal(1, io.UnlockCount);
+        AssertNoOperationResult(harness);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationResult");
     }
 
     private static ScriptStep[] OpensAndStaysOpen() =>
