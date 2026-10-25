@@ -4077,13 +4077,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string detailKey)
     {
         WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
-        string guidance = OperationGuidance(
-            command,
-            progress,
-            StationDeadlinePassed(),
-            WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
+        // In a resume over empty slots the button that gives up is 「不装了」: the load's cancellation is not offered there
+        // (8005-agv-onboard-hmi#410). The executor publishes the wait before this report, so the offer is read for it.
+        string giveUpCaption = CanAbandonResume
+            ? WireToGateResumeAbandonText.Caption
+            : WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
                 _session.CurrentJourney,
-                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])));
+                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? []));
+        string guidance = OperationGuidance(command, progress, StationDeadlinePassed(), giveUpCaption);
         PublishOperation(command, stage, guidance, detailKey, progress.Active);
         if (command.OperationType == OperationType.Load
             && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
