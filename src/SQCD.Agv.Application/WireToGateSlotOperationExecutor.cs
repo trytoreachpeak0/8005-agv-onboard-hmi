@@ -1203,7 +1203,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateSlotOperationCommand command = context.ToCommand();
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         bool fresh = snapshot.IsConnected
-            && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+            && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
         List<int> completed = [];
         List<int> stillActive = [];
         bool unsafeSlot = false;
@@ -1512,7 +1512,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         if (!snapshot.IsConnected
-            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             throw new WireToGateResumeNotStartedException("SLOT_STATE_UNKNOWN");
         }
@@ -2310,7 +2310,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 await WaitForOutputResetAsync(
                     slotIndex,
                     locker => locker.IsKnown
-                        && locker.ObservedAt >= unlocked.ObservedAt
+                        && locker.IsObservedNoEarlierThan(unlocked)
                         && locker.UnlockOutputRaw is false,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -2930,7 +2930,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return null;
         }
 
-        if (!snapshot.IsConnected || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+        if (!snapshot.IsConnected || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return "SLOT_STATE_UNKNOWN";
         }
@@ -3093,7 +3093,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// fresh, otherwise UNKNOWN -- a stale reading is not a reading.
     /// </summary>
     private LockerSnapshot ReadLocker(IoSnapshot snapshot, int slotIndex) =>
-        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge)
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge)
             ? TryGetLocker(snapshot, slotIndex)
             : LockerSnapshot.Unknown(slotIndex, snapshot.ObservedAt);
 
@@ -3203,12 +3203,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     private bool IsFresh(IoSnapshot snapshot) =>
-        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
 
     private bool IsSafeFinish(IoSnapshot snapshot, int slotIndex)
     {
         if (!snapshot.IsConnected
-            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return false;
         }

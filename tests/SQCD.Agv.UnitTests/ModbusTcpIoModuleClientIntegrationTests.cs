@@ -6,7 +6,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
-public sealed class ModbusTcpIoModuleClientIntegrationTests
+public sealed partial class ModbusTcpIoModuleClientIntegrationTests
 {
     [Fact]
     public async Task ClientReadsConfiguredMappingAndWritesFc05Address()

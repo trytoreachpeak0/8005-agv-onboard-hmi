@@ -79,13 +79,14 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
 
     private readonly IoModuleSettings _settings;
     private readonly IAppLogger _logger;
+    private readonly IClock _clock;
     private readonly SemaphoreSlim _transportLock = new(1, 1);
     private readonly object _lifecycleGate = new();
     private TcpClient? _tcpClient;
     private NetworkStream? _stream;
     private CancellationTokenSource? _lifetimeCts;
     private Task? _pollTask;
-    private IoSnapshot _currentSnapshot = IoSnapshot.Unknown(DateTimeOffset.Now);
+    private IoSnapshot _currentSnapshot;
 
     /// <summary>
     /// The free-running request counter. Deliberately <b>not</b> reset when the transport is closed
@@ -94,10 +95,17 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     private int _transactionId;
     private bool _disposed;
 
-    public ModbusTcpIoModuleClient(IoModuleSettings settings, IAppLogger logger)
+    /// <param name="clock">
+    /// Stamps every reading: <see cref="IClock.Now"/> as its <c>ObservedAt</c>, the time it is reported under, and
+    /// <see cref="IClock.GetTimestamp"/> as its <c>ObservedTimestamp</c>, the one its age and the stable window are
+    /// measured on (8005-agv-onboard-hmi#404). <see cref="SystemClock"/> when not given.
+    /// </param>
+    public ModbusTcpIoModuleClient(IoModuleSettings settings, IAppLogger logger, IClock? clock = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _clock = clock ?? new SystemClock();
+        _currentSnapshot = IoSnapshot.Unknown(_clock.Now);
     }
 
     public bool IsConnected => CurrentSnapshot.IsConnected;
@@ -182,8 +190,12 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
         _ = GetMapping(slotIndex);
 
         long started = Stopwatch.GetTimestamp();
-        DateTimeOffset? stableStartedAt = null;
-        DateTimeOffset? lastEvaluatedAt = null;
+        // Both on the readings' monotonic timestamps, never on ObservedAt (8005-agv-onboard-hmi#404): workspace#55 steps
+        // the wall clock every hour, and a step forward between two readings closed the window on a reading that had
+        // held for a fraction of it -- in WaitForClosedDoorAsync's race, a door judged shut over the opposite occupancy
+        // on a brief reading. A step back kept it open until the wall clock caught up.
+        long? stableStartedAt = null;
+        long? lastEvaluated = null;
 
         while (Stopwatch.GetElapsedTime(started) < timeout)
         {
@@ -195,17 +207,20 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
             }
 
             LockerSnapshot locker = snapshot.GetLocker(slotIndex);
-            if (lastEvaluatedAt == locker.ObservedAt)
+            long observed = locker.ObservedTimestamp
+                ?? throw new InvalidOperationException("IO reading without a monotonic timestamp.");
+            if (lastEvaluated == observed)
             {
                 await Task.Delay(25, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
-            lastEvaluatedAt = locker.ObservedAt;
+            lastEvaluated = observed;
             if (predicate(locker))
             {
-                stableStartedAt ??= locker.ObservedAt;
-                if (stableWindow <= TimeSpan.Zero || locker.ObservedAt - stableStartedAt.Value >= stableWindow)
+                stableStartedAt ??= observed;
+                if (stableWindow <= TimeSpan.Zero
+                    || Stopwatch.GetElapsedTime(stableStartedAt.Value, observed) >= stableWindow)
                 {
                     return locker;
                 }
@@ -398,7 +413,8 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
 
     private void PublishConnectedSnapshot(bool[] outputs, bool[] inputs)
     {
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _clock.Now;
+        long timestamp = _clock.GetTimestamp();
         LockerSnapshot[] lockers = _settings.Slots
             .OrderBy(mapping => mapping.SlotIndex)
             .Select(mapping => new LockerSnapshot(
@@ -407,16 +423,19 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
                 outputs[mapping.DoChannel],
                 inputs[mapping.LockFeedbackDiChannel],
                 inputs[mapping.LightCurtainDiChannel],
-                now))
+                now)
+            {
+                ObservedTimestamp = timestamp
+            })
             .ToArray();
-        IoSnapshot next = new(true, lockers, now);
+        IoSnapshot next = new(true, lockers, now) { ObservedTimestamp = timestamp };
         LogIoChanges(CurrentSnapshot, next);
         PublishSnapshot(next);
     }
 
     private void PublishDisconnected()
     {
-        PublishSnapshot(IoSnapshot.Unknown(DateTimeOffset.Now));
+        PublishSnapshot(IoSnapshot.Unknown(_clock.Now));
     }
 
     private void PublishSnapshot(IoSnapshot snapshot)

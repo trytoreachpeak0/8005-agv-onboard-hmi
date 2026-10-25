@@ -2368,6 +2368,7 @@ public sealed partial class WireToGateG2Tests
                 io.CurrentSnapshot,
                 provider.Read(),
                 rebasedAt,
+                System.Diagnostics.Stopwatch.GetTimestamp(),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500),
