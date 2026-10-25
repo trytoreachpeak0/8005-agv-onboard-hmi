@@ -5143,6 +5143,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             snapshot,
             _vehicleSafetySignalProvider.Read(),
             _clock.Now,
+            _clock.GetTimestamp(),
             _ioSnapshotMaxAge,
             _vehicleSafetyMaxAge,
             _vehicleSafetyClockSkewTolerance,

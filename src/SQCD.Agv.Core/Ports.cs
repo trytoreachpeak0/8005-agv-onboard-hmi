@@ -83,6 +83,15 @@ public interface IAppLogger
 public interface IClock
 {
     public DateTimeOffset Now { get; }
+
+    /// <summary>
+    /// A reading of the monotonic clock, in <see cref="System.Diagnostics.Stopwatch"/> ticks
+    /// (<see cref="System.Diagnostics.Stopwatch.Frequency"/> per second). It never moves when the wall clock is set or
+    /// stepped, so every age or window measured on this machine is measured on it, never on <see cref="Now"/>
+    /// (8005-agv-onboard-hmi#404, workspace#55's hourly <c>Set-Date -Adjust</c>). <see cref="Now"/> stays the time
+    /// written to the journal and sent to the control server.
+    /// </summary>
+    public long GetTimestamp() => System.Diagnostics.Stopwatch.GetTimestamp();
 }
 
 public sealed class SystemClock : IClock

@@ -99,6 +99,21 @@ public sealed record LockerSnapshot(
     // 光幕极性
     public bool HasCargo => LightCurtainRaw is false;
 
+    /// <summary>
+    /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this reading was taken, or <c>null</c> for a
+    /// reading no IO module produced (8005-agv-onboard-hmi#404).
+    /// </summary>
+    public long? ObservedTimestamp { get; init; }
+
+    /// <summary>
+    /// Whether this reading was taken no earlier than <paramref name="other"/> (8005-agv-onboard-hmi#404).
+    /// </summary>
+    public bool IsObservedNoEarlierThan(LockerSnapshot other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return ObservedAt >= other.ObservedAt;
+    }
+
     // 未知仓位
     public static LockerSnapshot Unknown(int slotIndex, DateTimeOffset observedAt) =>
         new(slotIndex, slotIndex + 1, null, null, null, observedAt);
@@ -111,6 +126,12 @@ public sealed record IoSnapshot(
     IReadOnlyList<LockerSnapshot> Lockers,
     DateTimeOffset ObservedAt)
 {
+    /// <summary>
+    /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this snapshot was read, or <c>null</c> for a
+    /// snapshot no IO module produced (8005-agv-onboard-hmi#404).
+    /// </summary>
+    public long? ObservedTimestamp { get; init; }
+
     // 按索引取仓位
     public LockerSnapshot GetLocker(int slotIndex)
     {

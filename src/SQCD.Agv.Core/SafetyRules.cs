@@ -7,13 +7,13 @@ public static class SafetyRules
         IoSnapshot snapshot,
         ActiveOperation? activeOperation,
         bool hasBlockingFault,
-        DateTimeOffset now,
+        IClock clock,
         TimeSpan snapshotMaxAge)
     {
         return snapshot.IsConnected
             && activeOperation is null
             && !hasBlockingFault
-            && IsSnapshotFresh(snapshot, now, snapshotMaxAge)
+            && IsSnapshotFresh(snapshot, clock, snapshotMaxAge)
             && snapshot.Lockers.Count == 8
             && snapshot.Lockers.All(locker => locker.IsKnown
                 && locker.UnlockOutputRaw is false
@@ -25,7 +25,7 @@ public static class SafetyRules
         ScanAuthorization authorization,
         IoSnapshot snapshot,
         IReadOnlySet<string> startedOperationIds,
-        DateTimeOffset now,
+        IClock clock,
         TimeSpan snapshotMaxAge)
     {
         if (!authorization.Accepted)
@@ -46,7 +46,7 @@ public static class SafetyRules
             return "DUPLICATE_OPERATION";
         }
 
-        string? doorSafetyError = ValidateAllDoorsSafe(snapshot, now, snapshotMaxAge);
+        string? doorSafetyError = ValidateAllDoorsSafe(snapshot, clock, snapshotMaxAge);
         if (doorSafetyError is not null)
         {
             return doorSafetyError;
@@ -70,7 +70,7 @@ public static class SafetyRules
     // 需要开锁、完成操作或允许发车前都可复用的全车仓门安全检查。
     public static string? ValidateAllDoorsSafe(
         IoSnapshot snapshot,
-        DateTimeOffset now,
+        IClock clock,
         TimeSpan snapshotMaxAge)
     {
         if (!snapshot.IsConnected)
@@ -78,7 +78,7 @@ public static class SafetyRules
             return "IO_OFFLINE";
         }
 
-        if (!IsSnapshotFresh(snapshot, now, snapshotMaxAge))
+        if (!IsSnapshotFresh(snapshot, clock, snapshotMaxAge))
         {
             return "IO_SNAPSHOT_STALE";
         }
@@ -101,7 +101,17 @@ public static class SafetyRules
         return null;
     }
 
-    public static bool IsSnapshotFresh(IoSnapshot snapshot, DateTimeOffset now, TimeSpan snapshotMaxAge)
+    public static bool IsSnapshotFresh(IoSnapshot snapshot, IClock clock, TimeSpan snapshotMaxAge)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        return IsSnapshotFresh(snapshot, clock.Now, clock.GetTimestamp(), snapshotMaxAge);
+    }
+
+    public static bool IsSnapshotFresh(
+        IoSnapshot snapshot,
+        DateTimeOffset now,
+        long nowTimestamp,
+        TimeSpan snapshotMaxAge)
     {
         if (snapshotMaxAge <= TimeSpan.Zero || snapshot.ObservedAt > now)
         {

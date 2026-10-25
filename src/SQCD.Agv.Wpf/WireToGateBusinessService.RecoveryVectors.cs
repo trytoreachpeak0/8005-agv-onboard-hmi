@@ -4463,7 +4463,7 @@ public sealed partial class WireToGateBusinessService
     private void PublishDoorsNotProvenShut(IoSnapshot reading, IReadOnlyList<int> doors, bool allowForcedRecovery)
     {
         string text;
-        if (!(reading.IsConnected && SafetyRules.IsSnapshotFresh(reading, _clock.Now, _ioSnapshotMaxAge)))
+        if (!(reading.IsConnected && SafetyRules.IsSnapshotFresh(reading, _clock, _ioSnapshotMaxAge)))
         {
             text = $"IO 读数过期或已断开，无法确认{FormatSlots(doors)}的门已关好；请等 IO 读数恢复后再按一次。";
         }
@@ -4512,7 +4512,7 @@ public sealed partial class WireToGateBusinessService
     private int[] DoorsNotProvenShut(IoSnapshot reading, IReadOnlyList<int> activeSlots)
     {
         bool fresh = reading.IsConnected
-            && SafetyRules.IsSnapshotFresh(reading, _clock.Now, _ioSnapshotMaxAge);
+            && SafetyRules.IsSnapshotFresh(reading, _clock, _ioSnapshotMaxAge);
         return activeSlots
             .Where(slot => !fresh
                 || reading.GetLocker(slot - 1) is not { IsKnown: true, IsLocked: true, UnlockOutputRaw: false })

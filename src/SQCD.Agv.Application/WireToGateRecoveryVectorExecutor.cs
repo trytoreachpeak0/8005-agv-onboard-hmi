@@ -1284,7 +1284,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
 
     private bool IsFresh(IoSnapshot snapshot) =>
         snapshot.IsConnected
-        && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
 
     /// <summary>
     /// What a result may state about a slot: the reading when the snapshot is fresh, otherwise UNKNOWN.

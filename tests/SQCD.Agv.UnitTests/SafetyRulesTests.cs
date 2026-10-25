@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -133,6 +134,7 @@ public sealed class SafetyRulesTests
             snapshot,
             new VehicleSafetySignal(motionState, now.AddMilliseconds(100), "CONTROL_SERVER"),
             now,
+            Stopwatch.GetTimestamp(),
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500),
@@ -266,6 +268,7 @@ public sealed class SafetyRulesTests
             snapshot,
             new VehicleSafetySignal(motionState, now.AddMilliseconds(100), "CONTROL_SERVER"),
             now,
+            Stopwatch.GetTimestamp(),
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500),
@@ -372,7 +375,7 @@ public sealed class SafetyRulesTests
             snapshot,
             null,
             hasBlockingFault: true,
-            DateTimeOffset.Now,
+            new SystemClock(),
             TimeSpan.FromSeconds(1));
 
         Assert.False(permitted);
@@ -393,6 +396,67 @@ public sealed class SafetyRulesTests
 
         Assert.Equal("IO_SNAPSHOT_STALE", Validate(authorization, stale));
         Assert.False(IsDeparturePermitted(stale));
+    }
+
+    /// <summary>
+    /// A reading's age is measured on the monotonic clock, so a wall clock stepped between the reading and the check
+    /// changes nothing (8005-agv-onboard-hmi#404, workspace#55's hourly <c>Set-Date -Adjust</c>): stepped back, the
+    /// reading just taken does not come "from the future"; stepped forward past the maximum age, it does not go stale.
+    /// </summary>
+    [Theory]
+    [InlineData(-500)]
+    [InlineData(-5_000)]
+    [InlineData(500)]
+    [InlineData(1_500)]
+    public void ReadingJustTakenStaysFreshWhenTheWallClockIsStepped(int stepMs)
+    {
+        DateTimeOffset readAt = DateTimeOffset.Now;
+        long readTimestamp = Stopwatch.GetTimestamp();
+        IoSnapshot snapshot = Stamp(CreateSnapshot(false, true), readAt, readTimestamp);
+        // 100 ms of monotonic time pass between the reading and the check; the wall clock moves by the step as well.
+        FixedClock stepped = new(readAt.AddMilliseconds(100 + stepMs), readTimestamp + (Stopwatch.Frequency / 10));
+
+        Assert.True(SafetyRules.IsSnapshotFresh(snapshot, stepped, TimeSpan.FromSeconds(1)));
+        Assert.Null(SafetyRules.ValidateAllDoorsSafe(snapshot, stepped, TimeSpan.FromSeconds(1)));
+        Assert.True(SafetyRules.IsDeparturePermitted(snapshot, null, false, stepped, TimeSpan.FromSeconds(1)));
+    }
+
+    /// <summary>
+    /// The other half of <see cref="ReadingJustTakenStaysFreshWhenTheWallClockIsStepped"/>: a reading the monotonic clock
+    /// says is two seconds old is stale, even when the wall clock -- stepped back by as much -- says it was taken just now
+    /// (8005-agv-onboard-hmi#404).
+    /// </summary>
+    [Fact]
+    public void ReadingOlderThanTheMaximumAgeIsStaleWhateverTheWallClockSays()
+    {
+        DateTimeOffset readAt = DateTimeOffset.Now;
+        long readTimestamp = Stopwatch.GetTimestamp();
+        IoSnapshot snapshot = Stamp(CreateSnapshot(false, true), readAt, readTimestamp);
+        FixedClock twoSecondsLater = new(readAt, readTimestamp + (2 * Stopwatch.Frequency));
+
+        Assert.False(SafetyRules.IsSnapshotFresh(snapshot, twoSecondsLater, TimeSpan.FromSeconds(1)));
+        Assert.Equal(
+            "IO_SNAPSHOT_STALE",
+            SafetyRules.ValidateAllDoorsSafe(snapshot, twoSecondsLater, TimeSpan.FromSeconds(1)));
+    }
+
+    /// <summary>
+    /// Which of two readings came first is read off the monotonic clock: a reading taken after the wall clock was stepped
+    /// back is still the later one (8005-agv-onboard-hmi#404, the output-reset waits after an unlock).
+    /// </summary>
+    [Fact]
+    public void LaterReadingIsNoEarlierThanTheFirstAfterTheWallClockIsSteppedBack()
+    {
+        DateTimeOffset firstAt = DateTimeOffset.Now;
+        long firstTimestamp = Stopwatch.GetTimestamp();
+        LockerSnapshot first = new LockerSnapshot(0, 1, true, false, true, firstAt) { ObservedTimestamp = firstTimestamp };
+        LockerSnapshot later = new LockerSnapshot(0, 1, false, false, true, firstAt.AddMilliseconds(-400))
+        {
+            ObservedTimestamp = firstTimestamp + (Stopwatch.Frequency / 10)
+        };
+
+        Assert.True(later.IsObservedNoEarlierThan(first));
+        Assert.False(first.IsObservedNoEarlierThan(later));
     }
 
     [Fact]
@@ -464,7 +528,7 @@ public sealed class SafetyRulesTests
             authorization,
             snapshot,
             new HashSet<string>(),
-            DateTimeOffset.Now,
+            new SystemClock(),
             TimeSpan.FromSeconds(1));
     }
 
@@ -474,7 +538,7 @@ public sealed class SafetyRulesTests
             snapshot,
             null,
             hasBlockingFault: false,
-            DateTimeOffset.Now,
+            new SystemClock(),
             TimeSpan.FromSeconds(1));
     }
 
@@ -519,4 +583,19 @@ public sealed class SafetyRulesTests
             : locker with { ObservedAt = now }).ToArray();
         return snapshot with { Lockers = lockers, ObservedAt = now };
     }
+
+    private sealed class FixedClock(DateTimeOffset now, long timestamp) : IClock
+    {
+        public DateTimeOffset Now => now;
+
+        public long GetTimestamp() => timestamp;
+    }
+
+    private static IoSnapshot Stamp(IoSnapshot snapshot, DateTimeOffset observedAt, long timestamp) =>
+        snapshot with
+        {
+            ObservedAt = observedAt,
+            ObservedTimestamp = timestamp,
+            Lockers = [.. snapshot.Lockers.Select(locker => locker with { ObservedAt = observedAt, ObservedTimestamp = timestamp })]
+        };
 }

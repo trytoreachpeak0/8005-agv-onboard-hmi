@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -461,7 +462,8 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             CancellationToken cancellationToken,
             TimeSpan? operationTimeout = null,
             TimeSpan? unlockOutputResetTimeout = null,
-            Func<bool>? fatalFaultLatched = null)
+            Func<bool>? fatalFaultLatched = null,
+            IClock? clock = null)
         {
             string directory = Path.Combine(
                 Path.GetTempPath(),
@@ -475,7 +477,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
-                new SystemClock(),
+                clock ?? new SystemClock(),
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
                     unlockOutputResetTimeout ?? TimeSpan.FromSeconds(1),
@@ -564,6 +566,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             {
                 _unlockCounts[slotIndex]++;
                 Pulses.Add((slotIndex + 1, OtherDoorsShut(_lockers, slotIndex)));
+                Pulsed?.Invoke(slotIndex);
                 // The pulse is over by the time it returns: the lock has released and the output has
                 // already fallen back, which is what the executor waits for next -- unless the test
                 // jammed the lock or welded the output.
@@ -737,10 +740,23 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
+        /// <summary>
+        /// Whether a reading carries a <see cref="Stopwatch.GetTimestamp"/>, as the Modbus client's does
+        /// (8005-agv-onboard-hmi#404). Off by default.
+        /// </summary>
+        public bool StampTimestamps { get; set; }
+
+        /// <summary>Called with the slot index at each pulse, under the module's lock, before the reading it makes.</summary>
+        public Action<int>? Pulsed { get; set; }
+
         private void Update(int slotIndex, Func<LockerSnapshot, LockerSnapshot> update)
         {
-            _lockers[slotIndex] = update(_lockers[slotIndex]);
-            CurrentSnapshot = new IoSnapshot(_connected, _lockers.ToArray(), DateTimeOffset.UtcNow);
+            long? timestamp = StampTimestamps ? Stopwatch.GetTimestamp() : null;
+            _lockers[slotIndex] = update(_lockers[slotIndex]) with { ObservedTimestamp = timestamp };
+            CurrentSnapshot = new IoSnapshot(_connected, _lockers.ToArray(), DateTimeOffset.UtcNow)
+            {
+                ObservedTimestamp = timestamp
+            };
             SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(CurrentSnapshot));
         }
     }
@@ -2334,10 +2350,23 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     private sealed class ManualClock(DateTimeOffset start) : IClock
     {
         private long _ticks = start.UtcTicks;
+        private long _timestamp = Stopwatch.GetTimestamp();
 
         public DateTimeOffset Now => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
 
-        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+        public long GetTimestamp() => Interlocked.Read(ref _timestamp);
+
+        public void Advance(TimeSpan by)
+        {
+            Interlocked.Add(ref _ticks, by.Ticks);
+            Interlocked.Add(ref _timestamp, by.Ticks * Stopwatch.Frequency / TimeSpan.TicksPerSecond);
+        }
+
+        /// <summary>
+        /// Steps the wall clock alone, as <c>Set-Date -Adjust</c> does (workspace#55): the monotonic clock does not move
+        /// (8005-agv-onboard-hmi#404).
+        /// </summary>
+        public void StepWall(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
     }
 
     private sealed class SimulationIo : IIoModuleClient
@@ -2526,12 +2555,42 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             }
         }
 
+        /// <summary>
+        /// Whether a reading carries the clock's monotonic timestamp, as the Modbus client's does
+        /// (8005-agv-onboard-hmi#404). Off by default: every other test reads the wall clock alone.
+        /// </summary>
+        public bool StampTimestamps { get; set; }
+
+        /// <summary>Called with each slot reading just published, under the simulation's lock.</summary>
+        public Action<LockerSnapshot>? Updated { get; set; }
+
+        /// <summary>Every slot reads as it does now, in a reading taken now.</summary>
+        public void Refresh()
+        {
+            lock (_sync)
+            {
+                for (int index = 0; index < _lockers.Length; index++)
+                {
+                    _lockers[index] = Stamp(_lockers[index] with { ObservedAt = Now });
+                }
+
+                CurrentSnapshot = Stamp(new IoSnapshot(true, _lockers.ToArray(), Now));
+            }
+        }
+
+        private LockerSnapshot Stamp(LockerSnapshot locker) =>
+            StampTimestamps ? locker with { ObservedTimestamp = _clock.GetTimestamp() } : locker;
+
+        private IoSnapshot Stamp(IoSnapshot snapshot) =>
+            StampTimestamps ? snapshot with { ObservedTimestamp = _clock.GetTimestamp() } : snapshot;
+
         private void UpdateLocker(int slotIndex, Func<LockerSnapshot, LockerSnapshot> update)
         {
-            _lockers[slotIndex] = update(_lockers[slotIndex]);
+            _lockers[slotIndex] = Stamp(update(_lockers[slotIndex]));
             DateTimeOffset now = Now;
-            CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), now);
+            CurrentSnapshot = Stamp(new IoSnapshot(true, _lockers.ToArray(), now));
             SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(CurrentSnapshot));
+            Updated?.Invoke(_lockers[slotIndex]);
         }
     }
 }
