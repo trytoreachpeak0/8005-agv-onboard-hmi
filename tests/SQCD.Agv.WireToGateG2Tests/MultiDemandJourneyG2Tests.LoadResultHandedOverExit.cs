@@ -1,5 +1,7 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -98,6 +100,49 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => !harness.OnUi(() => harness.ViewModel.HasNoOnboardExitNotice),
             "the line to go once the load is settled",
             token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 「取消装货」按下后、确认之前装货以 UNKNOWN 收尾、结果交服务端（10-22 09:18:34 → 09:18:35 那一秒），开关开着：回答要说这次
+    /// 没生效、没开门，并说现在该按哪个——「补偿清空」，不是叫人联系维护人员「在服务端处理」就完（验收 2）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACancellationConfirmedAfterTheLoadWasHandedOverNamesCompensationWhenItIsOffered()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartTakeOverStopAsync(
+            io,
+            server => server.RespondToLoadCancellationRequests = true,
+            token);
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry",
+            token);
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
+        io.SetUnreadable(0);
+        await WaitForOperationResultAsync(harness, AttemptA, token);
+        await harness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
+                && harness.Business.CanRequestLoadCompensation,
+            "the compensation entry over the load handed to the server",
+            token);
+
+        Assert.True(await press.SendAsync(token));
+
+        Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        WireToGateOperatorEvent notice = Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        Assert.Equal(
+            "这次装货的结果未知，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
+            + "仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。",
+            notice.Message);
+        Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
 }
