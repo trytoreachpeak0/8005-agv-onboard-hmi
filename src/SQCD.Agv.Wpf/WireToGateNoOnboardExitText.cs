@@ -35,7 +35,7 @@ public static class WireToGateNoOnboardExitText
     /// names that step first, and names 「补偿清空」 rather than 「申请恢复」, which runs the load again and opens the door.
     /// </summary>
     public static string CompensationExit(bool resultKnown) =>
-        $"这次装货{Outcome(resultKnown)}，已交服务端处理。仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+        $"这次装货{Outcome(resultKnown)}，已交服务端处理。" + CompensationSteps;
 
     /// <summary>
     /// The line's <c>ItemStatus</c> for the screen-state snapshot: the operation and whether its result is known, for example
@@ -48,8 +48,15 @@ public static class WireToGateNoOnboardExitText
     /// A 「取消装货」 confirmed after the load it was pressed over ended with its result handed to the server: the press did
     /// nothing, and pressing again cannot help, because that entry does not come back over this load.
     /// </summary>
-    public static string LoadCancellationAfterResultHandedOver(bool resultKnown) =>
-        $"这次装货{Outcome(resultKnown)}，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。" + ContactMaintainer;
+    /// <param name="compensationOffered">
+    /// Whether 「补偿清空」 is offered over the load: the answer then names it as what to press now, as the recovery area's line
+    /// does (onboard-hmi#410, acceptance 2), instead of only sending the operator to a maintainer.
+    /// </param>
+    public static string LoadCancellationAfterResultHandedOver(bool resultKnown, bool compensationOffered = false) =>
+        $"这次装货{Outcome(resultKnown)}，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
+        + (compensationOffered ? CompensationSteps : ContactMaintainer);
+
+    private const string CompensationSteps = "仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
 
     private static string Outcome(bool resultKnown) => resultKnown ? "没有完成" : "的结果未知";
 

@@ -1015,9 +1015,10 @@ public sealed partial class WireToGateBusinessService
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
             $"取消装货确认时，该装货的结果已交服务端，未发申请、未开仓门：按下时的对象={pressedSubject}，确认时的对象=none。");
+        // Says what to press now when there is something to press (8005-agv-onboard-hmi#410, acceptance 2).
         PublishOperatorResponse(
             LoadCancellationNothingToCancelKind,
-            WireToGateNoOnboardExitText.LoadCancellationAfterResultHandedOver(resultKnown));
+            WireToGateNoOnboardExitText.LoadCancellationAfterResultHandedOver(resultKnown, CanRequestLoadCompensation));
         return true;
     }
 
