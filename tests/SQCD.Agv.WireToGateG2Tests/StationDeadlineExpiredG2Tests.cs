@@ -42,6 +42,21 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The operator shuts slot 1's open door with nothing in, and the load holds it shut for 「重新开门」: the one shape in
+    /// which a load in flight may be cancelled -- no basket in, every door locked, every output reset (CP-0021 revised
+    /// <c>REQ-0211</c>, protocol 6.0.0; 8005-agv-onboard-hmi#392). With the door open the press is refused before anything is
+    /// asked.
+    /// </summary>
+    private static async Task ShutEmptyForCancellationAsync(Harness harness, CancellationToken token)
+    {
+        harness.Io.CloseDoor(0, cargo: false);
+        await Harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation && harness.Business.LoadCancellationBlockedReason is null,
+            "slot 1 shut empty and the in-flight cancellation pressable",
+            token);
+    }
+
+    /// <summary>
     /// 验收第 1 条：期限过后空关多次，每次按「重新开门」仍重开（8005-agv-onboard-hmi#385 起空关后等人按，不再自动开），
     /// 结果里没有 <c>FAILED</c>、没有 <c>OPERATOR_TIMEOUT</c>；验收第 2 条的一半：门开着的每一轮提示都是期限后的文案，
     /// 门空关着等按键的每一轮也说出取消这条出路。
@@ -175,6 +190,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <remarks>
     /// 先红：取消执行器那半在当前代码上把开着的门判 <c>LOCK_NOT_CLOSED</c>、整次取消 <c>FAILED</c>；原执行器没有
     /// 中止通道，两个执行器同时驱动 1 号仓；取消收尾后清空了日志，重发的命令被当成新命令、再开一次锁。
+    /// <para>
+    /// 协议 6.0.0 起（8005-agv-onboard-hmi#392）门开着时按不出取消：按下时门已空关锁闭，授权之前锁反馈又读成开着——这是
+    /// v6 下取消接手开着的门仅剩的防御形状。授权是空范围，接手的门照旧不打脉冲。
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -182,19 +201,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
     public async Task AnAuthorizedCancellationStopsTheLoadAndClearsTheDoorItLeftOpen()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
         await using Harness harness = await Harness.StartAsync(
-            new FakeIoModuleClient { OperatorNeverActs = true },
+            io,
             token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
+                server.BeforeLoadCancellationAuthorization = () => io.OpenDoor(0);
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
+        await ShutEmptyForCancellationAsync(harness, token);
 
         // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
         // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
@@ -263,7 +280,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.LoadCancellationAuthorizationsToDrop = 1;
                 server.ReplayJourneySnapshotsWithStableIdentity = true;
             },
@@ -271,15 +287,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
         {
             before = beforeRestart.Server;
             await beforeRestart.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-            await Harness.WaitUntilAsync(
-                () => beforeRestart.Business.CanRequestLoadCancellation,
-                "the in-flight load cancellation entry to be offered",
-                token);
+            await ShutEmptyForCancellationAsync(beforeRestart, token);
             Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync("现场不装了。", token));
             Assert.NotNull(beforeRestart.ReadRecoveryState(token).PendingLoadCancellation);
         }
 
-        // The operator shut the door empty while the vehicle was down.
+        // The door stays shut empty while the vehicle is down.
         await using Harness afterRestart = await Harness.StartAsync(
             new FakeIoModuleClient(),
             token,
@@ -290,7 +303,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 // a revision content conflict.
                 server.ReplayJourneySnapshotsWithStableIdentity = true;
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.AdoptDurableRecoveryMemoryFrom(before);
             },
             journalPath: journalPath,
@@ -357,7 +369,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.SendSlotOperationCommandAfterRecovery = false;
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.RecoverySlotOperationAttemptId = AttemptId;
             },
             seed: WireToGateRecoveryState.Empty with

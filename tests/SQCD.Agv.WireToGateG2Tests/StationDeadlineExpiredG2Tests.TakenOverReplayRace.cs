@@ -102,25 +102,27 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// attempt 归取消管：重发只出一条 <c>OPERATION_REPLAY</c>，界面快照与等待计时都不变，不补跑恢复判断把它投影成
     /// 「恢复向量尚未完成」（hmi#124 独立审查）。
     /// </summary>
+    /// <remarks>
+    /// 协议 6.0.0 起（8005-agv-onboard-hmi#392）取消只在门空关锁闭时按得出，授权后不开门、当场结清，没有「正在执行」的窗口。
+    /// 窗口靠 v6 下仅剩的防御形状造：按下时门锁着，授权之前锁反馈又读成开着，取消接手这扇开着的门、等人关上。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     public async Task AResendDuringAnInFlightCancellationLeavesTheOperationProjectionAlone()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
         await using Harness harness = await Harness.StartAsync(
-            new FakeIoModuleClient { OperatorNeverActs = true },
+            io,
             token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
+                server.BeforeLoadCancellationAuthorization = () => io.OpenDoor(0);
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
+        await ShutEmptyForCancellationAsync(harness, token);
 
         // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
         // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
