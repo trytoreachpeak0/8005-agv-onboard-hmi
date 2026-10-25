@@ -2632,13 +2632,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     Task winner = await Task.WhenAny(pressed, released, unknown, latched).ConfigureAwait(false);
                     if (winner == pressed)
                     {
-                        return (await pressed.ConfigureAwait(false) switch
-                            {
-                                WireToGateOperatorSlotRequest.RemainingBasketsSkip => OperatorWaitOutcome.RemainingBasketsSkipHeld,
-                                WireToGateOperatorSlotRequest.AbandonResume => OperatorWaitOutcome.ResumeAbandoned,
-                                _ => OperatorWaitOutcome.ReopenPressed
-                            },
-                            promptRound + 1);
+                        WireToGateOperatorSlotRequest request = await pressed.ConfigureAwait(false);
+                        OperatorWaitOutcome outcome = request switch
+                        {
+                            WireToGateOperatorSlotRequest.RemainingBasketsSkip => OperatorWaitOutcome.RemainingBasketsSkipHeld,
+                            WireToGateOperatorSlotRequest.AbandonResume => OperatorWaitOutcome.ResumeAbandoned,
+                            _ => OperatorWaitOutcome.ReopenPressed
+                        };
+                        return (outcome, promptRound + 1);
                     }
 
                     if (winner == latched)
