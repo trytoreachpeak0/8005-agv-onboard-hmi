@@ -147,6 +147,38 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 「不装了」 over a resumed load whose slots read empty (8005-agv-onboard-hmi#410): the confirmation says what follows --
+    /// the resume ends with no door opened, and the load is settled by 「补偿清空」.
+    /// </summary>
+    private async void OnAbandonResumeClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = ModalDialogs.Show(
+            "确定不装了吗？\n\n本次续行到此结束，不会再开门。之后请按「补偿清空」结束这次装货。",
+            "不装了",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.AbandonResumeAsync())
+        {
+            ModalDialogs.Show(
+                "当前状态已经变化，不能结束续行。请按照界面最新提示操作。",
+                "不装了",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    /// <summary>
     /// 「剩下的不装（已装 k/N 篮）」 (8005-agv-onboard-hmi#388): the confirmation names what goes and what stays, and the press is
     /// bound to the offer the dialog was read from.
     /// </summary>

@@ -20,5 +20,9 @@ internal static class SlotReopenWiring
             () => business.CanReopenWaitingSlot,
             () => business.SlotReopenStatus,
             cancellationToken => business.RequestSlotReopenAsync(cancellationToken));
+        // 「不装了」 is offered in the same wait, over a resumed load whose slots read empty (8005-agv-onboard-hmi#410).
+        viewModel.ConfigureResumeAbandon(
+            () => business.CanAbandonResume,
+            cancellationToken => business.AbandonResumeAsync(cancellationToken));
     }
 }

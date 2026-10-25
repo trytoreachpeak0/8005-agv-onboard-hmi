@@ -730,6 +730,15 @@
                             Visibility="{Binding CanReopenOperation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnReopenOperationClick"
                             Content="重新开门" />
+                    <!-- 续行装货时仓里没货的出路（8005-agv-onboard-hmi#410）：续行按现读的空仓收尾，不再开门。 -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="AbandonResume"
+                            IsEnabled="{Binding CanAbandonResume}"
+                            Visibility="{Binding CanAbandonResume, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnAbandonResumeClick"
+                            Content="不装了" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
