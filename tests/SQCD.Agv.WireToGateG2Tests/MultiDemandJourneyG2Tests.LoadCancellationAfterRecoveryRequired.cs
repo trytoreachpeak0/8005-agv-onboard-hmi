@@ -110,9 +110,15 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         Assert.False(harness.ViewModel.CanRequestLoadCancellation);
         Assert.False(harness.Business.CanRequestLoadCancellation);
-        // With the switch on, compensation is the vehicle's own exit: the line saying there is none stays off (onboard-hmi#370).
-        Assert.False(harness.OnUi(() => harness.ViewModel.HasNoOnboardExitNotice));
-        Assert.Null(harness.Business.NoOnboardExitNotice);
+        // With the switch on, compensation is the vehicle's own exit: the line does not say there is none (onboard-hmi#370),
+        // it names that exit and the step before it (onboard-hmi#410).
+        const string compensationExit =
+            "这次装货没有完成，已交服务端处理。仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.NoOnboardExitNotice) == compensationExit,
+            "the line naming compensation as the way out",
+            token);
+        Assert.Equal(compensationExit, harness.Business.NoOnboardExitNotice);
         Assert.Empty(harness.UiErrors);
 
         // The screen-state snapshot of a session that requires recovery (onboard-hmi#313): the banner says so and came

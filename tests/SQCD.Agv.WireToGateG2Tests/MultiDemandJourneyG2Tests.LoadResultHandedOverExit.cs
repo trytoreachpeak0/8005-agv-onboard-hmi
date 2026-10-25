@@ -65,23 +65,24 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         AssertNoOnboardExitStatus(harness.ScreenState(), "LOAD:UNKNOWN");
 
-        // 授权未开：按下去被拒，那一行照旧在。
+        // 操作员关好空仓门（锁反馈又读得到）。授权未开：按「补偿清空」被服务端拒，那一行照旧在。
+        io.CloseDoor(0, cargo: false);
+        io.PublishSnapshot();
         Assert.False(await harness.ViewModel.RequestLoadCompensationAsync(token));
         Assert.True(harness.Business.IsRecoveryNotOpen);
+        Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
         Assert.Equal(LoadResultHandedOverExitAfterUnknownLoad, harness.OnUi(() => harness.ViewModel.NoOnboardExitNotice));
         Assert.Empty(ReceivedPayloads(harness, "LoadCompensationResult"));
 
-        // 维护人员开放了恢复；操作员关好空仓门，照屏上说的按「补偿清空」。
+        // 维护人员开放了恢复；照屏上说的再按「补偿清空」。
         harness.Server.RecoverySessionRejectionReasonCode = null;
-        io.CloseDoor(0, cargo: false);
-        io.PublishSnapshot();
         await harness.WaitUntilAsync(
             () =>
             {
                 harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanRequestLoadCompensation;
             },
-            "the compensation entry once the slot reads again",
+            "the compensation entry after the refusal",
             token);
         Assert.True(await harness.ViewModel.RequestLoadCompensationAsync(token));
 

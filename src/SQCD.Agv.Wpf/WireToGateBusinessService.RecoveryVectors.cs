@@ -896,9 +896,11 @@ public sealed partial class WireToGateBusinessService
     /// settle (agv03 2026-10-19 15:21). So it is judged on the journal, not on the reason code.
     /// </para>
     /// <para>
-    /// Off whenever any recovery entry is offered -- with the switch on and the proof set, compensation is the vehicle's own
-    /// exit -- and while a recovery vector is on file, which the entries above are about. It is a line, not an entry: the
-    /// latch shuts entries, never this.
+    /// Over a load with 「补偿清空」 offered -- the switch on and the proof set -- the line names that entry as the way out,
+    /// and that maintenance opens recovery for the vehicle first (8005-agv-onboard-hmi#410, agv01 2026-10-22: the screen
+    /// said nothing, and the operator pressed 「申请恢复」, which ran the load again). Not while a recovery session is
+    /// active, which has its own words. Off whenever any other recovery entry is offered, and while a recovery vector is
+    /// on file, which the entries above are about. It is a line, not an entry: the latch shuts entries, never this.
     /// </para>
     /// </remarks>
     public WireToGateNoOnboardExit? NoOnboardExit
@@ -906,12 +908,23 @@ public sealed partial class WireToGateBusinessService
         get
         {
             WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-            return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
-                && state.RecoveryVector is null
-                && OperationWithResultAwaitingServer(state) is { } operation
-                && !OffersAnyRecoveryEntry()
-                    ? new WireToGateNoOnboardExit(operation.OperationType, ResultKnown(state, operation))
-                    : null;
+            if (_session.Current.Readiness != WireToGateSessionReadiness.RecoveryRequired
+                || state.RecoveryVector is not null
+                || OperationWithResultAwaitingServer(state) is not { } operation)
+            {
+                return null;
+            }
+
+            if (operation.OperationType == OperationType.Load
+                && CanRequestLoadCompensation
+                && !IsActiveRecoverySnapshot(Volatile.Read(ref _recoverySessionSnapshot)))
+            {
+                return new WireToGateNoOnboardExit(operation.OperationType, ResultKnown(state, operation), CompensationOffered: true);
+            }
+
+            return OffersAnyRecoveryEntry()
+                ? null
+                : new WireToGateNoOnboardExit(operation.OperationType, ResultKnown(state, operation));
         }
     }
 
