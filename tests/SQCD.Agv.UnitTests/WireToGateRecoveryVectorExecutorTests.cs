@@ -75,7 +75,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         List<bool> observedDuringRun = [];
         WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
             CreateContext(
-                WireToGateRecoveryVectorTypes.LoadCancellation,
+                WireToGateRecoveryVectorTypes.LoadCompensation,
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 [1, 2]),
             (_, _, _, _) =>
@@ -92,8 +92,8 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task ClearSkipsEmptySlotsAndUnlocksOnlyOccupiedSlots()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -102,7 +102,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
 
         WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
             CreateContext(
-                WireToGateRecoveryVectorTypes.LoadCancellation,
+                WireToGateRecoveryVectorTypes.LoadCompensation,
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 [1, 2, 3]),
             null,
@@ -120,6 +120,56 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         });
     }
 
+    /// <summary>
+    /// 协议 6.0.0 候选（<c>CV-LOAD-CANCELLATION-ALL-EMPTY</c>，8005-agv-onboard-hmi#392）：装货取消不为取消开任何仓。目标仓都空、
+    /// 锁着、输出复位时不开锁就结 <c>COMPLETED</c>（业务层报 <c>ALL_EMPTY</c>），逐仓带现读值。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ALoadCancellationOverEmptyShutSlotsCompletesWithoutAPulse()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([false, false], cancellationToken: token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(WireToGateRecoveryVectorTypes.LoadCancellation, "39239239-2392-4392-8392-392392392001", [1, 2]),
+            null,
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        Assert.Equal([1, 2], result.SlotResults.Select(item => item.SlotNo));
+        Assert.All(result.SlotResults, item => Assert.Equal(
+            ("COMPLETED", "EMPTY", "LOCKED", "RESET"),
+            (item.Outcome, item.FinalPhysicalState, item.LockState, item.UnlockOutputState)));
+    }
+
+    /// <summary>
+    /// 有一仓里有篮子时（服务端不该授权，是它的读数落后于车）也不开锁：那一仓 <c>NOT_STARTED</c> 带
+    /// <c>ACTION_NOT_ALLOWED_IN_STATE</c>，整体 <c>FAILED</c>，没有门开着，活动开锁集为空。修之前它被开锁清空。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task ALoadCancellationNeverUnlocksASlotWithABasketIn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([false, true, false], cancellationToken: token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(WireToGateRecoveryVectorTypes.LoadCancellation, "39239239-2392-4392-8392-392392392002", [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        WireToGateSlotExecutionResult loaded = result.SlotResults.Single(item => item.SlotNo == 2);
+        Assert.Equal(("NOT_STARTED", "OCCUPIED"), (loaded.Outcome, loaded.FinalPhysicalState));
+        Assert.Equal([WireToGateRecoveryVectorExecutor.LoadCancellationWouldOpenReason], loaded.ReasonCodes);
+        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
@@ -129,7 +179,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
             [true],
             cancellationToken: TestContext.Current.CancellationToken);
         WireToGateRecoveryVectorContext context = CreateContext(
-            WireToGateRecoveryVectorTypes.LoadCancellation,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
             "12121212-1212-4212-8212-121212121212",
             [1]);
 
@@ -373,8 +423,8 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// <summary>
     /// ADR-cross-0046 for a load cancelled in flight (onboard-hmi#78): a door the aborted load left open
     /// when the authorization arrived is not pulsed again. The operator takes the basket out -- or never
-    /// put one in -- and shuts it; <c>EMPTY</c>, locked and output reset counts as cleared. Other target
-    /// slots confirmed occupied are unlocked to be emptied as before.
+    /// put one in -- and shuts it; <c>EMPTY</c>, locked and output reset counts as cleared. No other target
+    /// slot is unlocked: a load cancellation opens none (protocol 6.0.0, 8005-agv-onboard-hmi#392).
     /// </summary>
     /// <remarks>
     /// The business service hands the open door over in the journal: the prepared vector keeps the
@@ -389,7 +439,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     public async Task ADoorLeftOpenByTheAbortedLoadCountsAsClearedOnceShutEmptyWithoutAnotherPulse(bool basketIn)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        await using TestFixture fixture = await TestFixture.CreateAsync([basketIn, true], cancellationToken: token);
+        await using TestFixture fixture = await TestFixture.CreateAsync([basketIn, false], cancellationToken: token);
         fixture.Io.OpenDoor(0);
         WireToGateRecoveryVectorContext context = CreateContext(
             WireToGateRecoveryVectorTypes.LoadCancellation,
@@ -413,7 +463,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
             token);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
-        Assert.Equal(1, fixture.Io.UnlockCount);
+        Assert.Equal(0, fixture.Io.UnlockCount);
         Assert.All(result.SlotResults, item =>
         {
             Assert.Equal("COMPLETED", item.Outcome);
@@ -463,14 +513,15 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// <summary>
     /// REQ-0357 and ADR-cross-0061, the one defect program#111 found: a load of [1,2,3] is cancelled
     /// with 1 loaded and locked and 2 standing open. The door the aborted load left open is the one
-    /// open door on the vehicle, so it is brought to its end first -- 1 is not pulsed while 2 is open,
-    /// and the journal's active unlock set stays [2] until 2 is done instead of being rewritten to [1],
-    /// which would have lost the open door to a restart.
+    /// open door on the vehicle, so it is brought to its end first, and the journal's active unlock set
+    /// stays [2] until 2 is done instead of being rewritten to [1], which would have lost the open door to
+    /// a restart. Then 1 is never unlocked: a load cancellation opens no slot (protocol 6.0.0,
+    /// 8005-agv-onboard-hmi#392), so the basket in it is refused and the cancellation is FAILED.
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
-    public async Task ACancelledLoadsOpenDoorIsFinishedBeforeAnyLoadedSlotIsUnlocked()
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task ACancelledLoadsOpenDoorIsFinishedAndALoadedSlotIsNeverUnlocked()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync([true, false, false], cancellationToken: token);
@@ -498,16 +549,16 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         Assert.All(
             journaled.Where(sample => !sample.Completed.Contains(2)),
             sample => Assert.Equal([2], sample.Active));
-        Assert.Equal([(1, true)], fixture.Io.Pulses);
+        Assert.Empty(fixture.Io.Pulses);
         Assert.Contains(journaled, sample => sample.Completed.Contains(2));
-        Assert.Equal("COMPLETED", result.OverallOutcome);
-        Assert.All(result.SlotResults, item =>
-        {
-            Assert.Equal("COMPLETED", item.Outcome);
-            Assert.Equal("EMPTY", item.FinalPhysicalState);
-            Assert.Equal("LOCKED", item.LockState);
-            Assert.Equal("RESET", item.UnlockOutputState);
-        });
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(
+            [(1, "NOT_STARTED", "OCCUPIED"), (2, "COMPLETED", "EMPTY"), (3, "COMPLETED", "EMPTY")],
+            result.SlotResults.OrderBy(item => item.SlotNo).Select(item => (item.SlotNo, item.Outcome, item.FinalPhysicalState)));
+        Assert.Equal(
+            [WireToGateRecoveryVectorExecutor.LoadCancellationWouldOpenReason],
+            result.SlotResults.Single(item => item.SlotNo == 1).ReasonCodes);
+        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
     }
 
     /// <summary>
@@ -589,16 +640,14 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     }
 
     /// <summary>
-    /// REQ-0357 across the clears: every unlock pulse of a load cancellation, a compensation or a fault
-    /// cargo handoff finds every other door of the vehicle locked with its output reset.
+    /// REQ-0357 across the clears: every unlock pulse of a compensation or a fault cargo handoff finds every
+    /// other door of the vehicle locked with its output reset. A load cancellation pulses nothing
+    /// (protocol 6.0.0, 8005-agv-onboard-hmi#392; <see cref="ALoadCancellationNeverUnlocksASlotWithABasketIn"/>).
     /// </summary>
     [Theory]
-    [InlineData(WireToGateRecoveryVectorTypes.LoadCancellation)]
     [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
     [InlineData(WireToGateRecoveryVectorTypes.FaultCargoHandoff)]
-    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("IntegrationSlice", "FP-IS-07")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task EveryUnlockOfAClearFindsEveryOtherDoorShut(string vectorType)
     {
