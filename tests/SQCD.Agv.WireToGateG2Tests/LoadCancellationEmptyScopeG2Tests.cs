@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using Xunit;
 using Harness = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness;
 using ScriptStep = SQCD.Agv.WireToGateG2Tests.FakeIoModuleClient.ScriptStep;
@@ -65,6 +66,91 @@ public sealed class LoadCancellationEmptyScopeG2Tests
         Assert.Empty(Authorization(harness).GetProperty("slots").EnumerateArray());
         AssertNoOperationResult(harness);
     }
+
+    /// <summary>
+    /// 门开着等放货时：「取消装货」在原位但按不动，旁边说先关好仓门；绕过按钮直接按，也不发申请、不开门，说同一句话。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task WithADoorOpenTheCancellationCannotBePressedAndSaysToShutItFirst()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensAndStaysOpen());
+        await using Harness harness = await StartAsync(io, token, server => server.RespondToLoadCancellationRequests = true);
+
+        await WaitUntilAsync(
+            harness,
+            () => io.UnlockCount == 1 && harness.Business.CurrentExpectedActionWait is not null,
+            "slot 1 open, waiting for the operator",
+            token);
+        await io.ScriptsFinishedAsync();
+        await WaitUntilAsync(
+            harness,
+            () => harness.OnUi(() => harness.ViewModel.HasLoadCancellationBlockedHint),
+            "the cancellation shown blocked",
+            token);
+        Assert.True(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));
+        Assert.False(harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation));
+        Assert.Equal(
+            WireToGateLoadCancellationText.ShutTheDoorFirst,
+            harness.OnUi(() => harness.ViewModel.LoadCancellationBlockedHintText));
+
+        Assert.True(await harness.Business.RequestLoadCancellationAsync("现场不装了。", cancellationToken: token));
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "LoadCancellationStartRequested");
+        Assert.Contains(harness.Events, item => item.Message.Contains(WireToGateLoadCancellationText.ShutTheDoorFirst, StringComparison.Ordinal));
+        Assert.Equal(1, io.UnlockCount);
+        AssertNoOperationResult(harness);
+    }
+
+    /// <summary>
+    /// 10-21 agv03 @160 的形状：1 号仓已装进一篮、2 号仓空关锁闭等「重新开门」。「取消装货」按不动，旁边说已装进花篮、要少装按
+    /// 「剩下的不装」，「剩下的不装」给出；直接按也不发申请、不开门。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task OnceABasketIsLoadedTheCancellationCannotBePressedAndPointsToTheSkip()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(1, OpensThenShut(cargo: true));
+        io.ScriptPulse(2, OpensThenShut(cargo: false));
+        await using Harness harness = await StartAsync(
+            io,
+            token,
+            server => server.RespondToLoadCancellationRequests = true,
+            slots: [1, 2]);
+
+        await WaitForReopenOfferAsync(harness, token, unlockCount: 2);
+        await WaitUntilAsync(
+            harness,
+            () => harness.OnUi(() => harness.ViewModel.CanRequestRemainingBasketsSkip),
+            "「剩下的不装」 offered",
+            token);
+        Assert.True(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));
+        Assert.False(harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation));
+        Assert.Equal(
+            WireToGateLoadCancellationText.BasketLoaded,
+            harness.OnUi(() => harness.ViewModel.LoadCancellationBlockedHintText));
+
+        Assert.True(await harness.Business.RequestLoadCancellationAsync("现场不装了。", cancellationToken: token));
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "LoadCancellationStartRequested");
+        Assert.Contains(harness.Events, item => item.Message.Contains(WireToGateLoadCancellationText.BasketLoaded, StringComparison.Ordinal));
+        Assert.Equal(2, io.UnlockCount);
+        AssertNoOperationResult(harness);
+    }
+
+    private static ScriptStep[] OpensAndStaysOpen() =>
+    [
+        new(TimeSpan.FromMilliseconds(40), (fake, slot) => fake.SetLockFeedback(slot, locked: false)),
+        new(TimeSpan.FromMilliseconds(600), (fake, slot) => fake.SetUnlockOutput(slot, energised: false)),
+    ];
 
     private static string Said(Harness harness) =>
         string.Join(" | ", harness.Events.Select(item => $"{item.Kind}: {item.Message}"))

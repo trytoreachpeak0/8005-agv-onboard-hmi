@@ -24,6 +24,12 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// </summary>
     public const string DoorLockUnprovenAfterEmptyReason = "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY";
 
+    /// <summary>
+    /// The reason on the slot of a load cancellation that would have had to be opened to be cleared: a cancellation is
+    /// not allowed over it in its state (8005-agv-onboard-hmi#392). Registered for every message type.
+    /// </summary>
+    public const string LoadCancellationWouldOpenReason = "ACTION_NOT_ALLOWED_IN_STATE";
+
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
@@ -587,6 +593,30 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 // at Prepared. A handed-over door the reading cannot prove shut stays in the active unlock set and the
                 // answer is UNKNOWN; otherwise it is FAILED (8005-agv-onboard-hmi#249).
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
+                (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
+                    context,
+                    beforePulse,
+                    handedOver,
+                    completed,
+                    results,
+                    correction).ConfigureAwait(false);
+                return refusal;
+            }
+
+            if (!openHandedOver && context.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation)
+            {
+                // A load cancellation never opens a slot (protocol 6.0.0, CV-LOAD-CANCELLATION-ALL-EMPTY,
+                // NEVER_OPEN_A_SLOT_FOR_A_CANCELLATION; 8005-agv-onboard-hmi#392): it is authorized only over target slots
+                // that read empty, locked and reset, which every slot above has been settled on without a pulse. A slot
+                // still to clear here reads otherwise -- a basket in it, the server's facts behind the vehicle's -- and is
+                // refused before its unlock is written, as the precheck refuses: nothing this vector did is in doubt.
+                AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        ReadPhysicalSlot(beforePulse, physicalSlot),
+                        "NOT_STARTED",
+                        [LoadCancellationWouldOpenReason]));
                 (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
                     context,
                     beforePulse,

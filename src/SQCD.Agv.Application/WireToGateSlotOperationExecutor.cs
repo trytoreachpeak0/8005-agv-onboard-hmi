@@ -452,6 +452,50 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Why a cancellation of the load over <paramref name="slots"/> may not be asked for now, as the reason code the control
+    /// server would refuse it with, or <c>null</c> when it may (CP-0021 revised <c>REQ-0211</c>, protocol 6.0.0;
+    /// 8005-agv-onboard-hmi#392): every target slot read <c>EMPTY</c>, its door locked and its unlock output reset, and no basket
+    /// loaded.
+    /// </summary>
+    /// <remarks>
+    /// Checked in the server's order, the first that fails deciding: <c>SLOT_STATE_UNKNOWN</c> (a stale snapshot, or a slot
+    /// that cannot be read), <c>LOAD_CANCELLATION_BASKET_LOADED</c> (a slot <paramref name="loadedSlots"/> names, or one that
+    /// reads a basket in it), <c>LOCK_NOT_CLOSED</c>, <c>UNLOCK_OUTPUT_NOT_RESET</c>. Read off the IO as it is now, as
+    /// <see cref="RemainingBasketsSkipOffer"/> is. The slots a waiting run counts loaded are added to the caller's.
+    /// </remarks>
+    public string? LoadCancellationRefusal(IReadOnlyList<int> slots, IReadOnlyCollection<int> loadedSlots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+        ArgumentNullException.ThrowIfNull(loadedSlots);
+        IReadOnlyList<int> runLoaded = [];
+        if (Volatile.Read(ref _activeOperation) is { } active)
+        {
+            lock (active)
+            {
+                runLoaded = active.OperatorRequest?.Completed ?? [];
+            }
+        }
+
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        if (!IsFresh(snapshot))
+        {
+            return "SLOT_STATE_UNKNOWN";
+        }
+
+        LockerSnapshot[] lockers = [.. slots.Select(slot => TryGetLocker(snapshot, slot - 1))];
+        return lockers.Any(locker => !locker.IsKnown)
+            ? "SLOT_STATE_UNKNOWN"
+            : lockers.Any(locker => locker.HasCargo)
+                || slots.Any(slot => loadedSlots.Contains(slot) || runLoaded.Contains(slot))
+                ? "LOAD_CANCELLATION_BASKET_LOADED"
+                : lockers.Any(locker => !locker.IsLocked)
+                    ? "LOCK_NOT_CLOSED"
+                    : lockers.Any(locker => locker.UnlockOutputRaw is not false)
+                        ? "UNLOCK_OUTPUT_NOT_RESET"
+                        : null;
+    }
+
     /// <summary>The <c>skipRequestId</c> the running operation is held for, or <c>null</c> when none is pending in it.</summary>
     public string? HeldRemainingBasketsSkipRequestId
     {

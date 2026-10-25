@@ -54,6 +54,38 @@ public sealed partial class WireToGateBusinessService
             && !IsLoadCancellationBeforeSublotVectorOnFile())
         || CanRequestLoadCancellationBeforeSublot();
 
+    /// <summary>
+    /// Why the load in flight the entry is lit over may not be cancelled now, as the reason code the control server would
+    /// refuse it with, or <c>null</c> when it may or when the entry is about something else (CP-0021 revised <c>REQ-0211</c>,
+    /// protocol 6.0.0; 8005-agv-onboard-hmi#392).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Once loading has started a cancellation is only for a load with no basket in, every target door shut and locked and
+    /// every unlock output reset: the server authorizes nothing else, and never with a slot to open. The entry stays where it
+    /// is and cannot be pressed, and the sentence beside it says why and what to press instead
+    /// (<see cref="WireToGateLoadCancellationText.Blocked"/>) -- 「剩下的不装」 once a basket is in, shut the door first while one
+    /// stands open.
+    /// </para>
+    /// <para>
+    /// Judged on the IO as it reads now and on the slots the load has counted loaded (<see cref="WireToGateSlotOperationExecutor.LoadCancellationRefusal"/>).
+    /// A cancellation already on file, before any sublot or authorized, is not judged here: it is settled as it stands.
+    /// </para>
+    /// </remarks>
+    public string? LoadCancellationBlockedReason
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.RecoveryVector is null && CancellableLoadInFlight(state) is { } load
+                ? LoadCancellationRefusal(state, load)
+                : null;
+        }
+    }
+
+    private string? LoadCancellationRefusal(WireToGateRecoveryState state, WireToGateRecoveryOperationContext load) =>
+        _executor.LoadCancellationRefusal(load.Slots, [.. state.CompletedSlots.Where(load.Slots.Contains)]);
+
     private bool IsLoadCancellationBeforeSublotVectorOnFile() =>
         Volatile.Read(ref _lastRecoveryState).RecoveryVector is { } vector
         && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector);
@@ -949,7 +981,8 @@ public sealed partial class WireToGateBusinessService
     /// <summary>Whether any recovery entry of the window is offered by this service now.</summary>
     private bool OffersAnyRecoveryEntry() =>
         CanRequestResumeAfterRepair
-        || CanRequestLoadCancellation
+        // An entry that cannot be pressed is no exit (8005-agv-onboard-hmi#392).
+        || CanRequestLoadCancellation && LoadCancellationBlockedReason is null
         || CanRequestLoadCompensation
         || CanRequestLoadCorrection
         || CanRequestFaultCargoHandoff
@@ -1397,7 +1430,23 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
         }
 
+        // Revised REQ-0211 (8005-agv-onboard-hmi#392): asked over a basket in, a door not shut or an output not reset, the
+        // server refuses it, and nothing about the load changes; so it is not asked. The entry is shut over it already; this is
+        // the press that got there anyway, the state changed under the confirmation dialog. Answered as the entry is
+        // captioned, nothing sent, the load left running. Not a request already out under this id: the server may have
+        // authorized it, and only asking again -- the first press's content, its stored answer replayed -- settles it.
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
+        if (!string.Equals(state.PendingLoadCancellation?.CancellationId, cancellationId, StringComparison.Ordinal)
+            && LoadCancellationRefusal(state, operation) is { } refusal)
+        {
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"取消装货未申请、未开仓门：attempt={operation.SlotOperationAttemptId}，原因={refusal}。");
+            PublishOperatorResponse("RECOVERY_BLOCKED", WireToGateLoadCancellationText.Blocked(refusal) + "。 ");
+            return true;
+        }
+
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
         // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
         // last person pressed would open doors (review M1, probe: 306 s after the press, resent, authorized, unlocked).
@@ -1418,8 +1467,10 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
-        if (authorization.Slots.Count == 0
-            || !authorization.Slots.SequenceEqual(operation.Slots))
+        // Protocol 6.0.0: every AUTHORIZED decision has an empty scope -- no door is opened for a cancellation
+        // (CV-LOAD-CANCELLATION-ALL-EMPTY; 8005-agv-onboard-hmi#392). The slots the vehicle reads and reports are its own
+        // load's, never the server's; an authorization naming slots is the v5 shape, which would have them opened.
+        if (authorization.Slots.Count != 0)
         {
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
         }
@@ -1465,7 +1516,7 @@ public sealed partial class WireToGateBusinessService
             authorization.DemandId,
             authorization.SlotOperationAttemptId,
             null,
-            authorization.Slots,
+            operation.Slots,
             null,
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
@@ -1479,7 +1530,7 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
         PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
-            $"装货取消已获服务端授权，装货已停止，开始将{FormatSlots(vector.Slots)}清空。 ");
+            $"装货取消已获服务端授权，装货已停止，正在核对{FormatSlots(vector.Slots)}为空，不开仓门。 ");
         return await ExecuteRecoveryVectorAndReportAsync(
                 vector,
                 correction: false,
