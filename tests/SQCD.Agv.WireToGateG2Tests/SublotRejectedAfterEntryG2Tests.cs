@@ -133,6 +133,38 @@ public sealed class SublotRejectedAfterEntryG2Tests
     }
 
     /// <summary>
+    /// 服务端开仓前复核车位、车不在本站上时以 <c>STATION_MISMATCH</c> 拒收（control-server#783）：事件里说车不在本站，
+    /// 下一步是把车开回本站，不说「未识别的拒收原因」、不叫操作员重新扫码（onboard-hmi#377）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
+    public async Task AStationMismatchRejectionTellsTheOperatorToBringTheVehicleBackRatherThanScanAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RejectionHarness harness = await RejectionHarness.StartAsync(
+            server =>
+            {
+                server.RejectSublotSubmissionsWith = "STATION_MISMATCH";
+                server.RejectionWorklistRevision = 1;
+            },
+            token);
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await harness.WaitForEventAsync("SUBLOT_REJECTED", token);
+
+        Assert.True(harness.Business.CurrentSublotRejection?.EntryRequestKept);
+        WireToGateOperatorEvent rejected = Assert.Single(
+            harness.Events, item => item.Kind == "SUBLOT_REJECTED");
+        Assert.Equal(
+            "子批 SUBLOT-001 被服务端拒收：车此刻不在本站上（可能被移开过），不能录入。"
+            + "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。",
+            rejected.Message);
+        Assert.DoesNotContain("未识别", rejected.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新扫码", rejected.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 操作员再录入一次，上一次的拒收原因就从提示区撤下；新的拒收到来时换成新的那条。
     /// </summary>
     [Fact]
