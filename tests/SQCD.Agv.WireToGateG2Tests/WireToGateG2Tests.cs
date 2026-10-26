@@ -1040,12 +1040,14 @@ public sealed partial class WireToGateG2Tests
                 .ToArray();
         }
 
+        // No journey is on screen here, so the cancellation's entry is not lit and the prompt names no way to give the load up
+        // (8005-agv-onboard-hmi#392: a prompt names only a way out the screen offers).
         Assert.Equal(
             [
                 "请在1号仓放入货物并关门。",
-                "1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。",
+                "1号仓关门时没有放入篮子。请按「重新开门」继续装。",
                 "请在1号仓放入货物并关门。（第3次提示）",
-                "1号仓关门时没有放入篮子。请按「重新开门」继续装；不装了请按「取消装货」。",
+                "1号仓关门时没有放入篮子。请按「重新开门」继续装。",
                 "请在1号仓放入货物并关门。（第5次提示）"
             ],
             waiting);
