@@ -418,11 +418,12 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 结果是 <c>FAILED</c> 也一样（票面「或其他非 COMPLETED 的已确认结果」）。B 装 1、2 号仓：1 号仓装好关门，2 号仓开着时操作员
-    /// 按取消；授权之后车上锁存严重安全故障，1 号仓要新开一次门、被拒（<c>NOT_STARTED</c>），交接过来的 2 号仓空着关上，结果
-    /// <c>FAILED</c>（造法同 <see cref="ALatchArrivingWhileTheInFlightCancellationIsAskedOpensNoFurtherDoor"/>）。装货被取消中止，
-    /// B 没有自己的结果。维护人员复核仓门、复位锁存、重连之后：取消与「申请恢复」入口都关，向量离开日志簿，被接管的尝试记着（2 号仓
-    /// 被取消清空过），没有门在疑点里；故障交接把 B 的货交出、收尾。
+    /// 结果是 <c>FAILED</c> 也一样（票面「或其他非 COMPLETED 的已确认结果」）。B 装 1、2 号仓：1 号仓开门后空关、锁着等「重新开门」，
+    /// 操作员按取消；授权之前车上锁存严重安全故障，1 号仓读成里面有篮子。协议 6.0.0 起取消不开门（8005-agv-onboard-hmi#392），
+    /// 1 号仓不开锁、<c>NOT_STARTED</c>，没开过的 2 号仓空着锁着、完成，结果 <c>FAILED</c>——v6 下的防御形状：取消只在一篮未装时
+    /// 按得出，按下之后读数变了。原先的造法（1 号仓装好、2 号仓开着时按）在 v6 下按不出取消。装货被取消中止，B 没有自己的结果。
+    /// 维护人员复核仓门、复位锁存、重连之后：取消与「申请恢复」入口都关，向量离开日志簿，被接管的尝试记着，没有门在疑点里；故障交接
+    /// 把 B 的货交出、收尾。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -437,29 +438,24 @@ public sealed partial class MultiDemandJourneyG2Tests
             server =>
             {
                 ConfigureCancellationStop(server);
-                server.LoadCancellationAuthorizedSlots = [1, 2];
-                server.BeforeLoadCancellationAuthorization = () => LatchNow(latchTarget!);
+                server.BeforeLoadCancellationAuthorization = () =>
+                {
+                    LatchNow(latchTarget!);
+                    io.SetCargoPresent(0, present: true);
+                };
             },
             token);
         latchTarget = harness;
 
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1, 2]);
         await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 1, token);
-        io.CloseDoor(0, cargo: true);
-        await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over B",
-            token);
-        // Held until this thread shuts it, as in the latch test: a late wake-up must not run the handed-over wait out.
-        io.HoldWaitsUntilShut(1);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).RecoveryVector is not null,
             "the authorized cancellation to take the slots over",
             token);
         Assert.True(harness.Controller.IsFatalFaultLatched);
-        io.CloseDoor(1, cargo: false);
         JsonElement failed = await WaitForPayloadAsync(harness, "LoadCancellationResult", token);
         Assert.Equal("FAILED", failed.GetProperty("overallOutcome").GetString());
         Assert.Equal(DemandB, failed.GetProperty("demandId").GetString());
@@ -471,7 +467,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.DoesNotContain(
             ReceivedPayloads(harness, "OperationResult"),
             result => result.GetProperty("slotOperationAttemptId").GetString() == AttemptB);
-        Assert.Equal(2, io.UnlockCount);
+        Assert.Equal(1, io.UnlockCount);
         WireToGateRecoveryState onFile = ReadJournal(harness, token);
         Assert.Equal(AttemptB, onFile.UnsettledSlotOperationAttemptId);
         Assert.Equal(AttemptB, onFile.TakenOverSlotOperationAttemptId);
@@ -492,11 +488,11 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             token);
 
-        // The handoff opens slot 1 to hand the basket out, and the operator shuts it empty; slot 2, which the cancellation
-        // already emptied, is not opened again.
-        io.CloseDoorOnceUnlockedAt(0, cargo: false, unlockCount: 3);
+        // The handoff opens slot 1 to hand the basket out, and the operator shuts it empty; slot 2, read empty and locked,
+        // is not opened.
+        io.CloseDoorOnceUnlockedAt(0, cargo: false, unlockCount: 2);
         await HandOffBAsync(harness, io, demandChoice: null, token);
-        Assert.Equal(3, io.UnlockCount);
+        Assert.Equal(2, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -533,10 +529,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 1, token);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over B",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
         await harness.ViewModel.RequestLoadCancellationAsync(token);
         JsonElement unknown = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
         Assert.Equal("UNKNOWN", unknown.GetProperty("overallOutcome").GetString());
@@ -595,10 +588,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over B",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
         await harness.ViewModel.RequestLoadCancellationAsync(token);
 
         JsonElement unknown = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
@@ -737,7 +727,11 @@ public sealed partial class MultiDemandJourneyG2Tests
             server =>
             {
                 ConfigureCancellationStop(server);
-                if (loadResult == LoadResultOfB.UnknownFirst)
+                if (loadResult == LoadResultOfB.None)
+                {
+                    server.BeforeLoadCancellationAuthorization = OpenAgainBeforeTheAuthorization(io, 0, () => started);
+                }
+                else
                 {
                     // The load sees its slot go unreadable and ends UNKNOWN on its own; the authorization waits until that
                     // result is on the vehicle's file, so it reaches the server first. Waited on the vehicle's journal, not
@@ -768,10 +762,49 @@ public sealed partial class MultiDemandJourneyG2Tests
         return harness;
     }
 
+    /// <summary>
+    /// The operator shuts the empty door of slot <paramref name="slotIndex"/> + 1 and the load holds it for 「重新开门」: the
+    /// in-flight cancellation can be pressed now, which it cannot while a door stands open (CP-0021 revised REQ-0211,
+    /// protocol 6.0.0; 8005-agv-onboard-hmi#392).
+    /// </summary>
+    private static async Task ShutEmptyUntilCancellationCanBePressedAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        int slotIndex,
+        CancellationToken token)
+    {
+        io.CloseDoor(slotIndex, cargo: false);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation
+                && harness.Business.LoadCancellationBlockedReason is null
+                && harness.Business.CanReopenWaitingSlot,
+            "the in-flight cancellation pressable over the shut empty door",
+            token);
+    }
+
+    /// <summary>
+    /// The door the cancellation was pressed over reads open again before the authorization comes back: under protocol 6.0.0
+    /// a cancellation is only pressed with every door shut (8005-agv-onboard-hmi#392), so a door in doubt under it is the
+    /// defensive shape -- one opened by hand, or a lock that let go, after the press. The load runs on until the
+    /// authorization aborts it and hands the open door over; waited for on the vehicle's journal, as the UnknownFirst hook
+    /// waits, because this runs on the fake's receive loop.
+    /// </summary>
+    private static Action OpenAgainBeforeTheAuthorization(FakeIoModuleClient io, int slotIndex, Func<Harness?> harness) =>
+        () =>
+        {
+            io.OpenDoor(slotIndex);
+            DateTimeOffset until = DateTimeOffset.UtcNow.AddSeconds(10);
+            while (DateTimeOffset.UtcNow < until
+                && !(harness() is { } running
+                    && ReadJournal(running, CancellationToken.None).ActiveUnlockSlots.Contains(slotIndex + 1)))
+            {
+                Thread.Sleep(20);
+            }
+        };
+
     private static void ConfigureCancellationStop(FakeControlServer server)
     {
         server.RespondToLoadCancellationRequests = true;
-        server.LoadCancellationAuthorizedSlots = [1];
         server.SendLoadCompensationCommandOnRequest = true;
         server.RecoverySlotOperationAttemptId = AttemptB;
         server.RecoveryVectorSlotOperationAttemptId = AttemptB;
