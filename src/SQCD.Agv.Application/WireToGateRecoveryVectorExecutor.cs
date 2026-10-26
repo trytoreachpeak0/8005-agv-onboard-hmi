@@ -35,6 +35,12 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// is read and known, and none of the recovery results may carry <c>OPERATOR_TIMEOUT</c>, which the registry allows on
     /// <c>OperationResult</c> only (8005-agv-onboard-hmi#392).
     /// </summary>
+    /// <remarks>
+    /// Used for this one shape and nothing else (Coordinator13, 2026-10-25): no registered code says it, and protocol 6.0.0 is
+    /// not changed for it. Allowing <c>OPERATOR_TIMEOUT</c> on <c>LoadCompensationResult</c>, <c>LoadCancellationResult</c> and
+    /// <c>FaultCargoRecoveryResult</c> is filed for the next protocol version. The business service logs the slot, the time
+    /// given and that the basket is still in, so the people at the vehicle can read what the code does not say.
+    /// </remarks>
     public const string OperatorDidNotClearReason = "ACTION_NOT_ALLOWED_IN_STATE";
 
     private readonly IIoModuleClient _ioModule;

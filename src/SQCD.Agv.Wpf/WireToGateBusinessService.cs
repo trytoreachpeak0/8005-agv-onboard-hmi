@@ -43,6 +43,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly string _operatorIdEnvironmentVariable;
     private readonly Func<bool> _fatalFaultLatched;
     private readonly TimeSpan _ioSnapshotMaxAge;
+
+    /// <summary>How long a vector gives the operator at each door: named in the log line of one that ran out.</summary>
+    private readonly TimeSpan _vectorOperatorTimeout;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
     private readonly WireToGateRecoveryOptions _recoveryOptions;
@@ -206,6 +209,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             as IObservableVehicleSafetySignalProvider;
         _operatorIdEnvironmentVariable = operatorIdEnvironmentVariable;
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
+        _vectorOperatorTimeout = executorOptions.OperationTimeout;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
         _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance ?? TimeSpan.Zero;
         _recoveryOptions = recoveryOptions ?? new WireToGateRecoveryOptions(

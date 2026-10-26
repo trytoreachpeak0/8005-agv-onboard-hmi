@@ -1561,6 +1561,30 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
+    /// A line for the people at the vehicle when a vector's wait for the operator ran out over a door shut and locked with
+    /// the basket still in (8005-agv-onboard-hmi#392): the result carries <c>ACTION_NOT_ALLOWED_IN_STATE</c> for it, the one
+    /// registered code the recovery results may carry there, which does not say what happened.
+    /// </summary>
+    private void LogSlotsNotClearedInTime(
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryVectorExecutionResult result)
+    {
+        foreach (WireToGateSlotExecutionResult slot in result.SlotResults.Where(slot =>
+                     slot.Outcome == "UNKNOWN"
+                     && slot.FinalPhysicalState == "OCCUPIED"
+                     && slot.LockState == "LOCKED"
+                     && slot.ReasonCodes.SequenceEqual([WireToGateRecoveryVectorExecutor.OperatorDidNotClearReason])))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"{context.VectorType}：{slot.SlotNo}号仓等操作员取出货物超时（时限{_vectorOperatorTimeout.TotalSeconds:0}秒），"
+                + $"门已关好锁上、货还在仓里；结果按{WireToGateRecoveryVectorExecutor.OperatorDidNotClearReason}上报。"
+                + $"vector={context.PrimaryId}，attempt={context.SlotOperationAttemptId ?? "null"}。");
+        }
+    }
+
+    /// <summary>
     /// Sends one <c>LoadCancellationStartRequested</c> and returns its authorization, or <c>null</c>
     /// once a refusal has been shown to the operator.
     /// </summary>
@@ -3920,6 +3944,7 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         bool success = result.OverallOutcome == "COMPLETED";
         bool doorUnproven = result.OverallOutcome == WireToGateRecoveryVectorExecutor.AllEmptyDoorUnprovenOutcome;
+        LogSlotsNotClearedInTime(context, result);
         PublishRecoveryVectorOperation(
             context,
             success
