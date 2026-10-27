@@ -1428,8 +1428,15 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        RefuseDoorOpeningCancellationWhileLatched();
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
+        // Asked again under the cancellationId already out, it goes through a latch (second-phase review S1): the load holds
+        // for that answer, the latch's reset waits for the load, and under protocol 6.0.0 the cancellation opens no door --
+        // its vector reads the slots and pulses none. A new press over the load still is refused while latched.
+        if (!IsUnansweredInFlightCancellation(state, operation))
+        {
+            RefuseDoorOpeningCancellationWhileLatched();
+        }
+
         // Already cancelled, with a result on file: asked again it would be authorized again and the doors pulsed open
         // over a load the first cancellation concluded (onboard-hmi#254).
         if (await IsCancellationConcludedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
@@ -1686,6 +1693,53 @@ public sealed partial class WireToGateBusinessService
         }
     }
 
+    /// <summary>Whether a cancellation over <paramref name="load"/> has gone out and is still waiting for its answer.</summary>
+    private static bool IsUnansweredInFlightCancellation(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryOperationContext load) =>
+        string.Equals(
+            state.PendingLoadCancellation?.CancellationId,
+            InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// The cancellation entry while a severe safety fault is latched: the cancellation before any sublot, and the one over the
+    /// load in flight asked again under the cancellationId already out (second-phase review S1). Neither opens a door.
+    /// </summary>
+    public bool CanRequestLoadCancellationWhileLatched =>
+        CanRequestLoadCancellationBeforeSublot()
+        || CanRequestLoadCancellation
+        && Volatile.Read(ref _lastRecoveryState) is { RecoveryVector: null } state
+        && CancellableLoadInFlight(state) is { } load
+        && IsUnansweredInFlightCancellation(state, load);
+
+    /// <summary>
+    /// Tells the operator the way out when a severe safety fault latches while the load holds for a cancellation's answer
+    /// (second-phase review S1): the reset waits for the load, and the load for that answer, so the cancellation is pressed
+    /// again first.
+    /// </summary>
+    private void NoticeUnansweredCancellationUnderLatch()
+    {
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        if (!_fatalFaultLatched()
+            || CancellableLoadInFlight(state) is not { } load
+            || !IsUnansweredInFlightCancellation(state, load))
+        {
+            return;
+        }
+
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"严重安全故障锁存时装货取消还在等服务端答复：cancellation={state.PendingLoadCancellation!.CancellationId}，"
+            + $"attempt={load.SlotOperationAttemptId}；可在锁存期间再按一次取消重问，取消不开门。");
+        PublishOperatorEvent(
+            $"load-cancellation-unanswered-under-latch:{state.PendingLoadCancellation.CancellationId}",
+            "RECOVERY_AUTHORIZATION_UNKNOWN",
+            $"取消装货还在等服务端答复，装货停着、不会开门。请先再按一次「{LoadCancellationCaptionHere()}」重问，"
+            + "取消不会打开仓门；取消结束后再请维护人员复位故障。 ");
+    }
+
     /// <summary>
     /// A line for the people at the vehicle when a vector's wait for the operator ran out over a door shut and locked with
     /// the basket still in (8005-agv-onboard-hmi#392): the result carries <c>ACTION_NOT_ALLOWED_IN_STATE</c> for it, the one
@@ -1792,6 +1846,23 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             throw;
         }
+        catch (TimeoutException) when (slotOperationAttemptId is not null)
+        {
+            // Sent and not answered: the load holds every door shut for the answer (8005-agv-onboard-hmi#392, second-phase
+            // review L3), and only asking again under this cancellationId settles it.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"装货取消已发出、未等到服务端答复，装货停着等答复、不开门：cancellation={cancellationId}，"
+                + $"attempt={slotOperationAttemptId}。");
+            PublishOperatorEvent(
+                $"load-cancellation-unanswered:{cancellationId}",
+                "RECOVERY_AUTHORIZATION_UNKNOWN",
+                $"取消装货已发出，还没收到服务端答复；装货先停着，不会开门。请再按一次「{LoadCancellationCaptionHere()}」重问，"
+                + "取消不会打开仓门。 ");
+            throw;
+        }
+
         if (authorization.Decision == "REJECTED")
         {
             await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)

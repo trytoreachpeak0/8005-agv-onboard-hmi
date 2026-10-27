@@ -277,7 +277,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// latched: for <c>UI_COMMAND_FAILED</c> that is the UI thread.
     /// </para>
     /// </remarks>
-    public void RefreshSafetyAfterFatalFaultLatchChange() => _ = Task.Run(RequestSafetyStateChange);
+    public void RefreshSafetyAfterFatalFaultLatchChange()
+    {
+        _ = Task.Run(RequestSafetyStateChange);
+        NoticeUnansweredCancellationUnderLatch();
+    }
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 

@@ -247,6 +247,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         string? cancellationId = ReadJournal(harness, token).PendingLoadCancellation?.CancellationId;
         Assert.NotNull(cancellationId);
         Assert.Equal(0, io.UnlockCount);
+        // While it holds, the screen says why and what to press (second-phase review L3).
+        Assert.Contains(
+            harness.Events,
+            item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN"
+                && item.Message.Contains("还没收到服务端答复；装货先停着，不会开门", StringComparison.Ordinal));
 
         LatchNow(harness);
         Assert.True(harness.Controller.IsFatalFaultLatched);
@@ -256,6 +261,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                 && item.Message.Contains("复位", StringComparison.Ordinal)),
             "the operator told to press 「取消装货」 again before the reset",
             token);
+        // The entry the view keeps open during a latch (App.xaml.cs hands the view model this property).
+        Assert.True(harness.Business.CanRequestLoadCancellationWhileLatched);
+        Assert.True(harness.Controller.IsFatalFaultLatched);
 
         Assert.True(await harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token));
         JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
