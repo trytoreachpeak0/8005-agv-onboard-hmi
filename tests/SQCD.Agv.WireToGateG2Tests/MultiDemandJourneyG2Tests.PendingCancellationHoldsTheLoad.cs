@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
 using Xunit;
@@ -63,6 +64,162 @@ public sealed partial class MultiDemandJourneyG2Tests
             ReceivedPayloads(harness, "OperationResult"),
             item => item.GetProperty("slotOperationAttemptId").GetString() == AttemptA);
         Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 服务端拒绝：待答复的取消去掉，装货照常往下走，开 1 号仓等放货；不报取消结果。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ARefusedCancellationPressedBeforeTheFirstPulseLetsTheLoadGoOn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource authorizationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (Harness harness, BeforeFirstPulseJournal fence) = await StartPendingCancellationStopAsync(
+            io,
+            Harness.NewJournalPath(),
+            server =>
+            {
+                server.LoadCancellationAuthorizationHold = authorizationHeld.Task;
+                server.LoadCancellationDecision = "REJECTED";
+            },
+            token);
+        await using Harness _ = harness;
+        using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
+
+        Task<bool> press = await PressBeforeTheFirstPulseAsync(harness, io, fence, token);
+        await HoldsForAWhileAsync(() => Assert.Equal(0, io.UnlockCount), token);
+
+        authorizationHeld.SetResult();
+        Assert.False(await press);
+        await harness.WaitUntilAsync(
+            () => io.UnlockCount == 1 && ReadJournal(harness, token).ActiveUnlockSlots.SequenceEqual([1]),
+            "the load to open slot 1 once the cancellation is refused",
+            token);
+        Assert.Null(ReadJournal(harness, token).PendingLoadCancellation);
+        Assert.Empty(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Contains(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 一直没有答复、站点期限已过：倒计时行照期限说「正在取消本站装货」，门一直不开，装货不因这段等待结成 UNKNOWN、不报结果；
+    /// 之后被拒绝，装货照常开门，提示是期限过后的那一句。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AnUnansweredCancellationPastTheDeadlineKeepsTheDeadlineAndTheDoorsShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource authorizationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        DateTimeOffset deadline = DateTimeOffset.UtcNow - TimeSpan.FromSeconds(20);
+        (Harness harness, BeforeFirstPulseJournal fence) = await StartPendingCancellationStopAsync(
+            io,
+            Harness.NewJournalPath(),
+            server =>
+            {
+                server.LoadCancellationAuthorizationHold = authorizationHeld.Task;
+                server.LoadCancellationDecision = "REJECTED";
+            },
+            token,
+            stationDepartureDeadlineAt: deadline);
+        await using Harness _ = harness;
+        using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
+
+        Task<bool> press = await PressBeforeTheFirstPulseAsync(harness, io, fence, token);
+        await HoldsForAWhileAsync(
+            () =>
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                Assert.Equal(
+                    WireToGateStationDeadlineText.CancellingText,
+                    harness.Business.DescribeExpiredStationDeadline(
+                        new(deadline, now, StationDepartureCountdownFormatter.Format(deadline, now))));
+                Assert.Equal(0, io.UnlockCount);
+                Assert.Equal(AttemptA, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
+                Assert.Empty(ReceivedPayloads(harness, "OperationResult"));
+                Assert.Empty(ReceivedPayloads(harness, "LoadCancellationResult"));
+            },
+            token);
+
+        authorizationHeld.SetResult();
+        Assert.False(await press);
+        await harness.WaitUntilAsync(
+            () => io.UnlockCount == 1
+                && harness.Events.Any(item => item.Kind == "OPERATION_PROGRESS"
+                    && item.Message.StartsWith("请放入货物并关闭1号仓门", StringComparison.Ordinal)),
+            "the load to open slot 1 with the prompt past the deadline",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 等答复时车载程序重启：日志簿里留着待答复的取消，续跑装货的路径照同一口径不续跑、不开门；本进程没人按过，结算不自动再问，
+    /// 等现场。操作员再按一次，用原来的 cancellationId 再问，授权到达，取消不开门，报 <c>ALL_EMPTY</c>。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ARestartWhileTheCancellationWaitsForItsAnswerOpensNothing()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource authorizationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (Harness first, BeforeFirstPulseJournal fence) = await StartPendingCancellationStopAsync(
+            io,
+            journalPath,
+            server => server.LoadCancellationAuthorizationHold = authorizationHeld.Task,
+            token);
+        await using Harness _ = first;
+        using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
+
+        Task<bool> press = await PressBeforeTheFirstPulseAsync(first, io, fence, token);
+        await HoldsForAWhileAsync(() => Assert.Equal(0, io.UnlockCount), token);
+        string? cancellationId = ReadJournal(first, token).PendingLoadCancellation?.CancellationId;
+        Assert.NotNull(cancellationId);
+        await first.StopVehicleAsync();
+        await Record.ExceptionAsync(() => press);
+        first.Server.SimulateOnboardProcessRestart();
+
+        await using Harness afterRestart = await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            journalPath,
+            io,
+            messageTimeout: TimeSpan.FromSeconds(30));
+        // Nobody has pressed in this process, so the settlement does not ask again by itself; it waits for the operator.
+        await afterRestart.WaitUntilAsync(
+            () => afterRestart.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                "未收到答复的装货取消不自动重新申请，等待现场确认",
+                StringComparison.Ordinal)),
+            "the restarted vehicle to keep the unanswered cancellation for the operator",
+            token);
+        await HoldsForAWhileAsync(
+            () =>
+            {
+                Assert.Equal(0, io.UnlockCount);
+                Assert.Empty(ReadJournal(afterRestart, token).ActiveUnlockSlots);
+                Assert.Equal(cancellationId, ReadJournal(afterRestart, token).PendingLoadCancellation?.CancellationId);
+            },
+            token);
+
+        // Pressed again: the first press's request, asked again under its cancellationId.
+        authorizationHeld.SetResult();
+        Assert.True(await afterRestart.Business.RequestLoadCancellationAsync("现场确认不装了。", token));
+        await afterRestart.WaitUntilAsync(
+            () => ReceivedPayloads(afterRestart, "LoadCancellationResult").Length == 1,
+            "the cancellation result after the restart",
+            token);
+        JsonElement result = Assert.Single(ReceivedPayloads(afterRestart, "LoadCancellationResult"));
+        Assert.Equal(cancellationId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(afterRestart.UiErrors);
     }
 
     /// <summary>
