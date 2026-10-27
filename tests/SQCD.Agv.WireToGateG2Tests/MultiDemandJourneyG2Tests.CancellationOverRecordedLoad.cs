@@ -55,12 +55,25 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         authorizationHeld.SetResult();
         Assert.False(await press);
+        // The one shape the server closes this with (control-server#837, PR #868 dcdf7d22c): FAILED, every slot NOT_STARTED
+        // carrying ACTION_NOT_ALLOWED_IN_STATE, sent after the load's own COMPLETED result. Any other FAILED goes to a person.
         JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal(AttemptB, result.GetProperty("slotOperationAttemptId").GetString());
         Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
-        JsonElement slot = Assert.Single(result.GetProperty("slotResults").EnumerateArray());
-        Assert.Equal("NOT_STARTED", slot.GetProperty("outcome").GetString());
+        JsonElement[] slots = [.. result.GetProperty("slotResults").EnumerateArray()];
+        Assert.All(slots, item =>
+        {
+            Assert.Equal("NOT_STARTED", item.GetProperty("outcome").GetString());
+            Assert.Contains("ACTION_NOT_ALLOWED_IN_STATE", ReasonCodes(item));
+        });
+        JsonElement slot = Assert.Single(slots);
         Assert.Equal("OCCUPIED", slot.GetProperty("finalPhysicalState").GetString());
-        Assert.Equal(["ACTION_NOT_ALLOWED_IN_STATE"], ReasonCodes(slot));
+        List<(int Connection, string MessageType, string MessageId, string WireLine)> wire = [.. harness.Server.ReceivedEnvelopes];
+        int loadResultAt = wire.FindIndex(envelope => envelope.MessageType == "OperationResult"
+            && JsonDocument.Parse(envelope.WireLine).RootElement.GetProperty("payload")
+                .GetProperty("overallOutcome").GetString() == "COMPLETED");
+        int cancellationResultAt = wire.FindIndex(envelope => envelope.MessageType == "LoadCancellationResult");
+        Assert.InRange(loadResultAt, 0, cancellationResultAt - 1);
 
         WireToGateRecoveryState after = ReadJournal(harness, token);
         Assert.Null(after.RecoveryVector);
