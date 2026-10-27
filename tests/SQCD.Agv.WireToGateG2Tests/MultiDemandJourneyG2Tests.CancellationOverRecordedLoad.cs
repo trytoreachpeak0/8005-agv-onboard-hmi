@@ -95,6 +95,101 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 第二阶段审查 S2：顺序 a，但答复丢了（服务端已授权）。装货完成、结果被确认时，待答复的取消留着；屏上「取消装货」照常
+    /// 按得出，再按一次用原 cancellationId 重问，授权到达走裁定分支：报 <c>FAILED</c>、每仓 <c>NOT_STARTED</c>＋
+    /// <c>ACTION_NOT_ALLOWED_IN_STATE</c>，在装货结果之后发出，不开门。<paramref name="restart"/> 时中间再重启一次车载程序。
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task ALostAnswerOverALoadThatCompletedIsAnsweredFailedWhenAskedAgain(bool restart)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness first = await StartTakeOverStopAsync(
+            io,
+            server =>
+            {
+                ConfigureCancellationStop(server);
+                server.LoadCancellationAuthorizationsToDrop = 1;
+            },
+            token,
+            messageTimeout: TimeSpan.FromSeconds(3),
+            journalPath: journalPath);
+
+        await SendSlotCommandAsync(first, DemandB, AttemptB, [1]);
+        await WaitForDoorOpenAsync(first, io, AttemptB, pulses: 1, token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(first, io, 0, token);
+        await Record.ExceptionAsync(() => first.Business.RequestLoadCancellationAsync("现场确认不装了。", token));
+        string? cancellationId = ReadJournal(first, token).PendingLoadCancellation?.CancellationId;
+        Assert.NotNull(cancellationId);
+
+        int promptsBefore = PutInPrompts(first);
+        io.OpenDoor(0);
+        await first.WaitUntilAsync(
+            () => PutInPrompts(first) > promptsBefore,
+            "the load to prompt again for the door that reads open",
+            token);
+        io.CloseDoor(0, cargo: true);
+        await first.WaitUntilAsync(
+            () => ReadJournal(first, token) is { UnsettledSlotOperationAttemptId: null } state
+                && state.LastCompletedLoadOperationContext?.SlotOperationAttemptId == AttemptB,
+            "B's COMPLETED result to be recorded",
+            token);
+        Assert.Equal(cancellationId, ReadJournal(first, token).PendingLoadCancellation?.CancellationId);
+
+        Harness harness = first;
+        await using Harness? afterRestart = restart ? await RestartAsync(first, journalPath, io, token) : null;
+        harness = afterRestart ?? first;
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation),
+            "「取消装货」 pressable over the unanswered cancellation",
+            token);
+
+        Assert.False(await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token)));
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal(cancellationId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.All(result.GetProperty("slotResults").EnumerateArray(), item =>
+        {
+            Assert.Equal("NOT_STARTED", item.GetProperty("outcome").GetString());
+            Assert.Contains("ACTION_NOT_ALLOWED_IN_STATE", ReasonCodes(item));
+        });
+        List<(int Connection, string MessageType, string MessageId, string WireLine)> wire = [.. harness.Server.ReceivedEnvelopes];
+        Assert.InRange(
+            wire.FindIndex(envelope => envelope.MessageType == "OperationResult"),
+            0,
+            wire.FindIndex(envelope => envelope.MessageType == "LoadCancellationResult") - 1);
+        WireToGateRecoveryState after = ReadJournal(harness, token);
+        Assert.Null(after.PendingLoadCancellation);
+        Assert.Null(after.UnsettledSlotOperationAttemptId);
+        Assert.Null(after.RecoveryVector);
+        Assert.Equal(1, io.UnlockCount);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    private static async Task<Harness> RestartAsync(
+        Harness first,
+        string journalPath,
+        FakeIoModuleClient io,
+        CancellationToken token)
+    {
+        await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
+        return await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            journalPath,
+            io,
+            recoveryOptions: TakeOverRecovery,
+            messageTimeout: TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
     /// 顺序 b 再加一次重启：装货的 COMPLETED 结果发出、确认扣着，授权先到，向量接管这次尝试，读到有货报 <c>FAILED</c>。进程退出，
     /// 重启后握手补发装货结果并被确认；中断结算看到取消已有结论，尝试留着、恢复入口欠着，不按完成结掉（审查 S-1）。
     /// </summary>
