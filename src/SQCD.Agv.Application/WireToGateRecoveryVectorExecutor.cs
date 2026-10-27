@@ -96,6 +96,31 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         ExecuteAsync(context, correction: true, progress, cancellationToken);
 
     /// <summary>
+    /// The answer to a vector this vehicle will not take on at all, written nowhere and touching no slot:
+    /// <c>FAILED</c>, every slot <c>NOT_STARTED</c> with <paramref name="reasonCode"/> and what the IO reads now.
+    /// </summary>
+    /// <remarks>
+    /// For a load cancellation authorized after its load's result was recorded (8005-agv-onboard-hmi#392 review S1): the
+    /// completed load stands, so no vector is put on file and the attempt is not reopened; only the answer goes out.
+    /// </remarks>
+    public WireToGateRecoveryVectorExecutionResult RefuseWithoutTakingOver(
+        WireToGateRecoveryVectorContext context,
+        string reasonCode)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        return CreateResult(
+            context,
+            "FAILED",
+            context.Slots
+                .Select(slot => CreateSlotResult(ReadPhysicalSlot(snapshot, slot), "NOT_STARTED", [reasonCode]))
+                .ToArray(),
+            WireToGateRecoveryCheckpoint.Prepared,
+            _clock.Now);
+    }
+
+    /// <summary>
     /// Records and returns the <c>FAILED</c> result of a vector the vehicle refused before any
     /// unlock, or <c>null</c> when the journal cannot show that nothing was done (onboard-hmi#123).
     /// </summary>

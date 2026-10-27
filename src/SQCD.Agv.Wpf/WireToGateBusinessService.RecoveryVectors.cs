@@ -1525,6 +1525,28 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION");
         }
 
+        // The load finished and its result is recorded while the answer was on its way (8005-agv-onboard-hmi#392 review S1,
+        // Coordinator14's ruling): a lock that read released without a pulse let the basket in, and the server has the load
+        // COMPLETED. That stands. No vector is put on file and the attempt is not reopened; the cancellation is answered
+        // FAILED, every slot as it reads, without any slot IO.
+        WireToGateRecoveryState answered = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(
+                answered.UnsettledSlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                answered.LastCompletedLoadOperationContext?.SlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            return await AnswerCancellationOverRecordedLoadAsync(
+                    authorization,
+                    operation,
+                    operatorContext,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         // The abort channel (onboard-hmi#78): the load's closed loop stops before the cancellation
         // takes its slots over, so no two executors drive one lock. Only after the authorization: a
         // refused cancellation leaves the load running, and the operator can still finish it.
@@ -1575,6 +1597,69 @@ public sealed partial class WireToGateBusinessService
                     cancellationToken),
                 releaseSettledFailure: () => ForgetSettledRecoveryVectorAsync(vector, cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers a cancellation authorized after its load's result was recorded: <c>FAILED</c>, every slot
+    /// <c>NOT_STARTED</c> with <c>ACTION_NOT_ALLOWED_IN_STATE</c> and what it reads, nothing put on file but the result, no
+    /// slot IO (8005-agv-onboard-hmi#392 review S1). Returns false: the load was not cancelled.
+    /// </summary>
+    /// <remarks>
+    /// The result goes on file before the pending request goes, so a restart in between finds one or the other: the request,
+    /// asked again under its cancellationId and answered here again under the same result key, or the result, replayed by the
+    /// handshake. Its row also marks the cancellation concluded (<see cref="IsCancellationConcludedAsync"/>), so the entry
+    /// stays shut over this load.
+    /// </remarks>
+    private async Task<bool> AnswerCancellationOverRecordedLoadAsync(
+        LoadCancellationAuthorizationPayload authorization,
+        WireToGateRecoveryOperationContext operation,
+        WireToGateOperatorContextPayload operatorContext,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryVectorContext vector = new(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            authorization.CancellationId,
+            null,
+            authorization.DemandId,
+            authorization.SlotOperationAttemptId,
+            null,
+            operation.Slots,
+            null,
+            operatorContext.OperatorId,
+            operatorContext.VerificationMethod,
+            operatorContext.VerifiedAt);
+        WireToGateRecoveryVectorExecutionResult result = _vectorExecutor.RefuseWithoutTakingOver(
+            vector,
+            "ACTION_NOT_ALLOWED_IN_STATE");
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"装货取消授权到达时这次装货的结果已记录，装货算完成，取消不执行、不开仓门，按FAILED上报："
+            + $"cancellation={vector.PrimaryId}，attempt={operation.SlotOperationAttemptId}。");
+        try
+        {
+            await SendRecoveryVectorResultAsync(vector, LoadCancellationResultKey(vector), result, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"装货取消的FAILED结果暂未收到DurableAck，重连后补报：cancellation={vector.PrimaryId}。",
+                exception);
+        }
+        finally
+        {
+            await ForgetLoadCancellationRequestAsync(vector.PrimaryId, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        Volatile.Write(ref _cancellationConcludedAttemptId, operation.SlotOperationAttemptId);
+        PublishOperatorResponse(
+            "RECOVERY_BLOCKED",
+            "装货已经完成，取消没有执行，没有打开任何仓门；本站任务以服务端下发的状态为准。 ");
+        return false;
     }
 
     /// <summary>
