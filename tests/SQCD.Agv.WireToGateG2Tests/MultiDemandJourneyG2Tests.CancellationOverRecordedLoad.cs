@@ -149,6 +149,73 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 审查 S2：取消发出、答复丢了（服务端已授权），锁自己脱开，进程退出，停机期间操作员放进一篮关门。重启后屏上说「再按一次
+    /// 「取消装货」」，这一按就要按得动：入口不因已放篮而禁用，经 ViewModel 按下，用原来的 cancellationId 再问；授权到达，取消读到
+    /// 有货，报 <c>FAILED</c>，不开门。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task AfterARestartTheUnansweredCancellationOverABasketPutInCanBePressedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness first = await StartTakeOverStopAsync(
+            io,
+            server =>
+            {
+                ConfigureCancellationStop(server);
+                server.LoadCancellationAuthorizationsToDrop = 1;
+            },
+            token,
+            messageTimeout: TimeSpan.FromSeconds(3),
+            journalPath: journalPath);
+
+        await SendSlotCommandAsync(first, DemandB, AttemptB, [1]);
+        await WaitForDoorOpenAsync(first, io, AttemptB, pulses: 1, token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(first, io, 0, token);
+        await Record.ExceptionAsync(() => first.Business.RequestLoadCancellationAsync("现场确认不装了。", token));
+        string? cancellationId = ReadJournal(first, token).PendingLoadCancellation?.CancellationId;
+        Assert.NotNull(cancellationId);
+
+        int promptsBefore = PutInPrompts(first);
+        io.OpenDoor(0);
+        await first.WaitUntilAsync(
+            () => PutInPrompts(first) > promptsBefore,
+            "the load to prompt again for the door that reads open",
+            token);
+        await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
+        io.CloseDoor(0, cargo: true);
+
+        await using Harness afterRestart = await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            journalPath,
+            io,
+            recoveryOptions: TakeOverRecovery,
+            messageTimeout: TimeSpan.FromSeconds(30));
+        await afterRestart.WaitUntilAsync(
+            () => afterRestart.Events.Any(item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN"
+                    && item.Message.Contains("再按一次「取消装货」", StringComparison.Ordinal))
+                && afterRestart.OnUi(() => afterRestart.ViewModel.CanPressLoadCancellation),
+            "the notice to press 「取消装货」 again, and the entry pressable",
+            token);
+        Assert.Null(afterRestart.Business.LoadCancellationBlockedReason);
+        Assert.False(afterRestart.OnUi(() => afterRestart.ViewModel.HasLoadCancellationBlockedHint));
+
+        Assert.False(await afterRestart.OnUi(() => afterRestart.ViewModel.RequestLoadCancellationAsync(token)));
+        JsonElement result = Assert.Single(ReceivedPayloads(afterRestart, "LoadCancellationResult"));
+        Assert.Equal(cancellationId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        JsonElement slot = Assert.Single(result.GetProperty("slotResults").EnumerateArray());
+        Assert.Equal("OCCUPIED", slot.GetProperty("finalPhysicalState").GetString());
+        Assert.Equal(1, io.UnlockCount);
+        Assert.Empty(afterRestart.UiErrors);
+    }
+
+    /// <summary>
     /// Sends B's one-slot load, presses the cancellation over its empty door shut and locked, and while the answer is out
     /// lets the lock read released without a pulse; the operator puts the basket in and shuts the door. Returns the press.
     /// </summary>

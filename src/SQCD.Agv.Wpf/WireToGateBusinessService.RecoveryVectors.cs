@@ -70,6 +70,9 @@ public sealed partial class WireToGateBusinessService
     /// <para>
     /// Judged on the IO as it reads now and on the slots the load has counted loaded (<see cref="WireToGateSlotOperationExecutor.LoadCancellationRefusal"/>).
     /// A cancellation already on file, before any sublot or authorized, is not judged here: it is settled as it stands.
+    /// Nor is one asked and unanswered over this load (8005-agv-onboard-hmi#392 review S2): the server may have authorized it,
+    /// and only asking again under its cancellationId settles it -- the request path lets that press through, so the entry
+    /// does too, whatever the slots read since.
     /// </para>
     /// </remarks>
     public string? LoadCancellationBlockedReason
@@ -77,9 +80,14 @@ public sealed partial class WireToGateBusinessService
         get
         {
             WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-            return state.RecoveryVector is null && CancellableLoadInFlight(state) is { } load
-                ? LoadCancellationRefusal(state, load)
-                : null;
+            return state.RecoveryVector is null
+                && CancellableLoadInFlight(state) is { } load
+                && !string.Equals(
+                    state.PendingLoadCancellation?.CancellationId,
+                    InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
+                    StringComparison.Ordinal)
+                    ? LoadCancellationRefusal(state, load)
+                    : null;
         }
     }
 
