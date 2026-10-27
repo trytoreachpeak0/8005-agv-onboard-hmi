@@ -40,6 +40,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             server => server.LoadCancellationAuthorizationHold = authorizationHeld.Task,
             token);
         await using Harness _ = harness;
+        // Released before the harness is disposed: a failing assertion with the executor still held would wait for it.
+        using ReleaseOnExit releasePause = new(pause.Release);
         using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
@@ -79,6 +81,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             _ => { },
             token);
         await using Harness _ = harness;
+        using ReleaseOnExit releasePause = new(pause.Release);
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
         await harness.WaitUntilAsync(() => pause.Held, "the executor held inside the gate after its read", token);
