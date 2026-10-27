@@ -854,6 +854,28 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
+    /// The door this run pulsed has been seen shut again: from here the lock reading says what a load cancellation needs to
+    /// know (<see cref="ActiveOperation.PulsedSlot"/>).
+    /// </summary>
+    private async Task ForgetPulsedSlotAsync(ActiveOperation? active)
+    {
+        if (active is null)
+        {
+            return;
+        }
+
+        await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            Volatile.Write(ref active.PulsedSlot, 0);
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Whether a load cancellation pressed over this run's attempt is on file still waiting for its answer.
     /// </summary>
     private async Task<bool> IsLoadCancellationUnansweredAsync(ActiveOperation? active, CancellationToken cancellationToken) =>
@@ -2448,6 +2470,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 catch (TimeoutException) when (cause == WireToGatePromptCause.OppositeReopen)
                 {
                     await WaitForShutAndResetAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    // Shut and reset again: the pulse that did not release is over (second-phase review S3).
+                    await ForgetPulsedSlotAsync(active).ConfigureAwait(false);
                     cause = WireToGatePromptCause.ReopenNotReleased;
                     continue;
                 }
@@ -2484,13 +2508,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     continue;
             }
 
-            if (active is not null)
-            {
-                // Seen shut: from here the lock reading says what a load cancellation needs to know.
-                await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-                Volatile.Write(ref active.PulsedSlot, 0);
-                _declarationGate.Release();
-            }
+            await ForgetPulsedSlotAsync(active).ConfigureAwait(false);
 
             // The door is shut and the occupancy is known either way; an output still energised is
             // given its reset timeout, and one that does not fall back throws from here (decision 2).
