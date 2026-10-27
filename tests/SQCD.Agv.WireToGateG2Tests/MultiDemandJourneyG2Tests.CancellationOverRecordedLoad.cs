@@ -145,6 +145,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness? afterRestart = restart ? await RestartAsync(first, journalPath, io, token) : null;
         harness = afterRestart ?? first;
         await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the entry over the unanswered cancellation read back from the journal",
+            token);
+        // What an operator event or the entry request does in the product, done once here (as after the other restarts).
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+        await harness.WaitUntilAsync(
             () => harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation),
             "「取消装货」 pressable over the unanswered cancellation",
             token);

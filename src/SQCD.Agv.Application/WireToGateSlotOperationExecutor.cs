@@ -1200,7 +1200,16 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             RecoveryOperatorVerifiedAt = null,
             RecoveryVector = null,
             RecoveryResultObservedAt = null,
-            PendingLoadCancellation = null,
+            // A cancellation pressed over this load and still unanswered stays (8005-agv-onboard-hmi#392, second-phase review
+            // S2): the server may have authorized it, and the answer it is owed -- FAILED over a load that completed -- goes
+            // out only once it is asked again under its cancellationId. Any other is dropped, as it always was.
+            PendingLoadCancellation = state.OperationContext is { OperationType: OperationType.Load } load
+                && string.Equals(
+                    state.PendingLoadCancellation?.SlotOperationAttemptId,
+                    load.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                    ? state.PendingLoadCancellation
+                    : null,
             SlotFaultDeclaration = null,
             TakenOverSlotOperationAttemptId = null,
             RemainingBasketsSkip = null,

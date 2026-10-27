@@ -779,6 +779,10 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>The load in flight the cancellation entry is offered over, by the rules above, or <c>null</c>.</summary>
+    /// <remarks>
+    /// Also the load that completed under a cancellation still waiting for its answer (8005-agv-onboard-hmi#392,
+    /// second-phase review S2): <see cref="UnansweredCancellationOverRecordedLoad"/>.
+    /// </remarks>
     private WireToGateRecoveryOperationContext? CancellableLoadInFlight(WireToGateRecoveryState state) =>
         state.OperationContext is { OperationType: OperationType.Load } context
         && string.Equals(
@@ -790,6 +794,23 @@ public sealed partial class WireToGateBusinessService
             string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
             && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal))
             ? context
+            : UnansweredCancellationOverRecordedLoad(state);
+
+    /// <summary>
+    /// The load whose result was recorded while a cancellation pressed over it waited for its answer, or <c>null</c>: the
+    /// cancellation stays on file (<c>WireToGateSlotOperationExecutor.Recorded</c>), and asked again under its cancellationId
+    /// it is answered FAILED over the completed load, no door opened (second-phase review S2).
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? UnansweredCancellationOverRecordedLoad(WireToGateRecoveryState state) =>
+        state.PendingLoadCancellation is { SlotOperationAttemptId: { } attempt } pending
+        && !string.Equals(state.UnsettledSlotOperationAttemptId, attempt, StringComparison.Ordinal)
+        && state.LastCompletedLoadOperationContext is { } recorded
+        && string.Equals(recorded.SlotOperationAttemptId, attempt, StringComparison.Ordinal)
+        && string.Equals(
+            pending.CancellationId,
+            InFlightLoadCancellationId(recorded.DemandId, attempt),
+            StringComparison.Ordinal)
+            ? recorded
             : null;
 
     /// <summary>
@@ -829,7 +850,8 @@ public sealed partial class WireToGateBusinessService
                 : null;
         }
 
-        if (state.UnsettledSlotOperationAttemptId is not null)
+        if (state.UnsettledSlotOperationAttemptId is not null
+            || UnansweredCancellationOverRecordedLoad(state) is not null)
         {
             return CancellableLoadInFlight(state) is { } load
                 ? new LoadCancellationTarget($"load:{load.SlotOperationAttemptId}", load.DemandId, IsLoadInFlight: true)
@@ -1417,7 +1439,10 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        if (state.UnsettledSlotOperationAttemptId is null)
+        // The load that completed while its cancellation's answer was lost is asked about again, not cancelled before any
+        // sublot (second-phase review S2): the answer lands in the ruled branch below.
+        WireToGateRecoveryOperationContext? recordedUnderCancellation = UnansweredCancellationOverRecordedLoad(state);
+        if (state.UnsettledSlotOperationAttemptId is null && recordedUnderCancellation is null)
         {
             return await RequestLoadCancellationBeforeSublotAsync(
                     state,
@@ -1428,7 +1453,8 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
+        WireToGateRecoveryOperationContext operation =
+            recordedUnderCancellation ?? RequireUnsettledLoadOperation(state);
         // Asked again under the cancellationId already out, it goes through a latch (second-phase review S1): the load holds
         // for that answer, the latch's reset waits for the load, and under protocol 6.0.0 the cancellation opens no door --
         // its vector reads the slots and pulses none. A new press over the load still is refused while latched.
@@ -1543,14 +1569,11 @@ public sealed partial class WireToGateBusinessService
         // The load finished and its result is recorded while the answer was on its way (8005-agv-onboard-hmi#392 review S1,
         // Coordinator14's ruling): a lock that read released without a pulse let the basket in, and the server has the load
         // COMPLETED. That stands. No vector is put on file and the attempt is not reopened; the cancellation is answered
-        // FAILED, every slot as it reads, without any slot IO.
+        // FAILED, every slot as it reads, without any slot IO. Judged on the attempt being settled, whatever settled it
+        // (second-phase review L2): a vector here would reopen it either way.
         WireToGateRecoveryState answered = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         if (!string.Equals(
                 answered.UnsettledSlotOperationAttemptId,
-                operation.SlotOperationAttemptId,
-                StringComparison.Ordinal)
-            && string.Equals(
-                answered.LastCompletedLoadOperationContext?.SlotOperationAttemptId,
                 operation.SlotOperationAttemptId,
                 StringComparison.Ordinal))
         {
@@ -1622,8 +1645,11 @@ public sealed partial class WireToGateBusinessService
     /// <remarks>
     /// The result goes on file before the pending request goes, so a restart in between finds one or the other: the request,
     /// asked again under its cancellationId and answered here again under the same result key, or the result, replayed by the
-    /// handshake. Its row also marks the cancellation concluded (<see cref="IsCancellationConcludedAsync"/>), so the entry
-    /// stays shut over this load.
+    /// handshake. The request survives the load's own result being recorded for that (second-phase review S2:
+    /// <c>WireToGateSlotOperationExecutor.Recorded</c> keeps the attempt's pending cancellation, and
+    /// <see cref="UnansweredCancellationOverRecordedLoad"/> keeps the entry lit over it); an answer lost with the link, too,
+    /// is asked again from there. Its row also marks the cancellation concluded (<see cref="IsCancellationConcludedAsync"/>),
+    /// so the entry stays shut over this load.
     /// </remarks>
     private async Task<bool> AnswerCancellationOverRecordedLoadAsync(
         LoadCancellationAuthorizationPayload authorization,
