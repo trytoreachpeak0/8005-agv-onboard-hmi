@@ -1436,15 +1436,47 @@ public sealed partial class WireToGateBusinessService
         // captioned, nothing sent, the load left running. Not a request already out under this id: the server may have
         // authorized it, and only asking again -- the first press's content, its stored answer replayed -- settles it.
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
-        if (!string.Equals(state.PendingLoadCancellation?.CancellationId, cancellationId, StringComparison.Ordinal)
-            && LoadCancellationRefusal(state, operation) is { } refusal)
+        bool recordedNow = false;
+        if (!string.Equals(state.PendingLoadCancellation?.CancellationId, cancellationId, StringComparison.Ordinal))
         {
-            _logger.Write(
-                LogSeverity.Information,
-                nameof(WireToGateBusinessService),
-                $"取消装货未申请、未开仓门：attempt={operation.SlotOperationAttemptId}，原因={refusal}。");
-            PublishOperatorResponse("RECOVERY_BLOCKED", $"{WireToGateLoadCancellationText.Blocked(refusal)}（{refusal}）。 ");
-            return true;
+            // Judged and journaled where the load's executor sends no pulse (8005-agv-onboard-hmi#392, control-server#837
+            // review): journaled first, the load holds every door shut until the answer; pulsed first, its slot reads not
+            // shut here. Judged from the journal as it is now, not the copy read at the start of the press.
+            string? refusal = await _executor.RunBetweenPulsesAsync(
+                    async () =>
+                    {
+                        WireToGateRecoveryState now = await ReadRecoveryStateCachedAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                        if (LoadCancellationRefusal(now, operation) is { } refused)
+                        {
+                            return refused;
+                        }
+
+                        // As AskForLoadCancellationAsync does before it records: only a press that can send is a first press.
+                        RequireSessionReadyToSend();
+                        await RecallOrRecordLoadCancellationAsync(
+                                now,
+                                cancellationId,
+                                operation.SlotOperationAttemptId,
+                                reason,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        return null;
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"取消装货未申请、未开仓门：attempt={operation.SlotOperationAttemptId}，原因={refusal}。");
+                PublishOperatorResponse("RECOVERY_BLOCKED", $"{WireToGateLoadCancellationText.Blocked(refusal)}（{refusal}）。 ");
+                return true;
+            }
+
+            recordedNow = true;
+            state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
@@ -1461,7 +1493,8 @@ public sealed partial class WireToGateBusinessService
                 operation.DemandId,
                 operation.SlotOperationAttemptId,
                 reason,
-                cancellationToken)
+                cancellationToken,
+                recordedNow)
             .ConfigureAwait(false) is not var (authorization, operatorContext))
         {
             return false;
@@ -1600,16 +1633,20 @@ public sealed partial class WireToGateBusinessService
             string demandId,
             string? slotOperationAttemptId,
             string reason,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool recordedByThisPress = false)
     {
         // Only a press that can actually send becomes the first press. One refused for readiness
         // leaves no bytes on the wire, and remembering its operator would have the next press repeat
         // a verification the server never saw.
         RequireSessionReadyToSend();
-        bool recalled = string.Equals(
-            state.PendingLoadCancellation?.CancellationId,
-            cancellationId,
-            StringComparison.Ordinal);
+        // A press over a load in flight journals itself between the load's pulses before it gets here
+        // (8005-agv-onboard-hmi#392): on file, but this press's, not an earlier one's.
+        bool recalled = !recordedByThisPress
+            && string.Equals(
+                state.PendingLoadCancellation?.CancellationId,
+                cancellationId,
+                StringComparison.Ordinal);
         WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
                 cancellationId,
