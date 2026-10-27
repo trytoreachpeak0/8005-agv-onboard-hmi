@@ -474,6 +474,20 @@
                                Text="{Binding LoadCancellationSelectionHintText}"
                                Visibility="{Binding HasLoadCancellationSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <!--
+                        装货开始后只有一篮未装、门都锁好、开锁输出复位时才能取消（CP-0021 修订后的 REQ-0211，8005-agv-onboard-hmi#392）。
+                        不能时入口在原位禁用，这里说为什么、该按什么。UIA 按 AutomationId LoadCancellationBlocked 找它，ItemStatus 给原因码。
+                    -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               MaxWidth="320"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="LoadCancellationBlocked"
+                               AutomationProperties.ItemStatus="{Binding LoadCancellationBlockedReasonCode}"
+                               Text="{Binding LoadCancellationBlockedHintText}"
+                               Visibility="{Binding HasLoadCancellationBlockedHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
                         补偿自己的目标子批，只在它与「目标：子批 X」那一行不是同一条时出现（onboard-hmi#209 审查 S3）：车上有几条需求、
                         或后装的那条已经卸掉时，补偿仍针对最近一次完成的装货，而交接与强制恢复针对的是车上的货。
                     -->

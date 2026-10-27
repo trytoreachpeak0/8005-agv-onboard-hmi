@@ -156,6 +156,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private readonly IClock _clock;
     private static readonly TimeSpan ReopenPermissionPollInterval = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>How often a run held for an unanswered load cancellation reads the journal for its answer.</summary>
+    private static readonly TimeSpan LoadCancellationAnswerPollInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly WireToGateSlotOperationExecutorOptions _options;
     private readonly Func<bool> _reopenPermitted;
     private readonly Func<bool> _fatalFaultLatched;
@@ -335,6 +338,13 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         /// object (8005-agv-onboard-hmi#388).
         /// </summary>
         public RemainingBasketsSkipHold? SkipHold { get; set; }
+
+        /// <summary>
+        /// The slot this run has pulsed and not yet seen shut again, or 0: a door the IO may not read open yet, which a load
+        /// cancellation must count as not shut (8005-agv-onboard-hmi#392). Written under <see cref="_declarationGate"/>, read
+        /// without it.
+        /// </summary>
+        public int PulsedSlot;
     }
 
     /// <summary>
@@ -450,6 +460,54 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             return pending is null ? null : SkipOfferOver(pending, _ioModule.CurrentSnapshot);
         }
+    }
+
+    /// <summary>
+    /// Why a cancellation of the load over <paramref name="slots"/> may not be asked for now, as the reason code the control
+    /// server would refuse it with, or <c>null</c> when it may (CP-0021 revised <c>REQ-0211</c>, protocol 6.0.0;
+    /// 8005-agv-onboard-hmi#392): every target slot read <c>EMPTY</c>, its door locked and its unlock output reset, and no basket
+    /// loaded.
+    /// </summary>
+    /// <remarks>
+    /// Checked in the server's order, the first that fails deciding: <c>SLOT_STATE_UNKNOWN</c> (a stale snapshot, or a slot
+    /// that cannot be read), <c>LOAD_CANCELLATION_BASKET_LOADED</c> (a slot <paramref name="loadedSlots"/> names, or one that
+    /// reads a basket in it), <c>LOCK_NOT_CLOSED</c>, <c>UNLOCK_OUTPUT_NOT_RESET</c>. Read off the IO as it is now, as
+    /// <see cref="RemainingBasketsSkipOffer"/> is. The slots a waiting run counts loaded are added to the caller's, and a slot
+    /// it has pulsed and not yet seen shut counts as not locked, whatever the IO reads yet.
+    /// </remarks>
+    public string? LoadCancellationRefusal(IReadOnlyList<int> slots, IReadOnlyCollection<int> loadedSlots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+        ArgumentNullException.ThrowIfNull(loadedSlots);
+        IReadOnlyList<int> runLoaded = [];
+        int pulsed = 0;
+        if (Volatile.Read(ref _activeOperation) is { } active)
+        {
+            lock (active)
+            {
+                runLoaded = active.OperatorRequest?.Completed ?? [];
+            }
+
+            pulsed = Volatile.Read(ref active.PulsedSlot);
+        }
+
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        if (!IsFresh(snapshot))
+        {
+            return "SLOT_STATE_UNKNOWN";
+        }
+
+        LockerSnapshot[] lockers = [.. slots.Select(slot => TryGetLocker(snapshot, slot - 1))];
+        return lockers.Any(locker => !locker.IsKnown)
+            ? "SLOT_STATE_UNKNOWN"
+            : lockers.Any(locker => locker.HasCargo)
+                || slots.Any(slot => loadedSlots.Contains(slot) || runLoaded.Contains(slot))
+                ? "LOAD_CANCELLATION_BASKET_LOADED"
+                : lockers.Any(locker => !locker.IsLocked) || slots.Contains(pulsed)
+                    ? "LOCK_NOT_CLOSED"
+                    : lockers.Any(locker => locker.UnlockOutputRaw is not false)
+                        ? "UNLOCK_OUTPUT_NOT_RESET"
+                        : null;
     }
 
     /// <summary>The <c>skipRequestId</c> the running operation is held for, or <c>null</c> when none is pending in it.</summary>
@@ -773,6 +831,87 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         active is not null && active.DeclaredSlot == physicalSlot;
 
     /// <summary>
+    /// Runs <paramref name="step"/> where no pulse can go out beside it: under the gate every pulse is taken under
+    /// (8005-agv-onboard-hmi#392). A load cancellation judges its doors and journals its press here, so either the press is
+    /// on file before the run's next pulse -- and the run holds instead of pulsing -- or that pulse went out first, and the
+    /// press finds its slot not shut (<see cref="LoadCancellationRefusal"/>).
+    /// </summary>
+    /// <remarks>
+    /// The step must not call back into this executor's gated methods; it reads and writes the journal only.
+    /// </remarks>
+    public async Task<T> RunBetweenPulsesAsync<T>(Func<Task<T>> step, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        await _declarationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await step().ConfigureAwait(false);
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The door this run pulsed has been seen shut again: from here the lock reading says what a load cancellation needs to
+    /// know (<see cref="ActiveOperation.PulsedSlot"/>).
+    /// </summary>
+    private async Task ForgetPulsedSlotAsync(ActiveOperation? active)
+    {
+        if (active is null)
+        {
+            return;
+        }
+
+        await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            Volatile.Write(ref active.PulsedSlot, 0);
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Whether a load cancellation pressed over this run's attempt is on file still waiting for its answer.
+    /// </summary>
+    private async Task<bool> IsLoadCancellationUnansweredAsync(ActiveOperation? active, CancellationToken cancellationToken) =>
+        active is not null
+        && string.Equals(
+            (await _journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
+                .PendingLoadCancellation?.SlotOperationAttemptId,
+            active.SlotOperationAttemptId,
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// Holds the run, every door as it stands, while a load cancellation over its attempt waits for its answer
+    /// (8005-agv-onboard-hmi#392, control-server#837 review). The server answers a request again from its record, so a basket
+    /// taken in meanwhile is one it never sees. Authorized, the cancellation stops the run through its token; refused or given
+    /// up, the pending entry goes and the run carries on. Returns whether it held at all.
+    /// </summary>
+    /// <remarks>
+    /// Not a wait of the operator's: no operation timeout runs here, and the station deadline is the server's, which this
+    /// does not touch. A run resumed after a restart never gets here with one on file: <see cref="ResumeAsync"/> refuses an
+    /// attempt with an unanswered load cancellation, which the restart settlement asks again.
+    /// </remarks>
+    private async Task<bool> HoldWhileLoadCancellationUnansweredAsync(
+        ActiveOperation? active,
+        CancellationToken cancellationToken)
+    {
+        bool held = false;
+        while (await IsLoadCancellationUnansweredAsync(active, cancellationToken).ConfigureAwait(false))
+        {
+            held = true;
+            await Task.Delay(LoadCancellationAnswerPollInterval, cancellationToken).ConfigureAwait(false);
+        }
+
+        return held;
+    }
+
+    /// <summary>
     /// Resumes the persisted operation context after an authenticated
     /// RESUME_AFTER_REPAIR action. The resume command can only select the exact
     /// persisted attempt/checkpoint/slot set; it cannot manufacture a new one.
@@ -1061,7 +1200,16 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             RecoveryOperatorVerifiedAt = null,
             RecoveryVector = null,
             RecoveryResultObservedAt = null,
-            PendingLoadCancellation = null,
+            // A cancellation pressed over this load and still unanswered stays (8005-agv-onboard-hmi#392, second-phase review
+            // S2): the server may have authorized it, and the answer it is owed -- FAILED over a load that completed -- goes
+            // out only once it is asked again under its cancellationId. Any other is dropped, as it always was.
+            PendingLoadCancellation = state.OperationContext is { OperationType: OperationType.Load } load
+                && string.Equals(
+                    state.PendingLoadCancellation?.SlotOperationAttemptId,
+                    load.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                    ? state.PendingLoadCancellation
+                    : null,
             SlotFaultDeclaration = null,
             TakenOverSlotOperationAttemptId = null,
             RemainingBasketsSkip = null,
@@ -1610,6 +1758,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
             int slotIndex = physicalSlot - 1;
+            // Before the slot goes into the active set: held here, the handshake reports no door of it in doubt
+            // (8005-agv-onboard-hmi#392).
+            await HoldWhileLoadCancellationUnansweredAsync(active, cancellationToken).ConfigureAwait(false);
             // Written once per slot, not once per reopen: the seventeenth reopen answers the same
             // recovery question as the first -- this slot is in the active set and its door may be
             // open -- so the journal bytes would not change.
@@ -2245,6 +2396,16 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 continue;
             }
 
+            if (unlockNeeded
+                && await HoldWhileLoadCancellationUnansweredAsync(active, cancellationToken).ConfigureAwait(false)
+                && cause == WireToGatePromptCause.OppositeReopen)
+            {
+                // The press of 「重新开门」 came before the cancellation's; refused, the operator is asked anew rather than the
+                // door springing open on a press from before the wait, as after a held reopen.
+                cause = WireToGatePromptCause.ShutOverOpposite;
+                continue;
+            }
+
             if (unlockNeeded)
             {
                 // Every pulse, the first and each reopen, asks the whole vehicle first: another door not
@@ -2268,19 +2429,38 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 // The pulse is taken under the declaration gate, so a slot fault declaration is applied either
                 // before it -- and then none goes out -- or after it, never beside it (8005-agv-onboard-hmi#215).
                 await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                bool cancellationPressed;
                 try
                 {
                     ThrowIfDeclared(active, physicalSlot);
-                    // After the progress send, not before it: that send waits on the network, and a latch
-                    // arriving during it is exactly the window this check exists for. Nothing is awaited
-                    // between here and the pulse.
-                    ThrowIfFatalFaultLatched(reopen: pulseRequested);
-                    pulseRequested = true;
-                    await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    // A load cancellation journaled since the hold above: it judged this door shut, so none opens under it
+                    // (8005-agv-onboard-hmi#392). The press takes this gate to journal itself (RunBetweenPulsesAsync).
+                    cancellationPressed = await IsLoadCancellationUnansweredAsync(active, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    if (!cancellationPressed)
+                    {
+                        // After the progress send, not before it: that send waits on the network, and a latch
+                        // arriving during it is exactly the window this check exists for. Nothing is awaited
+                        // between here and the pulse.
+                        ThrowIfFatalFaultLatched(reopen: pulseRequested);
+                        pulseRequested = true;
+                        if (active is not null)
+                        {
+                            Volatile.Write(ref active.PulsedSlot, physicalSlot);
+                        }
+
+                        await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
                     _declarationGate.Release();
+                }
+
+                if (cancellationPressed)
+                {
+                    // Back to the hold at the top; this pulse was never sent.
+                    continue;
                 }
 
                 // Both are hardware responses in milliseconds. Missing either one means the lock
@@ -2299,6 +2479,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 catch (TimeoutException) when (cause == WireToGatePromptCause.OppositeReopen)
                 {
                     await WaitForShutAndResetAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    // Shut and reset again: the pulse that did not release is over (second-phase review S3).
+                    await ForgetPulsedSlotAsync(active).ConfigureAwait(false);
                     cause = WireToGatePromptCause.ReopenNotReleased;
                     continue;
                 }
@@ -2334,6 +2516,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     cause = WireToGatePromptCause.PromptCadence;
                     continue;
             }
+
+            await ForgetPulsedSlotAsync(active).ConfigureAwait(false);
 
             // The door is shut and the occupancy is known either way; an output still energised is
             // given its reset timeout, and one that does not fall back throws from here (decision 2).

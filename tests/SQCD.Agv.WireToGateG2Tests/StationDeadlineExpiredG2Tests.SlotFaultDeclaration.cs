@@ -381,6 +381,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// 判定不生效之五：本次装货已由装货取消接手——操作员按了取消、取消请求还在等授权。回 <c>NOT_APPLICABLE</c>，
     /// 不中止执行器、不动取消那一份记录：这一次的结论归取消。
     /// </summary>
+    /// <remarks>
+    /// 协议 6.0.0 起装进一篮就按不出取消（8005-agv-onboard-hmi#392），所以这里 1 号仓空关锁闭、等「重新开门」时按取消，判定也
+    /// 落在 1 号仓；原先是 1 号仓装好、等 2 号仓时按。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE")]
@@ -394,11 +398,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizationsToDrop = 1;
             });
-        await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
+        await StartThreeSlotLoadHeldShutEmptyAtSlotOneAsync(harness, token);
         Assert.False(await harness.Business.RequestLoadCancellationAsync("现场不装了。", token));
         WireToGatePendingLoadCancellation pending = Assert.IsType<WireToGatePendingLoadCancellation>(
             harness.ReadRecoveryState(token).PendingLoadCancellation);
@@ -407,7 +407,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await harness.Server.SendCommandAsync(
             "SlotFaultDeclarationCommand",
             Guid.NewGuid().ToString("D"),
-            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 1));
         await harness.WaitForInboundAsync("SlotFaultDeclarationResult", token);
 
         AssertNotApplicable(harness, "payload.slotOperationAttemptId");
@@ -423,6 +423,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// </summary>
     /// <remarks>
     /// 先红：去掉取消授权后、中止前那一道检查，服务端收到 <c>LoadCancellationResult</c>，同一 attempt 出了两个结论（审查的探针）。
+    /// 协议 6.0.0 起装进一篮就按不出取消（8005-agv-onboard-hmi#392），所以判定落在空关锁闭、等「重新开门」的 1 号仓，取消也在那时按；
+    /// 原先是 1 号仓装好、判定 2 号仓。授权不开门，「不开任何别的仓」照旧由开锁次数守。
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -436,15 +438,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.SlotFaultDeclarationResultAcksToDrop = 1;
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1, 2, 3];
             });
-        await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
+        await StartThreeSlotLoadHeldShutEmptyAtSlotOneAsync(harness, token);
         int unlocksBeforeDeclaration = harness.Io.UnlockCount;
 
         await harness.Server.SendCommandAsync(
             "SlotFaultDeclarationCommand",
             Guid.NewGuid().ToString("D"),
-            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 1));
         // The APPLIED is on the wire and its ack withheld: the declaration is journaled and the run not yet stopped.
         await harness.WaitForInboundAsync("SlotFaultDeclarationResult", token);
         Assert.Equal(FirstDeclarationId, harness.ReadRecoveryState(token).SlotFaultDeclaration?.DeclarationId);
@@ -457,7 +458,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "LoadCancellationResult");
         JsonElement result = harness.SingleResult("OperationResult");
         Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
-        AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
+        AssertWireSlot(result, 1, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
         Assert.Equal(unlocksBeforeDeclaration, harness.Io.UnlockCount);
         WireToGateRecoveryState state = harness.ReadRecoveryState(token);
         Assert.Null(state.PendingLoadCancellation);
@@ -640,6 +641,42 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await WaitForAwaitedSlotAsync(harness, 1, cancellationToken);
         harness.Io.CloseDoor(0, cargo: true);
         await WaitForAwaitedSlotAsync(harness, 2, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the three-slot load, has the operator shut slot 1 empty, and returns once the run holds it shut for
+    /// 「重新开门」 and the cancellation can be pressed: no basket in, every door locked (protocol 6.0.0,
+    /// 8005-agv-onboard-hmi#392).
+    /// </summary>
+    private static async Task StartThreeSlotLoadHeldShutEmptyAtSlotOneAsync(Harness harness, CancellationToken cancellationToken)
+    {
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.Ready,
+            "the session to be READY",
+            cancellationToken);
+        await harness.Server.SendCommandAsync(
+            "SlotOperationCommand",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                demandId = DemandId,
+                operationSessionId = "33333333-3333-3333-3333-333333333333",
+                slotOperationAttemptId = DeclaredAttemptId,
+                operationType = "LOAD",
+                slots = DeclaredSlots,
+                expectedBasketCount = 3,
+                expectedFinalPhysicalState = "OCCUPIED",
+                commandContentSha256 = new string('0', 64)
+            },
+            Guid.NewGuid().ToString("D"));
+        await WaitForAwaitedSlotAsync(harness, 1, cancellationToken);
+        harness.Io.CloseDoor(0, cargo: false);
+        await Harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation && harness.Business.LoadCancellationBlockedReason is null,
+            "slot 1 held shut empty and the in-flight cancellation pressable",
+            cancellationToken,
+            harness.DescribeEvents);
+        await WaitForAwaitedSlotAsync(harness, 1, cancellationToken);
     }
 
     private static Task WaitForAwaitedSlotAsync(Harness harness, int slot, CancellationToken cancellationToken) =>

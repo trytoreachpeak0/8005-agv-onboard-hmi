@@ -24,6 +24,25 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// </summary>
     public const string DoorLockUnprovenAfterEmptyReason = "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY";
 
+    /// <summary>
+    /// The reason on the slot of a load cancellation that would have had to be opened to be cleared: a cancellation is
+    /// not allowed over it in its state (8005-agv-onboard-hmi#392). Registered for every message type.
+    /// </summary>
+    public const string LoadCancellationWouldOpenReason = "ACTION_NOT_ALLOWED_IN_STATE";
+
+    /// <summary>
+    /// The reason on a slot whose operator wait ran out with its door shut and locked over the basket still in: the slot
+    /// is read and known, and none of the recovery results may carry <c>OPERATOR_TIMEOUT</c>, which the registry allows on
+    /// <c>OperationResult</c> only (8005-agv-onboard-hmi#392).
+    /// </summary>
+    /// <remarks>
+    /// Used for this one shape and nothing else (Coordinator13, 2026-10-25): no registered code says it, and protocol 6.0.0 is
+    /// not changed for it. Allowing <c>OPERATOR_TIMEOUT</c> on <c>LoadCompensationResult</c>, <c>LoadCancellationResult</c> and
+    /// <c>FaultCargoRecoveryResult</c> is filed for the next protocol version. The business service logs the slot, the time
+    /// given and that the basket is still in, so the people at the vehicle can read what the code does not say.
+    /// </remarks>
+    public const string OperatorDidNotClearReason = "ACTION_NOT_ALLOWED_IN_STATE";
+
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
@@ -75,6 +94,31 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
         CancellationToken cancellationToken = default) =>
         ExecuteAsync(context, correction: true, progress, cancellationToken);
+
+    /// <summary>
+    /// The answer to a vector this vehicle will not take on at all, written nowhere and touching no slot:
+    /// <c>FAILED</c>, every slot <c>NOT_STARTED</c> with <paramref name="reasonCode"/> and what the IO reads now.
+    /// </summary>
+    /// <remarks>
+    /// For a load cancellation authorized after its load's result was recorded (8005-agv-onboard-hmi#392 review S1): the
+    /// completed load stands, so no vector is put on file and the attempt is not reopened; only the answer goes out.
+    /// </remarks>
+    public WireToGateRecoveryVectorExecutionResult RefuseWithoutTakingOver(
+        WireToGateRecoveryVectorContext context,
+        string reasonCode)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        return CreateResult(
+            context,
+            "FAILED",
+            context.Slots
+                .Select(slot => CreateSlotResult(ReadPhysicalSlot(snapshot, slot), "NOT_STARTED", [reasonCode]))
+                .ToArray(),
+            WireToGateRecoveryCheckpoint.Prepared,
+            _clock.Now);
+    }
 
     /// <summary>
     /// Records and returns the <c>FAILED</c> result of a vector the vehicle refused before any
@@ -597,6 +641,30 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 return refusal;
             }
 
+            if (!openHandedOver && context.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation)
+            {
+                // A load cancellation never opens a slot (protocol 6.0.0, CV-LOAD-CANCELLATION-ALL-EMPTY,
+                // NEVER_OPEN_A_SLOT_FOR_A_CANCELLATION; 8005-agv-onboard-hmi#392): it is authorized only over target slots
+                // that read empty, locked and reset, which every slot above has been settled on without a pulse. A slot
+                // still to clear here reads otherwise -- a basket in it, the server's facts behind the vehicle's -- and is
+                // refused before its unlock is written, as the precheck refuses: nothing this vector did is in doubt.
+                AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        ReadPhysicalSlot(beforePulse, physicalSlot),
+                        "NOT_STARTED",
+                        [LoadCancellationWouldOpenReason]));
+                (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
+                    context,
+                    beforePulse,
+                    handedOver,
+                    completed,
+                    results,
+                    correction).ConfigureAwait(false);
+                return refusal;
+            }
+
             await WriteVectorStateAsync(
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -619,6 +687,8 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             // the door-unproven settlement. A door that never unlocked or whose output never fell back after
             // the pulse is still UNKNOWN.
             bool awaitingOperator = false;
+            // Which wait a timeout ran out in, so its reason says so (8005-agv-onboard-hmi#392).
+            ClearWait wait = ClearWait.Operator;
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
@@ -637,12 +707,14 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     ThrowIfFatalFaultLatched();
                     pulseSent = true;
                     await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    wait = ClearWait.Unlock;
                     LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown && !locker.IsLocked,
                         MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
                         _options.FeedbackStableWindow,
                         cancellationToken).ConfigureAwait(false);
+                    wait = ClearWait.OutputReset;
                     await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown
@@ -660,6 +732,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     completed,
                     cancellationToken).ConfigureAwait(false);
                 awaitingOperator = true;
+                wait = ClearWait.Operator;
                 LockerSnapshot completedLocker = correction
                     ? await WaitForCorrectionAsync(slotIndex, deadline, cancellationToken)
                     : await _ioModule.WaitForLockerAsync(
@@ -765,7 +838,9 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         settledAt);
                 }
 
-                string reason = MapFailureReason(exception);
+                string reason = exception is TimeoutException
+                    ? TimeoutReason(wait, ReadPhysicalSlot(failureSnapshot, physicalSlot))
+                    : MapFailureReason(exception);
                 UpsertResult(
                     results,
                     CreateSlotResult(ReadPhysicalSlot(failureSnapshot, physicalSlot), "UNKNOWN", [reason]));
@@ -1536,9 +1611,47 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>The wait of one slot of a clear a timeout can run out in.</summary>
+    private enum ClearWait
+    {
+        /// <summary>For the lock to read released after the pulse.</summary>
+        Unlock,
+
+        /// <summary>For the unlock output to fall back after the lock released.</summary>
+        OutputReset,
+
+        /// <summary>For the operator to empty -- or correct -- the slot and shut it, locked with the output reset.</summary>
+        Operator
+    }
+
+    /// <summary>
+    /// Which wait ran out, as the slot reads now (8005-agv-onboard-hmi#392, as 8005-agv-onboard-hmi#385 did for the slot
+    /// executor's): none of them is <c>ACTION_NOT_ALLOWED_IN_STATE</c>, which every timeout here used to be, except the one
+    /// with no registered code of its own (<see cref="OperatorDidNotClearReason"/>).
+    /// </summary>
+    /// <remarks>
+    /// Unreadable is <c>SLOT_STATE_UNKNOWN</c> and an output still energised <c>UNLOCK_OUTPUT_NOT_RESET</c>, whatever the wait.
+    /// After the pulse, a readable lock that would not release with its output back is <c>SLOT_INOPERABLE</c>. Waiting for the
+    /// operator, a door that does not read locked is <c>LOCK_NOT_CLOSED</c>; one shut and locked over a slot not yet as the
+    /// clear needs it is <see cref="OperatorDidNotClearReason"/>.
+    /// </remarks>
+    private static string TimeoutReason(ClearWait wait, LockerSnapshot locker) =>
+        !locker.IsKnown
+            ? "SLOT_STATE_UNKNOWN"
+            : locker.UnlockOutputRaw is not false
+                ? "UNLOCK_OUTPUT_NOT_RESET"
+                : wait switch
+                {
+                    ClearWait.Unlock => "SLOT_INOPERABLE",
+                    ClearWait.OutputReset => "UNLOCK_OUTPUT_NOT_RESET",
+                    _ => locker.IsLocked ? OperatorDidNotClearReason : "LOCK_NOT_CLOSED"
+                };
+
     private static string MapFailureReason(Exception exception) => exception switch
     {
-        TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
+        // Every wait's own timeout is TimeoutReason's (8005-agv-onboard-hmi#392); none should arrive here. One that does is a
+        // slot this run could not read in time.
+        TimeoutException => "SLOT_STATE_UNKNOWN",
         IOException => "SLOT_STATE_UNKNOWN",
         // Raised with the reason code itself, by the single-door check before a pulse.
         InvalidDataException { Message: "UNLOCK_OUTPUT_NOT_RESET" or "LOCK_NOT_CLOSED" } invalid

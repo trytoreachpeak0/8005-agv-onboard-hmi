@@ -54,6 +54,46 @@ public sealed partial class WireToGateBusinessService
             && !IsLoadCancellationBeforeSublotVectorOnFile())
         || CanRequestLoadCancellationBeforeSublot();
 
+    /// <summary>
+    /// Why the load in flight the entry is lit over may not be cancelled now, as the reason code the control server would
+    /// refuse it with, or <c>null</c> when it may or when the entry is about something else (CP-0021 revised <c>REQ-0211</c>,
+    /// protocol 6.0.0; 8005-agv-onboard-hmi#392).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Once loading has started a cancellation is only for a load with no basket in, every target door shut and locked and
+    /// every unlock output reset: the server authorizes nothing else, and never with a slot to open. The entry stays where it
+    /// is and cannot be pressed, and the sentence beside it says why and what to press instead
+    /// (<see cref="WireToGateLoadCancellationText.Blocked"/>) -- 「剩下的不装」 once a basket is in, shut the door first while one
+    /// stands open.
+    /// </para>
+    /// <para>
+    /// Judged on the IO as it reads now and on the slots the load has counted loaded (<see cref="WireToGateSlotOperationExecutor.LoadCancellationRefusal"/>).
+    /// A cancellation already on file, before any sublot or authorized, is not judged here: it is settled as it stands.
+    /// Nor is one asked and unanswered over this load (8005-agv-onboard-hmi#392 review S2): the server may have authorized it,
+    /// and only asking again under its cancellationId settles it -- the request path lets that press through, so the entry
+    /// does too, whatever the slots read since.
+    /// </para>
+    /// </remarks>
+    public string? LoadCancellationBlockedReason
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.RecoveryVector is null
+                && CancellableLoadInFlight(state) is { } load
+                && !string.Equals(
+                    state.PendingLoadCancellation?.CancellationId,
+                    InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
+                    StringComparison.Ordinal)
+                    ? LoadCancellationRefusal(state, load)
+                    : null;
+        }
+    }
+
+    private string? LoadCancellationRefusal(WireToGateRecoveryState state, WireToGateRecoveryOperationContext load) =>
+        _executor.LoadCancellationRefusal(load.Slots, [.. state.CompletedSlots.Where(load.Slots.Contains)]);
+
     private bool IsLoadCancellationBeforeSublotVectorOnFile() =>
         Volatile.Read(ref _lastRecoveryState).RecoveryVector is { } vector
         && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector);
@@ -739,6 +779,10 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>The load in flight the cancellation entry is offered over, by the rules above, or <c>null</c>.</summary>
+    /// <remarks>
+    /// Also the load that completed under a cancellation still waiting for its answer (8005-agv-onboard-hmi#392,
+    /// second-phase review S2): <see cref="UnansweredCancellationOverRecordedLoad"/>.
+    /// </remarks>
     private WireToGateRecoveryOperationContext? CancellableLoadInFlight(WireToGateRecoveryState state) =>
         state.OperationContext is { OperationType: OperationType.Load } context
         && string.Equals(
@@ -750,6 +794,23 @@ public sealed partial class WireToGateBusinessService
             string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
             && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal))
             ? context
+            : UnansweredCancellationOverRecordedLoad(state);
+
+    /// <summary>
+    /// The load whose result was recorded while a cancellation pressed over it waited for its answer, or <c>null</c>: the
+    /// cancellation stays on file (<c>WireToGateSlotOperationExecutor.Recorded</c>), and asked again under its cancellationId
+    /// it is answered FAILED over the completed load, no door opened (second-phase review S2).
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? UnansweredCancellationOverRecordedLoad(WireToGateRecoveryState state) =>
+        state.PendingLoadCancellation is { SlotOperationAttemptId: { } attempt } pending
+        && !string.Equals(state.UnsettledSlotOperationAttemptId, attempt, StringComparison.Ordinal)
+        && state.LastCompletedLoadOperationContext is { } recorded
+        && string.Equals(recorded.SlotOperationAttemptId, attempt, StringComparison.Ordinal)
+        && string.Equals(
+            pending.CancellationId,
+            InFlightLoadCancellationId(recorded.DemandId, attempt),
+            StringComparison.Ordinal)
+            ? recorded
             : null;
 
     /// <summary>
@@ -789,7 +850,8 @@ public sealed partial class WireToGateBusinessService
                 : null;
         }
 
-        if (state.UnsettledSlotOperationAttemptId is not null)
+        if (state.UnsettledSlotOperationAttemptId is not null
+            || UnansweredCancellationOverRecordedLoad(state) is not null)
         {
             return CancellableLoadInFlight(state) is { } load
                 ? new LoadCancellationTarget($"load:{load.SlotOperationAttemptId}", load.DemandId, IsLoadInFlight: true)
@@ -949,7 +1011,8 @@ public sealed partial class WireToGateBusinessService
     /// <summary>Whether any recovery entry of the window is offered by this service now.</summary>
     private bool OffersAnyRecoveryEntry() =>
         CanRequestResumeAfterRepair
-        || CanRequestLoadCancellation
+        // An entry that cannot be pressed is no exit (8005-agv-onboard-hmi#392).
+        || CanRequestLoadCancellation && LoadCancellationBlockedReason is null
         || CanRequestLoadCompensation
         || CanRequestLoadCorrection
         || CanRequestFaultCargoHandoff
@@ -1376,7 +1439,10 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        if (state.UnsettledSlotOperationAttemptId is null)
+        // The load that completed while its cancellation's answer was lost is asked about again, not cancelled before any
+        // sublot (second-phase review S2): the answer lands in the ruled branch below.
+        WireToGateRecoveryOperationContext? recordedUnderCancellation = UnansweredCancellationOverRecordedLoad(state);
+        if (state.UnsettledSlotOperationAttemptId is null && recordedUnderCancellation is null)
         {
             return await RequestLoadCancellationBeforeSublotAsync(
                     state,
@@ -1387,8 +1453,16 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        RefuseDoorOpeningCancellationWhileLatched();
-        WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
+        WireToGateRecoveryOperationContext operation =
+            recordedUnderCancellation ?? RequireUnsettledLoadOperation(state);
+        // Asked again under the cancellationId already out, it goes through a latch (second-phase review S1): the load holds
+        // for that answer, the latch's reset waits for the load, and under protocol 6.0.0 the cancellation opens no door --
+        // its vector reads the slots and pulses none. A new press over the load still is refused while latched.
+        if (!IsUnansweredInFlightCancellation(state, operation))
+        {
+            RefuseDoorOpeningCancellationWhileLatched();
+        }
+
         // Already cancelled, with a result on file: asked again it would be authorized again and the doors pulsed open
         // over a load the first cancellation concluded (onboard-hmi#254).
         if (await IsCancellationConcludedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
@@ -1397,7 +1471,55 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
         }
 
+        // Revised REQ-0211 (8005-agv-onboard-hmi#392): asked over a basket in, a door not shut or an output not reset, the
+        // server refuses it, and nothing about the load changes; so it is not asked. The entry is shut over it already; this is
+        // the press that got there anyway, the state changed under the confirmation dialog. Answered as the entry is
+        // captioned, nothing sent, the load left running. Not a request already out under this id: the server may have
+        // authorized it, and only asking again -- the first press's content, its stored answer replayed -- settles it.
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
+        bool recordedNow = false;
+        if (!string.Equals(state.PendingLoadCancellation?.CancellationId, cancellationId, StringComparison.Ordinal))
+        {
+            // Judged and journaled where the load's executor sends no pulse (8005-agv-onboard-hmi#392, control-server#837
+            // review): journaled first, the load holds every door shut until the answer; pulsed first, its slot reads not
+            // shut here. Judged from the journal as it is now, not the copy read at the start of the press.
+            string? refusal = await _executor.RunBetweenPulsesAsync(
+                    async () =>
+                    {
+                        WireToGateRecoveryState now = await ReadRecoveryStateCachedAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                        if (LoadCancellationRefusal(now, operation) is { } refused)
+                        {
+                            return refused;
+                        }
+
+                        // As AskForLoadCancellationAsync does before it records: only a press that can send is a first press.
+                        RequireSessionReadyToSend();
+                        await RecallOrRecordLoadCancellationAsync(
+                                now,
+                                cancellationId,
+                                operation.SlotOperationAttemptId,
+                                reason,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        return null;
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"取消装货未申请、未开仓门：attempt={operation.SlotOperationAttemptId}，原因={refusal}。");
+                PublishOperatorResponse("RECOVERY_BLOCKED", $"{WireToGateLoadCancellationText.Blocked(refusal)}（{refusal}）。 ");
+                return true;
+            }
+
+            recordedNow = true;
+            state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
         // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
         // last person pressed would open doors (review M1, probe: 306 s after the press, resent, authorized, unlocked).
@@ -1412,14 +1534,17 @@ public sealed partial class WireToGateBusinessService
                 operation.DemandId,
                 operation.SlotOperationAttemptId,
                 reason,
-                cancellationToken)
+                cancellationToken,
+                recordedNow)
             .ConfigureAwait(false) is not var (authorization, operatorContext))
         {
             return false;
         }
 
-        if (authorization.Slots.Count == 0
-            || !authorization.Slots.SequenceEqual(operation.Slots))
+        // Protocol 6.0.0: every AUTHORIZED decision has an empty scope -- no door is opened for a cancellation
+        // (CV-LOAD-CANCELLATION-ALL-EMPTY; 8005-agv-onboard-hmi#392). The slots the vehicle reads and reports are its own
+        // load's, never the server's; an authorization naming slots is the v5 shape, which would have them opened.
+        if (authorization.Slots.Count != 0)
         {
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
         }
@@ -1439,6 +1564,25 @@ public sealed partial class WireToGateBusinessService
         {
             await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken).ConfigureAwait(false);
             throw new InvalidDataException("LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION");
+        }
+
+        // The load finished and its result is recorded while the answer was on its way (8005-agv-onboard-hmi#392 review S1,
+        // Coordinator14's ruling): a lock that read released without a pulse let the basket in, and the server has the load
+        // COMPLETED. That stands. No vector is put on file and the attempt is not reopened; the cancellation is answered
+        // FAILED, every slot as it reads, without any slot IO. Judged on the attempt being settled, whatever settled it
+        // (second-phase review L2): a vector here would reopen it either way.
+        WireToGateRecoveryState answered = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(
+                answered.UnsettledSlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            return await AnswerCancellationOverRecordedLoadAsync(
+                    authorization,
+                    operation,
+                    operatorContext,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         // The abort channel (onboard-hmi#78): the load's closed loop stops before the cancellation
@@ -1465,7 +1609,7 @@ public sealed partial class WireToGateBusinessService
             authorization.DemandId,
             authorization.SlotOperationAttemptId,
             null,
-            authorization.Slots,
+            operation.Slots,
             null,
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
@@ -1479,7 +1623,7 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
         PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
-            $"装货取消已获服务端授权，装货已停止，开始将{FormatSlots(vector.Slots)}清空。 ");
+            $"装货取消已获服务端授权，装货已停止，正在核对{FormatSlots(vector.Slots)}为空，不开仓门。 ");
         return await ExecuteRecoveryVectorAndReportAsync(
                 vector,
                 correction: false,
@@ -1491,6 +1635,72 @@ public sealed partial class WireToGateBusinessService
                     cancellationToken),
                 releaseSettledFailure: () => ForgetSettledRecoveryVectorAsync(vector, cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers a cancellation authorized after its load's result was recorded: <c>FAILED</c>, every slot
+    /// <c>NOT_STARTED</c> with <c>ACTION_NOT_ALLOWED_IN_STATE</c> and what it reads, nothing put on file but the result, no
+    /// slot IO (8005-agv-onboard-hmi#392 review S1). Returns false: the load was not cancelled.
+    /// </summary>
+    /// <remarks>
+    /// The result goes on file before the pending request goes, so a restart in between finds one or the other: the request,
+    /// asked again under its cancellationId and answered here again under the same result key, or the result, replayed by the
+    /// handshake. The request survives the load's own result being recorded for that (second-phase review S2:
+    /// <c>WireToGateSlotOperationExecutor.Recorded</c> keeps the attempt's pending cancellation, and
+    /// <see cref="UnansweredCancellationOverRecordedLoad"/> keeps the entry lit over it); an answer lost with the link, too,
+    /// is asked again from there. Its row also marks the cancellation concluded (<see cref="IsCancellationConcludedAsync"/>),
+    /// so the entry stays shut over this load.
+    /// </remarks>
+    private async Task<bool> AnswerCancellationOverRecordedLoadAsync(
+        LoadCancellationAuthorizationPayload authorization,
+        WireToGateRecoveryOperationContext operation,
+        WireToGateOperatorContextPayload operatorContext,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryVectorContext vector = new(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            authorization.CancellationId,
+            null,
+            authorization.DemandId,
+            authorization.SlotOperationAttemptId,
+            null,
+            operation.Slots,
+            null,
+            operatorContext.OperatorId,
+            operatorContext.VerificationMethod,
+            operatorContext.VerifiedAt);
+        WireToGateRecoveryVectorExecutionResult result = _vectorExecutor.RefuseWithoutTakingOver(
+            vector,
+            "ACTION_NOT_ALLOWED_IN_STATE");
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"装货取消授权到达时这次装货的结果已记录，装货算完成，取消不执行、不开仓门，按FAILED上报："
+            + $"cancellation={vector.PrimaryId}，attempt={operation.SlotOperationAttemptId}。");
+        try
+        {
+            await SendRecoveryVectorResultAsync(vector, LoadCancellationResultKey(vector), result, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"装货取消的FAILED结果暂未收到DurableAck，重连后补报：cancellation={vector.PrimaryId}。",
+                exception);
+        }
+        finally
+        {
+            await ForgetLoadCancellationRequestAsync(vector.PrimaryId, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        Volatile.Write(ref _cancellationConcludedAttemptId, operation.SlotOperationAttemptId);
+        PublishOperatorResponse(
+            "RECOVERY_BLOCKED",
+            "装货已经完成，取消没有执行，没有打开任何仓门；本站任务以服务端下发的状态为准。 ");
+        return false;
     }
 
     /// <summary>
@@ -1506,6 +1716,77 @@ public sealed partial class WireToGateBusinessService
         if (_fatalFaultLatched())
         {
             throw new InvalidOperationException("FATAL_FAULT_LATCHED");
+        }
+    }
+
+    /// <summary>Whether a cancellation over <paramref name="load"/> has gone out and is still waiting for its answer.</summary>
+    private static bool IsUnansweredInFlightCancellation(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryOperationContext load) =>
+        string.Equals(
+            state.PendingLoadCancellation?.CancellationId,
+            InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// The cancellation entry while a severe safety fault is latched: the cancellation before any sublot, and the one over the
+    /// load in flight asked again under the cancellationId already out (second-phase review S1). Neither opens a door.
+    /// </summary>
+    public bool CanRequestLoadCancellationWhileLatched =>
+        CanRequestLoadCancellationBeforeSublot()
+        || CanRequestLoadCancellation
+        && Volatile.Read(ref _lastRecoveryState) is { RecoveryVector: null } state
+        && CancellableLoadInFlight(state) is { } load
+        && IsUnansweredInFlightCancellation(state, load);
+
+    /// <summary>
+    /// Tells the operator the way out when a severe safety fault latches while the load holds for a cancellation's answer
+    /// (second-phase review S1): the reset waits for the load, and the load for that answer, so the cancellation is pressed
+    /// again first.
+    /// </summary>
+    private void NoticeUnansweredCancellationUnderLatch()
+    {
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        if (!_fatalFaultLatched()
+            || CancellableLoadInFlight(state) is not { } load
+            || !IsUnansweredInFlightCancellation(state, load))
+        {
+            return;
+        }
+
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"严重安全故障锁存时装货取消还在等服务端答复：cancellation={state.PendingLoadCancellation!.CancellationId}，"
+            + $"attempt={load.SlotOperationAttemptId}；可在锁存期间再按一次取消重问，取消不开门。");
+        PublishOperatorEvent(
+            $"load-cancellation-unanswered-under-latch:{state.PendingLoadCancellation.CancellationId}",
+            "RECOVERY_AUTHORIZATION_UNKNOWN",
+            $"取消装货还在等服务端答复，装货停着、不会开门。请先再按一次「{LoadCancellationCaptionHere()}」重问，"
+            + "取消不会打开仓门；取消结束后再请维护人员复位故障。 ");
+    }
+
+    /// <summary>
+    /// A line for the people at the vehicle when a vector's wait for the operator ran out over a door shut and locked with
+    /// the basket still in (8005-agv-onboard-hmi#392): the result carries <c>ACTION_NOT_ALLOWED_IN_STATE</c> for it, the one
+    /// registered code the recovery results may carry there, which does not say what happened.
+    /// </summary>
+    private void LogSlotsNotClearedInTime(
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryVectorExecutionResult result)
+    {
+        foreach (WireToGateSlotExecutionResult slot in result.SlotResults.Where(slot =>
+                     slot.Outcome == "UNKNOWN"
+                     && slot.FinalPhysicalState == "OCCUPIED"
+                     && slot.LockState == "LOCKED"
+                     && slot.ReasonCodes.SequenceEqual([WireToGateRecoveryVectorExecutor.OperatorDidNotClearReason])))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"{context.VectorType}：{slot.SlotNo}号仓等操作员取出货物超时（时限{_vectorOperatorTimeout.TotalSeconds:0}秒），"
+                + $"门已关好锁上、货还在仓里；结果按{WireToGateRecoveryVectorExecutor.OperatorDidNotClearReason}上报。"
+                + $"vector={context.PrimaryId}，attempt={context.SlotOperationAttemptId ?? "null"}。");
         }
     }
 
@@ -1525,16 +1806,20 @@ public sealed partial class WireToGateBusinessService
             string demandId,
             string? slotOperationAttemptId,
             string reason,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool recordedByThisPress = false)
     {
         // Only a press that can actually send becomes the first press. One refused for readiness
         // leaves no bytes on the wire, and remembering its operator would have the next press repeat
         // a verification the server never saw.
         RequireSessionReadyToSend();
-        bool recalled = string.Equals(
-            state.PendingLoadCancellation?.CancellationId,
-            cancellationId,
-            StringComparison.Ordinal);
+        // A press over a load in flight journals itself between the load's pulses before it gets here
+        // (8005-agv-onboard-hmi#392): on file, but this press's, not an earlier one's.
+        bool recalled = !recordedByThisPress
+            && string.Equals(
+                state.PendingLoadCancellation?.CancellationId,
+                cancellationId,
+                StringComparison.Ordinal);
         WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
                 cancellationId,
@@ -1587,6 +1872,23 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             throw;
         }
+        catch (TimeoutException) when (slotOperationAttemptId is not null)
+        {
+            // Sent and not answered: the load holds every door shut for the answer (8005-agv-onboard-hmi#392, second-phase
+            // review L3), and only asking again under this cancellationId settles it.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"装货取消已发出、未等到服务端答复，装货停着等答复、不开门：cancellation={cancellationId}，"
+                + $"attempt={slotOperationAttemptId}。");
+            PublishOperatorEvent(
+                $"load-cancellation-unanswered:{cancellationId}",
+                "RECOVERY_AUTHORIZATION_UNKNOWN",
+                $"取消装货已发出，还没收到服务端答复；装货先停着，不会开门。请再按一次「{LoadCancellationCaptionHere()}」重问，"
+                + "取消不会打开仓门。 ");
+            throw;
+        }
+
         if (authorization.Decision == "REJECTED")
         {
             await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
@@ -1950,7 +2252,7 @@ public sealed partial class WireToGateBusinessService
                 $"load-cancellation-unanswered:{pending.CancellationId}",
                 "RECOVERY_AUTHORIZATION_UNKNOWN",
                 $"车辆 {_session.Client.AgvId} 上次按下的装货取消没有收到服务端答复，{trigger}，车辆不会自动重新申请。"
-                + $"服务端一旦授权，车辆就会开锁清空目标仓位，请到车旁确认仓门附近安全后再按一次「{LoadCancellationCaptionHere()}」。 ");
+                + $"如仍要取消，请到车旁确认后再按一次「{LoadCancellationCaptionHere()}」；取消不会打开仓门。 ");
             return;
         }
 
@@ -3869,6 +4171,7 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         bool success = result.OverallOutcome == "COMPLETED";
         bool doorUnproven = result.OverallOutcome == WireToGateRecoveryVectorExecutor.AllEmptyDoorUnprovenOutcome;
+        LogSlotsNotClearedInTime(context, result);
         PublishRecoveryVectorOperation(
             context,
             success

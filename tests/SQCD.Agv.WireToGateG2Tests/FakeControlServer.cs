@@ -927,10 +927,10 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public string LoadCancellationRejectionReasonCode { get; set; } = "ACTION_NOT_ALLOWED_IN_STATE";
 
     /// <summary>
-    /// 授权时回给车载端的仓位。默认是在途装货那两个仓，与 <c>RecoveryVectorHarness</c> 种下的
-    /// 装货操作一致。
+    /// 在途取消授权时回给车载端的仓位。默认空，与协议 6.0.0 候选同形：<c>AUTHORIZED</c> 一律空范围，取消不开任何门
+    /// （<c>CV-LOAD-CANCELLATION-ALL-EMPTY</c>，8005-agv-onboard-hmi#392）。测试设成非空，造的是 v5 形状、与车载端对不上的授权。
     /// </summary>
-    public IReadOnlyList<int> LoadCancellationAuthorizedSlots { get; set; } = [1, 2];
+    public IReadOnlyList<int> LoadCancellationAuthorizedSlots { get; set; } = [];
 
     /// <summary>
     /// 这么多次取消请求受理了却不回应答：服务端已经授权（内容已按 <c>cancellationId</c> 绑定），车辆等到
