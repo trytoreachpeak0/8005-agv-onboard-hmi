@@ -223,6 +223,54 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 第二阶段审查 S1：答复丢了、装货停着等，这时锁存严重安全故障。复位因为装货没结束被拒，所以必须能再按一次取消：v6 的取消
+    /// 从不开门，锁存期间照样放行同一 cancellationId 的重问。屏上说明怎么收口；再按，用原 id 再问，授权到达，报 <c>ALL_EMPTY</c>、
+    /// 不开门；之后故障可以复位。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ALatchWhileTheLoadWaitsForALostAnswerLeavesTheSameCancellationToBeAskedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        (Harness harness, BeforeFirstPulseJournal fence) = await StartPendingCancellationStopAsync(
+            io,
+            Harness.NewJournalPath(),
+            server => server.LoadCancellationAuthorizationsToDrop = 1,
+            token,
+            messageTimeout: TimeSpan.FromSeconds(3));
+        await using Harness _ = harness;
+
+        Task<bool> press = await PressBeforeTheFirstPulseAsync(harness, io, fence, token);
+        await Record.ExceptionAsync(() => press);
+        string? cancellationId = ReadJournal(harness, token).PendingLoadCancellation?.CancellationId;
+        Assert.NotNull(cancellationId);
+        Assert.Equal(0, io.UnlockCount);
+
+        LatchNow(harness);
+        Assert.True(harness.Controller.IsFatalFaultLatched);
+        await harness.WaitUntilAsync(
+            () => harness.Events.Any(item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN"
+                && item.Message.Contains("再按一次「取消装货」", StringComparison.Ordinal)
+                && item.Message.Contains("复位", StringComparison.Ordinal)),
+            "the operator told to press 「取消装货」 again before the reset",
+            token);
+
+        Assert.True(await harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token));
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal(cancellationId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, io.UnlockCount);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token) is { UnsettledSlotOperationAttemptId: null, RecoveryVector: null },
+            "the cancellation to settle A's attempt",
+            token);
+        Assert.True(await harness.Controller.ClearFatalFaultAsync("operator-134", token));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// Starts a pickup stop with A's two-slot load to come, its journal wrapped so the load's executor can be held at its
     /// Prepared write.
     /// </summary>
@@ -231,7 +279,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         string journalPath,
         Action<FakeControlServer> configure,
         CancellationToken token,
-        DateTimeOffset? stationDepartureDeadlineAt = null)
+        DateTimeOffset? stationDepartureDeadlineAt = null,
+        TimeSpan? messageTimeout = null)
     {
         BeforeFirstPulseJournal? fence = null;
         Harness harness = await Harness.StartAsync(
@@ -254,7 +303,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath,
             io: io,
-            messageTimeout: TimeSpan.FromSeconds(30),
+            messageTimeout: messageTimeout ?? TimeSpan.FromSeconds(30),
             wrapJournal: inner => fence = new BeforeFirstPulseJournal(inner));
         try
         {
