@@ -786,17 +786,19 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// The door the cancellation was pressed over reads open again before the authorization comes back: under protocol 6.0.0
     /// a cancellation is only pressed with every door shut (8005-agv-onboard-hmi#392), so a door in doubt under it is the
     /// defensive shape -- one opened by hand, or a lock that let go, after the press. The load runs on until the
-    /// authorization aborts it and hands the open door over; waited for on the vehicle's journal, as the UnknownFirst hook
-    /// waits, because this runs on the fake's receive loop.
+    /// authorization aborts it and hands the open door over. Waited for until the load has seen the door open -- its prompt
+    /// to put the basket in comes again, as the load goes back to waiting at an open door -- polled, because this runs on the
+    /// fake's receive loop. Not on the journal's active unlock set: the slot is in it from its first pulse, so that wait held
+    /// before the door was even opened (PR #413 review L1).
     /// </summary>
     private static Action OpenAgainBeforeTheAuthorization(FakeIoModuleClient io, int slotIndex, Func<Harness?> harness) =>
         () =>
         {
+            int promptsBefore = harness() is { } before ? PutInPrompts(before) : 0;
             io.OpenDoor(slotIndex);
             DateTimeOffset until = DateTimeOffset.UtcNow.AddSeconds(10);
             while (DateTimeOffset.UtcNow < until
-                && !(harness() is { } running
-                    && ReadJournal(running, CancellationToken.None).ActiveUnlockSlots.Contains(slotIndex + 1)))
+                && !(harness() is { } running && PutInPrompts(running) > promptsBefore))
             {
                 Thread.Sleep(20);
             }
