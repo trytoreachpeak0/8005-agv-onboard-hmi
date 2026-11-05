@@ -244,13 +244,12 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// <summary>
     /// The old success is untouched: every door relocks with its output reset, and the clear is COMPLETED --
     /// which the business service reports as ALL_EMPTY -- with no slot carrying the new reason.
-    /// </summary>
+    /// <remarks>
+    /// Not a load cancellation since protocol 6.0.0 (8005-agv-onboard-hmi#392): it pulses no slot, so it has no door to relock.
+    /// </remarks>
     [Theory]
-    [InlineData(WireToGateRecoveryVectorTypes.LoadCancellation)]
     [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
-    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("IntegrationSlice", "FP-IS-07")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN")]
     [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task AClearWhoseDoorsAllRelockIsStillCompleted(string vectorType)
     {

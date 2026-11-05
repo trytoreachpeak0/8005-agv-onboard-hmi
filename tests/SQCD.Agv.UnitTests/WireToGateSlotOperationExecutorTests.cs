@@ -1201,6 +1201,12 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// drop the pending entry -- a restart would then find nothing to resend and settle the attempt
     /// UNKNOWN.
     /// </summary>
+    /// <remarks>
+    /// Since 8005-agv-onboard-hmi#392 the run holds before its next slot while that cancellation waits for its answer, so it
+    /// is stopped here as an authorization stops it, once slot 1's completion checkpoint is written. Journaled with slot 1 open
+    /// and the run carrying on is not a shape the press path makes any more (a cancellation is pressed with every door shut);
+    /// it is kept because it is the one that puts an executor checkpoint after the press.
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
@@ -1211,7 +1217,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
         bool pressed = false;
 
-        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+        Task<WireToGateOperationExecutionResult> run = fixture.Executor.ExecuteAsync(
             command,
             async (progress, progressToken) =>
             {
@@ -1232,9 +1238,27 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             },
             token);
 
-        Assert.Equal("COMPLETED", result.OverallOutcome);
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        DateTimeOffset until = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (!state.CompletedSlots.Contains(1) && DateTimeOffset.UtcNow < until)
+        {
+            await Task.Delay(20, token);
+            state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        }
+
+        Assert.Contains(1, state.CompletedSlots);
         Assert.Equal(PendingCancellation(command), state.PendingLoadCancellation);
+        // Held before slot 2 for the answer: slot 2 is neither in the active set nor pulsed.
+        await Task.Delay(500, token);
+        Assert.False(run.IsCompleted);
+        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+
+        Assert.True(await fixture.Executor.AbortOperationAsync(command.SlotOperationAttemptId, token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        Assert.Equal(
+            PendingCancellation(command),
+            (await fixture.Journal.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
     }
 
     /// <summary>

@@ -285,10 +285,14 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// （<c>RefuseDoorOpeningCancellationWhileLatched</c>）已经过去，授权还在路上。
     /// </para>
     /// <para>
-    /// <b>装货是真在途的：</b>1 号仓已经装好关门，2 号仓开着等操作员。授权回来后装货照常中止（不中止，服务端的取消工作流
-    /// 会停在 <c>AwaitingResult</c>，它没有超时）。开着的 2 号仓是交接过来的门，不用再开，等操作员清空关上；1 号仓有货、
-    /// 锁着，清空它要新开一次门——锁存期间这一次被拒。所以结果不是 <c>ALL_EMPTY</c>，服务端据此进 <c>RecoveryRequired</c>。
-    /// 修复之前那一次照开，<c>UnlockCount</c> 变成 3。
+    /// <b>装货是真在途的：</b>1 号仓开门后空关、锁着等「重新开门」，2 号仓还没开。授权回来后装货照常中止（不中止，服务端的取消
+    /// 工作流会停在 <c>AwaitingResult</c>，它没有超时）。
+    /// </para>
+    /// <para>
+    /// <b>协议 6.0.0 之后（8005-agv-onboard-hmi#392）。</b>原先的形状——1 号仓装好、2 号仓开着时按取消，授权后清空 1 号仓要新开一次门、
+    /// 锁存期间被拒、结果 <c>FAILED</c>／<c>ONBOARD_FATAL_FAULT_LATCHED</c>——在 v6 下按不出来：已装篮或门开着时取消按不动，取消也
+    /// 从不为清空而开门。剩下要守的是「锁存期间取消不再开任何门」：两仓都空着锁着，取消照常以 <c>ALL_EMPTY</c> 收尾，一次锁都不开，
+    /// 锁存仍在。
     /// </para>
     /// </remarks>
     [Fact]
@@ -305,53 +309,34 @@ public sealed partial class MultiDemandJourneyG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1, 2];
                 server.BeforeLoadCancellationAuthorization = () => LatchNow(latchTarget!);
             });
         latchTarget = harness;
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
-        io.CloseDoor(0, cargo: true);
-        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 2, token);
         Assert.False(harness.Controller.IsFatalFaultLatched);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
 
-        // Slot 2 is handed over standing open, with no pulse to key a close on, and the cancellation waits on it with the
-        // harness's two-second operation timeout. Held until this thread shuts it: shut after seeing the vector start, a
-        // late wake-up ran that wait out and the cancellation ended UNKNOWN (8005-agv-onboard-hmi#331).
-        io.HoldWaitsUntilShut(1);
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(
-            () => ReadJournal(harness, token).RecoveryVector is not null,
-            "the authorized cancellation to take the slots over",
-            token);
-        Assert.True(harness.Controller.IsFatalFaultLatched);
-        // 交接过来的 2 号仓：操作员把刚放进去的货拿出来，空着关上。
-        io.CloseDoor(1, cargo: false);
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount > 2
+            () => io.UnlockCount > 1
                 || ReceivedPayloads(harness, "LoadCancellationResult").Length > 0,
-            "the cancellation result, or a third pulse",
+            "the cancellation result, or a second pulse",
             token);
-
-        Assert.Equal(2, io.UnlockCount);
-        JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
-        // FAILED，不只是「不是 ALL_EMPTY」：锁存拒绝的物理状态是读得出来的，错报成 UNKNOWN 也不该过（PR #198 审查）。
-        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
-        JsonElement[] slots = [.. result.GetProperty("slotResults").EnumerateArray()];
-        JsonElement refused = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 1);
-        Assert.Equal("NOT_STARTED", refused.GetProperty("outcome").GetString());
-        Assert.Equal("OCCUPIED", refused.GetProperty("finalPhysicalState").GetString());
-        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], ReasonCodes(refused));
-        JsonElement handedOver = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 2);
-        Assert.Equal("COMPLETED", handedOver.GetProperty("outcome").GetString());
         await press;
-        // 恢复向量这一路的提示也说明是锁存，并且只点名没清空的 1 号仓（PR #198 审查低项 2、3）。
-        AssertLatchGuidance(harness, "本机已锁存严重安全故障，1号仓停止开门；复核并复位后可再次申请恢复。");
+
+        Assert.True(harness.Controller.IsFatalFaultLatched);
+        Assert.Equal(1, io.UnlockCount);
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.All(result.GetProperty("slotResults").EnumerateArray(), slot =>
+        {
+            Assert.Equal("COMPLETED", slot.GetProperty("outcome").GetString());
+            Assert.Equal("EMPTY", slot.GetProperty("finalPhysicalState").GetString());
+            Assert.Equal("LOCKED", slot.GetProperty("lockState").GetString());
+        });
+        Assert.Empty(ReadJournal(harness, token).ActiveUnlockSlots);
     }
 
     private static async Task<Harness> StartLatchStopAsync(

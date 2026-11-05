@@ -607,4 +607,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         return harness;
     }
+
+    /// <summary>The restore's projection of an unfinished attempt: the line that puts the recovery entry up.</summary>
+    private static int RestoredEntryLines(Harness harness) =>
+        harness.Events.Count(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+            && item.Message.Contains("操作未完成", StringComparison.Ordinal)
+            && item.Message.Contains("需要管理员恢复", StringComparison.Ordinal));
 }

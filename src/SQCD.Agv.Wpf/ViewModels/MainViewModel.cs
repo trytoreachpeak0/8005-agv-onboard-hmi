@@ -40,6 +40,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private bool _hasJourneyPlanLegs;
     private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
     private bool _hasLoadCancellationSelectionHint;
+    private string _loadCancellationBlockedReasonCode = string.Empty;
+    private Func<string?>? _loadCancellationBlockedReason;
     private readonly Dictionary<string, IReadOnlyList<int>> _commandSlotsByDemand = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _sublotsByDemand = new(StringComparer.Ordinal);
     private IReadOnlyList<WireToGateWorklistItem> _worklistItems = [];
@@ -990,7 +992,30 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 另一回事：本站多条需求、业务层要一个所选需求而操作员还没选时，按钮留在原位但禁用（批次7-14）。
     /// </summary>
     public bool CanPressLoadCancellation =>
-        CanRequestLoadCancellation && !HasLoadCancellationSelectionHint;
+        CanRequestLoadCancellation && !HasLoadCancellationSelectionHint && !HasLoadCancellationBlockedHint;
+
+    /// <summary>
+    /// 在途装货此刻不能取消的原因码，没有时为空（8005-agv-onboard-hmi#392，CP-0021 修订后的 REQ-0211）：已装进花篮、门没关好、
+    /// 开锁输出没复位或仓位读不到。入口照常出现但按不动，旁边一句话说为什么、该按什么。
+    /// </summary>
+    public string LoadCancellationBlockedReasonCode
+    {
+        get => _loadCancellationBlockedReasonCode;
+        private set
+        {
+            if (SetProperty(ref _loadCancellationBlockedReasonCode, value))
+            {
+                OnPropertyChanged(nameof(HasLoadCancellationBlockedHint));
+                OnPropertyChanged(nameof(LoadCancellationBlockedHintText));
+                OnPropertyChanged(nameof(CanPressLoadCancellation));
+            }
+        }
+    }
+
+    public bool HasLoadCancellationBlockedHint => LoadCancellationBlockedReasonCode.Length > 0;
+
+    public string LoadCancellationBlockedHintText =>
+        HasLoadCancellationBlockedHint ? WireToGateLoadCancellationText.Blocked(LoadCancellationBlockedReasonCode) : string.Empty;
 
     /// <summary>
     /// 是否显示「请先在清单中选择要取消的任务」。业务层说要选，而清单里还没有选中行时出现。
@@ -1087,10 +1112,15 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 要不要提示先选一条。<b>「要不要选」由业务层说，不在这里按清单条数推</b>（批次7-14）：在途装货的取消、
     /// 重启后重发已经发出的那次取消，都用不着选，而它们在界面上看起来与「多条清单项」一模一样。
     /// </summary>
-    private void RefreshLoadCancellationHintCore() =>
+    private void RefreshLoadCancellationHintCore()
+    {
         HasLoadCancellationSelectionHint =
             _wireToGateLoadCancellationSelectionRequired?.Invoke() == true
             && SelectedWorklistItem is null;
+        LoadCancellationBlockedReasonCode = CanRequestLoadCancellation
+            ? _loadCancellationBlockedReason?.Invoke() ?? string.Empty
+            : string.Empty;
+    }
 
     private void RefreshLoadCorrectionTargetCore()
     {
@@ -1951,6 +1981,10 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
     internal void ConfigureLoadCancellationPress(Func<string?, WireToGateLoadCancellationPress> binder) =>
         _loadCancellationPressBinder = binder ?? throw new ArgumentNullException(nameof(binder));
+
+    /// <summary>接上业务服务说在途装货此刻为什么不能取消的那一项（<see cref="LoadCancellationPressWiring"/>）。</summary>
+    internal void ConfigureLoadCancellationBlockedReason(Func<string?> blockedReason) =>
+        _loadCancellationBlockedReason = blockedReason ?? throw new ArgumentNullException(nameof(blockedReason));
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
