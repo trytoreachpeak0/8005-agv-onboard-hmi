@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 
@@ -180,8 +181,24 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(harness.UiErrors);
     }
 
+    /// <summary>
+    /// 确认框把按下之后的路讲全（PR #414 审查 S1、L5）：生产实例默认只开放续行（control-server <c>RecoveryGrants.cs</c>），
+    /// 不另外开放「补偿清空」就按会被拒，所以要写明先请系统维护人员为这辆车开放它；也不用「续行」这种内部词。
+    /// G2 的服务端替身不按动作区分授权，这一点只能落在文案上。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public void TheConfirmationOfGivingUpNamesTheGrantCompensationNeedsInTheOperatorsWords()
+    {
+        Assert.Equal(
+            "确定不装了吗？\n\n这次装货到此结束，不会再开门。之后要先请系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」结束这次装货。",
+            WireToGateResumeAbandonText.Confirmation);
+        Assert.Equal("当前状态已经变化，不能结束这次装货。请按照界面最新提示操作。", WireToGateResumeAbandonText.Refused);
+    }
+
     private const string LoadResultHandedOverExitAfterFailedResume =
-        "这次装货没有完成，已交服务端处理。仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+        "这次装货没有完成，已交服务端处理。仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。";
 
     /// <summary>
     /// A 的装货以 UNKNOWN 收尾、结果交服务端；操作员关好空仓门，按「申请恢复」，服务端开会话、受理续行动作。返回受理后的日志。

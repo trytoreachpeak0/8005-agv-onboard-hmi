@@ -8,7 +8,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
 /// 一次装货的非完成结果已交服务端、旅程停在 <c>LOAD_RESULT_REQUIRES_RECOVERY</c>，恢复开关开着：屏上那一行要说出路——
-/// 维护人员先开放这辆车的恢复，开放后按「补偿清空」——并且照着按真能走通（trytoreachpeak0/8005-agv-onboard-hmi#410，
+/// 维护人员先为这辆车开放「补偿清空」，开放后再按「补偿清空」——并且照着按真能走通（trytoreachpeak0/8005-agv-onboard-hmi#410，
 /// agv01 2026-10-22）。
 /// </summary>
 /// <remarks>
@@ -26,7 +26,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 public sealed partial class MultiDemandJourneyG2Tests
 {
     private const string LoadResultHandedOverExitAfterUnknownLoad =
-        "这次装货的结果未知，已交服务端处理。仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+        "这次装货的结果未知，已交服务端处理。仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。";
 
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -140,7 +140,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         WireToGateOperatorEvent notice = Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
         Assert.Equal(
             "这次装货的结果未知，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
-            + "仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。",
+            + "仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。",
             notice.Message);
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);

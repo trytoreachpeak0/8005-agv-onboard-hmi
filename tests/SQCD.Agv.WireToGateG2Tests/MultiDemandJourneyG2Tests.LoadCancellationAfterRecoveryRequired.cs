@@ -113,7 +113,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         // With the switch on, compensation is the vehicle's own exit: the line does not say there is none (onboard-hmi#370),
         // it names that exit and the step before it (onboard-hmi#410).
         const string compensationExit =
-            "这次装货没有完成，已交服务端处理。仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+            "这次装货没有完成，已交服务端处理。仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。";
         await harness.WaitUntilAsync(
             () => harness.OnUi(() => harness.ViewModel.NoOnboardExitNotice) == compensationExit,
             "the line naming compensation as the way out",
