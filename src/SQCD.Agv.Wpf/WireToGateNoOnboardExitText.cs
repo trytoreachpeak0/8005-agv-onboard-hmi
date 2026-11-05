@@ -31,8 +31,11 @@ public static class WireToGateNoOnboardExitText
     /// <summary>
     /// The line the recovery area shows over a load whose result waits for the server while 「补偿清空」 is offered
     /// (<c>8005-agv-onboard-hmi#410</c>, agv01 2026-10-22): the way out, in the order it is taken. The entry is offered
-    /// whether or not maintenance has opened recovery for the vehicle -- the server refuses it until then -- so the line
-    /// names that step first, and names 「补偿清空」 rather than 「申请恢复」, which runs the load again and opens the door.
+    /// whether or not maintenance has opened it for the vehicle -- the server refuses it until then -- so the line names that
+    /// step first, and names 「补偿清空」 rather than 「申请恢复」, which runs the load again and opens the door. It names the
+    /// grant for 「补偿清空」 itself, not recovery in general: the production default grant covers only
+    /// <c>RESUME_AFTER_REPAIR</c> (control-server <c>RecoveryGrants.cs</c>), so a grant opened for the resume still refuses
+    /// <c>COMPENSATE_LOAD_ALL_EMPTY</c> (review S1 of PR #414). The G2 fake server does not tell grant actions apart.
     /// </summary>
     public static string CompensationExit(bool resultKnown) =>
         $"这次装货{Outcome(resultKnown)}，已交服务端处理。" + CompensationSteps;
@@ -56,7 +59,7 @@ public static class WireToGateNoOnboardExitText
         $"这次装货{Outcome(resultKnown)}，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
         + (compensationOffered ? CompensationSteps : ContactMaintainer);
 
-    private const string CompensationSteps = "仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+    private const string CompensationSteps = "仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。";
 
     private static string Outcome(bool resultKnown) => resultKnown ? "没有完成" : "的结果未知";
 

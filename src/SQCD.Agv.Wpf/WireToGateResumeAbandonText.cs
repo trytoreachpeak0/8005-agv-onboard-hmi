@@ -7,8 +7,8 @@ public static class WireToGateResumeAbandonText
     public const string Caption = "不装了";
 
     /// <summary>The confirmation the press asks: what ends, and what settles the load next.</summary>
-    public const string Confirmation = "确定不装了吗？\n\n本次续行到此结束，不会再开门。之后请按「补偿清空」结束这次装货。";
+    public const string Confirmation = "确定不装了吗？\n\n这次装货到此结束，不会再开门。之后要先请系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」结束这次装货。";
 
     /// <summary>The answer when the press came after the offer had gone.</summary>
-    public const string Refused = "当前状态已经变化，不能结束续行。请按照界面最新提示操作。";
+    public const string Refused = "当前状态已经变化，不能结束这次装货。请按照界面最新提示操作。";
 }
