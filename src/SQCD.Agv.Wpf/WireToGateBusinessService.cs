@@ -4086,23 +4086,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
         WireToGateRecoveryState recovery = Volatile.Read(ref _lastRecoveryState);
-        // The cancellation is named only while its entry is lit over this very load (8005-agv-onboard-hmi#392): not once the
-        // load's result is with the server, nor under a recovery vector that runs it (10-22 agv01, RESUME_AFTER_REPAIR).
+        // In a resume over empty slots the button that gives up is 「不装了」: the load's cancellation is not offered there
+        // (8005-agv-onboard-hmi#410). The executor publishes the wait before this report, so the offer is read for it.
+        // Otherwise the cancellation is named only while its entry is lit over this very load (8005-agv-onboard-hmi#392):
+        // not once the load's result is with the server, nor under a recovery vector that runs it (10-22 agv01,
+        // RESUME_AFTER_REPAIR).
         bool cancellationEntryOverThisLoad = CanUseStationOperator()
             && recovery.RecoveryVector is null
             && string.Equals(
                 CancellableLoadInFlight(recovery)?.SlotOperationAttemptId,
                 command.SlotOperationAttemptId,
                 StringComparison.Ordinal);
-        string guidance = OperationGuidance(
-            command,
-            progress,
-            StationDeadlinePassed(),
-            cancellationEntryOverThisLoad
+        string? giveUpCaption = CanAbandonResume
+            ? WireToGateResumeAbandonText.Caption
+            : cancellationEntryOverThisLoad
                 ? WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
                     _session.CurrentJourney,
                     recovery.StagingPickupStationIds ?? []))
-                : null);
+                : null;
+        string guidance = OperationGuidance(command, progress, StationDeadlinePassed(), giveUpCaption);
         PublishOperation(command, stage, guidance, detailKey, progress.Active);
         if (command.OperationType == OperationType.Load
             && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
