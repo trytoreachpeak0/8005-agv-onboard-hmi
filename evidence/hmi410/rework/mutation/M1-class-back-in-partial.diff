@@ -1,0 +1,14 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.ResumeAbandon.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.ResumeAbandon.cs
+index 6d62cad..2a96cdc 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.ResumeAbandon.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.ResumeAbandon.cs
+@@ -51,3 +51,9 @@ public sealed partial class WireToGateBusinessService
+         return Task.FromResult(taken);
+     }
+ }
++
++/// <summary>Mutant.</summary>
++public static class WireToGateResumeAbandonMutantText
++{
++    public const string Caption = "x";
++}

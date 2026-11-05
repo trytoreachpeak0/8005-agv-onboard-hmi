@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a45ea20..d489410 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -4099,7 +4099,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+                 StringComparison.Ordinal);
+         string? giveUpCaption = CanAbandonResume
+             ? WireToGateResumeAbandonText.Caption
+-            : cancellationEntryOverThisLoad
++            : true
+                 ? WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
+                     _session.CurrentJourney,
+                     recovery.StagingPickupStationIds ?? []))
