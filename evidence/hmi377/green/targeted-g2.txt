@@ -1,0 +1,9 @@
+# commit 0be1a49 (implementation)
+# same filter as red/targeted-g2.txt
+# exit=0
+Passed!  - Failed:     0, Passed:    43, Skipped:     0, Total:    43, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+# dotnet test tests/SQCD.Agv.UnitTests --filter Architecture  exit=0
+Passed!  - Failed:     0, Passed:   203, Skipped:     0, Total:   203, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+# dotnet format SQCD_8005AGV.sln --verify-no-changes  exit=0
