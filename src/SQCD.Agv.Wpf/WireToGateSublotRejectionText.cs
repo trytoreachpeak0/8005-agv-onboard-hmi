@@ -78,9 +78,11 @@ public static class WireToGateSublotRejectionText
     /// maintenance, whether or not the entry request was kept.
     /// </para>
     /// <para>
-    /// <c>STATION_MISMATCH</c> and <c>VEHICLE_NOT_READY</c> also turn on the code alone (onboard-hmi#377): the
+    /// <c>STATION_MISMATCH</c> and <c>VEHICLE_NOT_READY</c> turn on the code first (onboard-hmi#377): the
     /// material is not what is wrong, and a rescan is refused again until the vehicle is back and standing at the
-    /// stop, so the operator is told to see to the vehicle first.
+    /// stop, so the operator is told to see to the vehicle first. What follows still turns on whether the entry
+    /// request was kept (review S-1): with it dropped the scan entry is closed until the server sends a new
+    /// request, so the operator is told to wait for one rather than to scan.
     /// </para>
     /// <para>
     /// The refusal's own <c>displayMessage</c> is not shown. For these two codes it repeats the same advice with the
@@ -90,8 +92,12 @@ public static class WireToGateSublotRejectionText
     public static string NextStep(string reasonCode, bool canEnterAgain) => reasonCode switch
     {
         SlotInoperable => "重扫也无法装入，请取消该需求并联系系统维护人员。",
-        StationMismatch => "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。",
-        VehicleNotReady => "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。",
+        StationMismatch => canEnterAgain
+            ? "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。"
+            : "请把车开回本站、停稳；等待服务端新的录入请求，持续出现请联系系统维护人员。",
+        VehicleNotReady => canEnterAgain
+            ? "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。"
+            : "请等车在本站停稳、就绪；等待服务端新的录入请求，持续出现请联系系统维护人员。",
         _ => canEnterAgain
             ? "请核对物料后重新扫码。"
             : "本站录入清单已变化，等待服务端新的录入请求。"
