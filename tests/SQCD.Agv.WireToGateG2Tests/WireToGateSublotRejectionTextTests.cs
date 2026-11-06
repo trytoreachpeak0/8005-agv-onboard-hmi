@@ -89,13 +89,14 @@ public sealed class WireToGateSublotRejectionTextTests
     /// <summary>
     /// 车不在本站上（<c>STATION_MISMATCH</c>）或车还没就绪（<c>VEHICLE_NOT_READY</c>）：服务端开仓前复核车位时拒收
     /// （control-server#783）。原因句说清是车的问题，下一步说先让车回站或停稳；不论录入请求是否保留都不叫操作员
-    /// 「核对物料后重新扫码」——车不回站，重扫永远被拒（onboard-hmi#377）。
+    /// 「核对物料后重新扫码」——车不回站，重扫永远被拒（onboard-hmi#377）。录入请求没保留时扫码入口是关着的，要等服务端
+    /// 新的录入请求才开，所以那时只说让车回站／停稳并等待，不说「再扫码」（审查 S-1）。
     /// </summary>
     [Theory]
     [InlineData("STATION_MISMATCH", true, "车此刻不在本站上（可能被移开过），不能录入", "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。")]
-    [InlineData("STATION_MISMATCH", false, "车此刻不在本站上（可能被移开过），不能录入", "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。")]
+    [InlineData("STATION_MISMATCH", false, "车此刻不在本站上（可能被移开过），不能录入", "请把车开回本站、停稳；等待服务端新的录入请求，持续出现请联系系统维护人员。")]
     [InlineData("VEHICLE_NOT_READY", true, "车还没就绪（仍在移动或位置未确认），暂时不能录入", "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。")]
-    [InlineData("VEHICLE_NOT_READY", false, "车还没就绪（仍在移动或位置未确认），暂时不能录入", "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。")]
+    [InlineData("VEHICLE_NOT_READY", false, "车还没就绪（仍在移动或位置未确认），暂时不能录入", "请等车在本站停稳、就绪；等待服务端新的录入请求，持续出现请联系系统维护人员。")]
     public void AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(
         string reasonCode, bool canEnterAgain, string expectedReason, string expectedNextStep)
     {

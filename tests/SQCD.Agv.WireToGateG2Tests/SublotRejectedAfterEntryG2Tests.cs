@@ -134,7 +134,8 @@ public sealed class SublotRejectedAfterEntryG2Tests
 
     /// <summary>
     /// 服务端开仓前复核车位、车不在本站上时以 <c>STATION_MISMATCH</c> 拒收（control-server#783）：事件里说车不在本站，
-    /// 下一步是把车开回本站，不说「未识别的拒收原因」、不叫操作员重新扫码（onboard-hmi#377）。
+    /// 下一步是把车开回本站，不说「未识别的拒收原因」、不叫操作员重新扫码（onboard-hmi#377）。录入请求保留着，
+    /// 所以车回站之后真能再扫一次：入口开着，第二次录入到得了服务端（审查 L-1）。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -162,6 +163,13 @@ public sealed class SublotRejectedAfterEntryG2Tests
             rejected.Message);
         Assert.DoesNotContain("未识别", rejected.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("重新扫码", rejected.Message, StringComparison.Ordinal);
+
+        Assert.True(harness.Business.CanSubmitSublot);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await RejectionHarness.WaitUntilAsync(
+            () => harness.SubmissionCount == 2,
+            "the entry after the vehicle is back to reach the server without a resent entry request",
+            token);
     }
 
     /// <summary>
