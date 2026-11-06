@@ -10,8 +10,9 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>构造。</b>A 在 5 号仓装好关门、结算；B 在 1 号仓开门，操作员一直不动（<c>OperatorNeverActs</c>），门交接给取消时仍开着。
-/// 替身在写出取消授权之前把 1 号仓的锁反馈设成读不到：取消向量的前检拒绝这扇交接过来的门，结果报 <c>UNKNOWN</c>。这条路径
+/// <b>构造。</b>A 在 5 号仓装好关门、结算；B 在 1 号仓开门后空关、锁着等「重新开门」，操作员按取消（协议 6.0.0 起门开着按不出取消，
+/// 8005-agv-onboard-hmi#392）。替身在写出取消授权之前让 1 号仓又读成开着、等装货记下这扇开着的门，再把它的锁反馈设成读不到：
+/// 取消向量的前检拒绝这扇交接过来的门，结果报 <c>UNKNOWN</c>——v6 下门存疑的防御形状。这条路径
 /// 单需求时由 <see cref="ACancellationRefusedWhileTheHandedOverDoorStandsOpenReportsThatDoorInTheHandshake"/> 钉住；这里多的是第二条需求。
 /// </para>
 /// <para>
@@ -37,15 +38,20 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        Action? reopened = null;
         await using Harness harness = await StartLatchStopAsync(
             io,
             token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
-                server.BeforeLoadCancellationAuthorization = () => io.SetUnreadable(0);
+                server.BeforeLoadCancellationAuthorization = () =>
+                {
+                    reopened!();
+                    io.SetUnreadable(0);
+                };
             });
+        reopened = OpenAgainBeforeTheAuthorization(io, 0, () => harness);
         await harness.WaitUntilAsync(
             () => harness.ViewModel.WorklistItems.Count == 2,
             "both worklist rows",
@@ -61,14 +67,11 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A to complete and be recorded",
             token);
 
-        // B's load is in flight, its door standing open; the operator's selected row is A.
+        // B's load is in flight, its door shut empty and held for 「重新开门」; the operator's selected row is A.
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
         SelectWorklistItem(harness, DemandA);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over B",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
 
         // The operator cancels B; the clearing ends UNKNOWN over its unreadable, still-open door.
         await harness.ViewModel.RequestLoadCancellationAsync(token);
@@ -121,6 +124,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Null(afterPress.RecoveryVector);
         Assert.Equal(AttemptA, afterPress.LastCompletedLoadOperationContext?.SlotOperationAttemptId);
         // No door was opened by either press: B's door was handed over open, and A's slot was never touched again.
+        // A load cancellation opens no door at all since protocol 6.0.0 (8005-agv-onboard-hmi#392).
         Assert.Equal(2, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }

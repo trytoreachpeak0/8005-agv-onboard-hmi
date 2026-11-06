@@ -99,14 +99,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
             },
             messageTimeout: TimeSpan.FromMinutes(1));
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
+        // Shut empty first, the one shape a load in flight may be cancelled in since protocol 6.0.0 (8005-agv-onboard-hmi#392);
+        // the load re-prompts for 「重新开门」 on the same cadence, and that send is the one held.
+        await ShutEmptyForCancellationAsync(harness, token);
 
         FakeControlServer.DurableAckHold hold = harness.Server.HoldNextDurableAck("OperationProgress");
         string late = await HeldAsync(harness, hold, token);

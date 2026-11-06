@@ -31,7 +31,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.RespondToRecoveryRequests = true;
                 server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
@@ -40,26 +39,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             },
             recoveryResumeEnabled: true);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
-
-        // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
-        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
-        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
-        harness.Io.HoldWaitsUntilShut(0);
-        Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
-        await Harness.WaitUntilAsync(
-            () => harness.ReadRecoveryState(token).RecoveryVector is not null,
-            "the authorized cancellation to be prepared over the aborted load",
-            token);
-        string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
-        harness.Server.RecoverySlotOperationAttemptId = attempt;
-        // The operator empties the open door and shuts it: the cancellation reaches ALL_EMPTY, which the server refuses.
-        harness.Io.CloseDoor(0, cargo: false);
-        _ = await cancelling;
+        // The operator shuts the empty door first: a cancellation is pressed only so since protocol 6.0.0, and opens no door
+        // (8005-agv-onboard-hmi#392). It reaches ALL_EMPTY, which the server refuses.
+        await ShutEmptyForCancellationAsync(harness, token);
+        harness.Server.RecoverySlotOperationAttemptId = AttemptId;
+        _ = await harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
+        Assert.Equal(AttemptId, attempt);
         // The premise above, pinned: the refused result is the ALL_EMPTY one. A cancellation whose wait on the slot ran out ends
         // ALL_EMPTY_DOOR_UNPROVEN and is refused and closed out the same way, so without this such a run passed on the other
         // path (8005-agv-onboard-hmi#331).
@@ -72,7 +59,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(attempt, before.UnsettledSlotOperationAttemptId);
 
         // While it waits for the check the cancellation entry is shut, and a press that gets past the screen runs nothing
-        // again: with cargo back in the slot, running the vector again would pulse its door open.
+        // again: with cargo back in the slot, running the vector again would settle it a second time (it pulsed the door open
+        // until protocol 6.0.0, 8005-agv-onboard-hmi#392).
         harness.Io.SetCargoPresent(0, true);
         Assert.False(harness.Business.CanRequestLoadCancellation);
         int unlocksWhileWaiting = harness.Io.UnlockCount;
@@ -221,7 +209,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.RefusedRecoveryResultsWereReconciledByAnother = reconciledByAnother;
                 server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
@@ -239,23 +226,11 @@ public sealed partial class StationDeadlineExpiredG2Tests
     private static async Task<string> RefuseAndEndTheCancellationAsync(Harness harness, CancellationToken token)
     {
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        await Harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight load cancellation entry to be offered",
-            token);
-        // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
-        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
-        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
-        harness.Io.HoldWaitsUntilShut(0);
-        Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
-        await Harness.WaitUntilAsync(
-            () => harness.ReadRecoveryState(token).RecoveryVector is not null,
-            "the authorized cancellation to be prepared over the aborted load",
-            token);
-        string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
-        harness.Io.CloseDoor(0, cargo: false);
-        _ = await cancelling;
+        // Shut empty first: a cancellation is pressed only so since protocol 6.0.0, and opens no door (8005-agv-onboard-hmi#392).
+        await ShutEmptyForCancellationAsync(harness, token);
+        _ = await harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
         AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
@@ -266,7 +241,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         return attempt;
     }
 
-    /// <summary>The one cancellation result the server refused is the ALL_EMPTY the emptied, shut door makes.</summary>
+    /// <summary>The one cancellation result the server refused is the ALL_EMPTY the empty, shut door makes.</summary>
     private static void AssertRefusedResultAllEmpty(Harness harness) =>
         Assert.Equal(
             "ALL_EMPTY",

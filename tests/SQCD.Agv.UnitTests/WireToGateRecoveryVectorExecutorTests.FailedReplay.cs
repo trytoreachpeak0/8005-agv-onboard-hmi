@@ -515,60 +515,35 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     }
 
     /// <summary>
-    /// The latch refuses the pulse of a handed-over door that was shut again over a basket, after its lock feedback was
-    /// lost: the door stays in the active unlock set, the PAUSED progress names it, the answer is UNKNOWN -- and the
-    /// latch's reason code stays on the slot beside the precheck's, so the operator is still told the vehicle is latched
-    /// and the server still hears it (8005-agv-onboard-hmi#249 review round 3, S2).
+    /// A handed-over door shut again over its basket is never unlocked to be emptied (protocol 6.0.0,
+    /// 8005-agv-onboard-hmi#392): it reads shut, so nothing of it is in doubt; the clear is refused FAILED before any
+    /// pulse, nothing stays in the active unlock set, and every later answer is that one. It used to be an ordinary
+    /// target, pulsed -- the shape 8005-agv-onboard-hmi#249 review round 3 S2 put a latch in front of.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-07")]
-    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
-    public async Task ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason()
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BASKET-LOADED")]
+    public async Task AHandedOverDoorShutOverABasketIsRefusedNotUnlocked()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        bool latched = false;
-        await using TestFixture fixture = await TestFixture.CreateAsync(
-            [true, true],
-            fatalFaultLatched: () => Volatile.Read(ref latched),
-            cancellationToken: token);
-        // Slot 2 was handed over and shut again over its basket: an ordinary target, unlocked to be emptied.
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
         WireToGateRecoveryVectorContext context = await HandOverAsync(
             fixture,
             "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4f2",
             [1, 2],
             [2],
             token);
-        List<(string Phase, int[] Active)> phases = [];
 
-        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
-            context,
-            (phase, active, _, _) =>
-            {
-                phases.Add((phase, [.. active]));
-                if (phase == "UNLOCKING")
-                {
-                    // Between the slot's own precheck and the latch check before its pulse.
-                    Volatile.Write(ref latched, true);
-                    fixture.Io.LoseLockFeedback(1);
-                }
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(context, null, token);
 
-                return Task.CompletedTask;
-            },
-            token);
-
-        Assert.Equal("UNKNOWN", first.OverallOutcome);
+        Assert.Equal("FAILED", first.OverallOutcome);
         Assert.Empty(fixture.Io.Pulses);
-        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
-        Assert.Equal([2], recorded.ActiveUnlockSlots);
-        Assert.Equal([2], phases.Last(item => item.Phase == "PAUSED").Active);
-        WireToGateSlotExecutionResult door = first.SlotResults.Single(slot => slot.SlotNo == 2);
-        Assert.Equal("UNKNOWN", door.Outcome);
-        Assert.Equal(
-            [WireToGateSlotOperationExecutor.FatalFaultLatchedReason, "SLOT_STATE_UNKNOWN"],
-            door.ReasonCodes);
+        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+        Assert.All(first.SlotResults, slot => Assert.Equal(("NOT_STARTED", "OCCUPIED"), (slot.Outcome, slot.FinalPhysicalState)));
 
         fixture.Clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Null(await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
+        // Nothing was done, and the journal shows it: a refusal asked for now repeats this one.
+        AssertSameAnswer(first, (await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token))!);
         AssertSameAnswer(first, await fixture.Executor.SettleWithoutUnlockAsync(context, token));
         AssertSameAnswer(first, await fixture.Executor.ExecuteClearAsync(context, null, token));
         await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);

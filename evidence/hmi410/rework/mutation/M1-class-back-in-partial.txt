@@ -1,0 +1,24 @@
+  正在确定要还原的项目…
+  所有项目均是最新的，无法还原。
+  SQCD.Agv.Core -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.RuleMock -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.UnitTests -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)的测试运行
+VSTest 版本 17.11.1 (x64)
+
+正在启动测试执行，请稍候...
+总共 1 个测试文件与指定模式相匹配。
+[xUnit.net 00:00:01.43]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheLexerNamesEveryMemberOfTheClass [FAIL]
+  失败 SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheLexerNamesEveryMemberOfTheClass [28 ms]
+  错误消息:
+   src/SQCD.Agv.Wpf/WireToGateBusinessService.ResumeAbandon.cs: members that start with a continuation token, at lines 53 (WireToGateResumeAbandonMutantText). Each is the tail of the member before it: the cut ended that member too early, and neither half is checked as what it is. Fix MemberSpans for the shape before relying on this guard.
+  堆栈跟踪:
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheLexerNamesEveryMemberOfTheClass() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 569
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 595 ms - SQCD.Agv.UnitTests.dll (net8.0)

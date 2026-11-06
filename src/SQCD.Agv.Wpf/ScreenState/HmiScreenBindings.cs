@@ -66,6 +66,8 @@ internal static class HmiScreenBindings
         Click("OnRetryPendingResultClick", "重新上报结果", "CanRetryPendingResult", "CanRetryPendingResult"),
         // v2: the slot held shut over the opposite occupancy (8005-agv-onboard-hmi#385); MVP: the controller's reopen.
         Click("OnReopenOperationClick", "重新开门", "CanReopenOperation", "CanReopenOperation", "ReopenOperation"),
+        // 续行装货时仓里没货的出路（8005-agv-onboard-hmi#410）。
+        Click("OnAbandonResumeClick", "不装了", "CanAbandonResume", "CanAbandonResume", "AbandonResume"),
         // 文字是绑定（「剩下的不装（已装 k/N 篮）」，8005-agv-onboard-hmi#388）；在途时仍显示、不可按。
         Click(
             "OnRemainingBasketsSkipClick",
@@ -134,6 +136,8 @@ internal static class HmiScreenBindings
         new("NoOnboardExitNotice", "NoOnboardExitNoticeStatus", "HasNoOnboardExitNotice"),
         // 「恢复尚未开放，请联系系统维护人员。」：值为 RECOVERY_AUTHENTICATION_FAILED（8005-agv-onboard-hmi#391）。
         new("RecoveryNotOpenNotice", "RecoveryNotOpenNoticeCode", "HasRecoveryNotOpenNotice"),
+        // 在途装货此刻不能取消的原因码（8005-agv-onboard-hmi#392）：LOAD_CANCELLATION_BASKET_LOADED、LOCK_NOT_CLOSED 等。
+        new("LoadCancellationBlocked", "LoadCancellationBlockedReasonCode", "HasLoadCancellationBlockedHint"),
         new("ReopenOperation", "ReopenWaitStatus", "CanReopenOperation"),
         new("RemainingBasketsSkip", "RemainingBasketsSkipStatus", "ShowsRemainingBasketsSkip"),
         new("StationClearanceStatus", "StationClearance.Status", "StationClearance.HasStatus"),
