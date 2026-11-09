@@ -11,18 +11,22 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>6.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>98f172642937994ed01668d81fe41e69cf089e10</c>, on <c>fp/v2-candidate</c> the merge
+/// <b>This names <c>protocol-v6.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>98f172642937994ed01668d81fe41e69cf089e10</c>, the commit the annotated tag
+/// <c>protocol-v6.0.0</c> (object <c>3d865618</c>) points at -- on <c>fp/v2-candidate</c> the merge
 /// of <c>8005-agv-protocol#27</c> (tree identical to its head <c>13f52e67</c>; for <c>8005-agv-protocol#26</c>, CP-0021):
 /// <c>protocol-v5.0.0</c> with the remaining-baskets skip -- the messages <c>RemainingBasketsSkipRequested</c> and
 /// <c>RemainingBasketsSkipResult</c>, <c>COMPLETED_REMAINING_SKIPPED</c> appended to the closed
 /// <c>OperationResult.overallOutcome</c> enum and the slot reason <c>REMAINING_BASKETS_SKIPPED</c> -- and the revised load
 /// cancellation (no cancellation once a basket is loaded, <c>LOAD_CANCELLATION_BASKET_LOADED</c>), which is a breaking
 /// change and so a new major version. Bound by 8005-agv-onboard-hmi#388, in one package with the control server's
-/// 8005-agv-control-server#830. The tag <c>protocol-v6.0.0</c> does not exist yet (the user's decision of 2026-10-21:
-/// it is cut only after both ends have run together on the real rig), so <see cref="ApprovalStatus"/> is
-/// <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by <see cref="Commit"/>, and evidence produced on this
-/// identity is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
+/// 8005-agv-control-server#830. The user decided on 2026-10-21 to cut the tag only after both ends had run together on
+/// the real rig; it was released unchanged on 2026-11-09 (8005-agv-program#210), with one approval in the external
+/// attestation (SHA-256 <c>482b5ea2...</c>) given by an AI agent the product owner authorized for that release. The
+/// release is byte-identical to the candidate, so the nine identity values stay as they were and only
+/// <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>, on the deployment
+/// branch <c>w2g/release/interim-20261107</c>. CI now checks the protocol out by <see cref="Tag"/>. Evidence produced
+/// while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
 /// </para>
 /// <para>
 /// <c>protocol-v5.0.0</c> (<c>18d4fb34</c>, <c>(AGV_FULL_PRODUCT, 6)</c>) was bound before this,
@@ -64,7 +68,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1";
     public const string SchemaBundleSha256 = "0dab682174e2d3e4f931b3c0e87c7fa55bd2cb3395356d7845e595d8bfb1c795";
     public const string VectorsSha256 = "e06ca9ea1d4445cd7d70fc190b0cf606a8e33cb7760d848c0270df24e2594c91";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,

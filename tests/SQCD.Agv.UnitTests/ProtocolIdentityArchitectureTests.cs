@@ -162,13 +162,14 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The tag is schema-legal, and the approval status says it names a candidate, not a release.
+    /// The tag is schema-legal, and the approval status says it names the approved release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. Bound to the <c>6.0.0</c>
-    /// candidate by 8005-agv-onboard-hmi#388, whose tag <c>protocol-v6.0.0</c> does not exist yet (the user's
-    /// decision of 2026-10-21: it is cut after both ends have run together on the real rig), so this asserts
-    /// <c>SUPERSEDING_CANDIDATE</c> -- as it did for <c>protocol-v5.0.0</c> until 2026-10-18 (8005-agv-onboard-hmi#360,
+    /// The two are checked together because either alone says too little. While <c>protocol-v6.0.0</c> had
+    /// not been cut (bound by 8005-agv-onboard-hmi#388; the user's decision of 2026-10-21: it is cut after both ends
+    /// have run together on the real rig) this test asserted <c>SUPERSEDING_CANDIDATE</c>, and it moved to
+    /// <c>APPROVED_RELEASE</c> on purpose after the annotated tag and its approval attestation were published on
+    /// 2026-11-09 (8005-agv-program#210). It asserted a candidate for <c>protocol-v5.0.0</c> until 2026-10-18 (8005-agv-onboard-hmi#360,
     /// moved for 8005-agv-control-server#767), for <c>protocol-v4.0.0</c> until 2026-10-16 (8005-agv-onboard-hmi#349,
     /// moved by 8005-agv-onboard-hmi#358), for <c>protocol-v3.0.0</c> until 2026-10-09 (8005-agv-onboard-hmi#214, moved
     /// by 8005-agv-onboard-hmi#284) and for <c>protocol-v2.0.0</c> until 2026-09-16. It moves to
@@ -178,7 +179,7 @@ public sealed class ProtocolIdentityArchitectureTests
     /// checked by <c>scripts/run-w2g-g2.ps1</c> against a protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
-    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsACandidate()
+    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
     {
         using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(VendorRoot(), "schemas", "common", "types.schema.json")));
@@ -187,7 +188,7 @@ public sealed class ProtocolIdentityArchitectureTests
 
         Assert.Matches(tag.GetProperty("pattern").GetString()!, WireToGateRelease.Tag);
         Assert.True(WireToGateRelease.Tag.Length >= tag.GetProperty("minLength").GetInt32());
-        Assert.Equal("SUPERSEDING_CANDIDATE", WireToGateRelease.ApprovalStatus);
+        Assert.Equal("APPROVED_RELEASE", WireToGateRelease.ApprovalStatus);
     }
 
     /// <summary>

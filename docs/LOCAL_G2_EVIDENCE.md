@@ -9,7 +9,7 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 批次出口的按片证据走 CI 的手动入口，不在本机串行跑，见「在 CI 上按片跑」。
 
 不带 `-Slice` 时输出到 evidence/g2/<Tag>/<UTC时间>-<HMI commit>/；
-`<Tag>` 取 `$expected.Tag`，现在是 `protocol-v6.0.0`（候选，tag 尚未打出，见下面「身份校验」）。
+`<Tag>` 取 `$expected.Tag`，现在是 `protocol-v6.0.0`（2026-11-09 已发布，见下面「身份校验」）。
 `<Tag>` 取 `$expected.Tag`，现在是 `protocol-v5.0.0`（2026-10-18 已发布，见下面「身份校验」）。
 两种都包含：
 
@@ -133,7 +133,7 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。现在绑定的是 `6.0.0` 候选：commit 98f172642937994ed01668d81fe41e69cf089e10
+脚本逐字段核对 `$expected` 身份。现在绑定的是已发布的 `protocol-v6.0.0`（2026-11-09 发布，`8005-agv-program#210`；发布内容与候选逐字节相同）：commit 98f172642937994ed01668d81fe41e69cf089e10
 （协议仓 `fp/v2-candidate` 上 `8005-agv-protocol#27` 的合并提交，树与其 head 13f52e67 相同；为 `8005-agv-protocol#26`、CP-0021；
 在 `protocol-v5.0.0` 之上新增减篮消息 `RemainingBasketsSkipRequested`／`RemainingBasketsSkipResult`，
 `OperationResult.overallOutcome` 追加 `COMPLETED_REMAINING_SKIPPED`，仓位原因码 `REMAINING_BASKETS_SKIPPED`，装货取消改为装进一篮后不再取消；
@@ -141,8 +141,9 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 `(profileId AGV_FULL_PRODUCT, protocolVersion 7)`，`releaseVersion 6.0.0`。此前绑定的是已发布的 `protocol-v5.0.0`
 （18d4fb34，`protocolVersion 6`），再之前是 `protocol-v4.0.0`（3fb214e5，`protocolVersion 5`）。
 
-`Tag` 写的 `protocol-v6.0.0` 还没有打出（用户 2026-10-21 定：两端跑通、真装置过了再发布）。脚本查「tag 存在则必须指向绑定的
-commit」，`approvalStatus` 声称 `APPROVED_RELEASE` 时还要求 tag 必须存在；现在是候选，不要求。同时确认当前 protocol HEAD 是绑定
+`Tag` 写的 `protocol-v6.0.0` 已经打出（用户 2026-10-21 定两端跑通、真装置过了再发布）：注释 tag 对象 `3d865618`，解引用到 98f17264。
+脚本查「tag 存在则必须指向绑定的 commit」，并且因为 `approvalStatus` 是 `APPROVED_RELEASE`，还要求 tag 必须存在——所以本机跑 G2 前，
+先在协议克隆里 `git fetch --tags`，否则直接判失败。同时确认当前 protocol HEAD 是绑定
 commit 的后继提交，再执行 protocol G1。release manifest、Schema bundle 和
 vectors 哈希仍会逐项校验。工作区路径包含 # 时，脚本临时映射一个盘符运行 G1；协议仓库本身不会被修改。
 CI（`.github/workflows/test.yml`）按同一对常量选检出：`ApprovalStatus` 为 `APPROVED_RELEASE` 时按 `Tag` 检出，
@@ -151,8 +152,9 @@ CI（`.github/workflows/test.yml`）按同一对常量选检出：`ApprovalStatu
 两端没有版本协商：车载端换到这个身份之后，与仍在 v5 上的服务端互相拒绝会话，所以要与
 `8005-agv-control-server#830` 同包换装：两端发件箱清空、停服一起换。
 
-`approvalStatus` 是 `SUPERSEDING_CANDIDATE`：在这个身份上跑出的 G2 证据是 `UNRELEASED_CANDIDATE`，不计入批次出口。注释 tag 与外置批准
-attestation 发布后，照 `8005-agv-onboard-hmi#358` 的先例把声明翻成 `APPROVED_RELEASE`，之后的 G2 才计入。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
+`approvalStatus` 是 `APPROVED_RELEASE`：注释 tag 与外置批准 attestation（SHA-256 `482b5ea2…`）已于 2026-11-09 给出，照 v5 的先例
+`8005-agv-onboard-hmi#369`，在部署分支 `w2g/release/interim-20261107` 上把声明从 `SUPERSEDING_CANDIDATE` 翻过来。翻转之后在这个身份上跑出的 G2
+绑定的是已发布协议，可以计入；翻转之前候选期跑出的 G2 证据仍是 `UNRELEASED_CANDIDATE`，不计入。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
 
 该证据只代表 OnboardHmi 本机 G2。summary.json 会明确保留
 controlServerG2=PENDING_EXTERNAL 和 g3=PENDING_JOINT，不能把本机结果当作

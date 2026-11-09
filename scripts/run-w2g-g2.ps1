@@ -55,7 +55,7 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
     throw '-AllSlices 与 -Slice 只能给一个。'
 }
 
-# 协议 v6.0.0 候选的身份。这是本仓库的第二份副本，权威副本是
+# 协议 v6.0.0 的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
@@ -65,8 +65,11 @@ if ($AllSlices -and $requestedSlices.Count -gt 0) {
 # OperationResult.overallOutcome 追加 COMPLETED_REMAINING_SKIPPED、仓位原因码 REMAINING_BASKETS_SKIPPED，
 # 装货取消改为装进一篮后不再取消（LOAD_CANCELLATION_BASKET_LOADED），属于破坏性改动，所以升大版本。
 # 由 8005-agv-onboard-hmi#388 绑定，与服务端 8005-agv-control-server#830 同包。
-# 用户 2026-10-21 定：两端跑通、真装置过了才打 protocol-v6.0.0，所以 ApprovalStatus 是 SUPERSEDING_CANDIDATE，
-# CI 按 Commit 检出协议；在本身份上产出的证据是 UNRELEASED_CANDIDATE，不计入批次出口。
+# 用户 2026-10-21 定：两端跑通、真装置过了才打 protocol-v6.0.0。protocol-v6.0.0 已于 2026-11-09 发布（8005-agv-program#210）：
+# 注释 tag（对象 3d865618）指向上面的 98f17264，外置 attestation（SHA-256 482b5ea2…）里有一份批准，由产品负责人授权的
+# AI agent 给出。发布内容与候选逐字节相同，所以九个身份值原样保留，只把 ApprovalStatus 由 SUPERSEDING_CANDIDATE 改为
+# APPROVED_RELEASE（照 v5 的先例 8005-agv-onboard-hmi#369），CI 改按 Tag 检出协议。候选期在本身份上产出的证据仍是
+# UNRELEASED_CANDIDATE，不计入批次出口。
 # 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
@@ -81,7 +84,7 @@ $expected = [ordered]@{
     ManifestSha256 = 'a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1'
     SchemaBundleSha256 = '0dab682174e2d3e4f931b3c0e87c7fa55bd2cb3395356d7845e595d8bfb1c795'
     VectorsSha256 = 'e06ca9ea1d4445cd7d70fc190b0cf606a8e33cb7760d848c0270df24e2594c91'
-    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
+    ApprovalStatus = 'APPROVED_RELEASE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
