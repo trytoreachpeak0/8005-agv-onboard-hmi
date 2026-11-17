@@ -90,3 +90,26 @@
 wire notes 写「缺 `eqp` 字段是坏消息，到不了屏上」。车载端照本线一贯做法不在入站逐字段校验 schema：缺字段读作 null、显示为空。
 没有改成拒收，原因是：日志库里留着的 v6 非空行（上面的遗留情况）也缺这个字段，严格拒收会让车在启动恢复投影时就失败，
 比显示为空更糟。缺字段的发送方是服务端，由服务端 G2 的出站 schema 校验把关。
+
+## 审查返工（M1、L1～L3，`b9253ca`、`bbbe01c`）
+
+| 项 | 改了什么 | 守它的测试 |
+| --- | --- | --- |
+| M1 | 新测试：日志库预置 v6 修订号 1 非空行（无 eqp），替身发修订号 2 带 eqp；启动 Ready、无 ProtocolProblem、行显示 `N1-03` | `AVehicleWithAPre700WorklistInItsJournalStartsAndShowsTheNextRevisionsMachineNumber` |
+| L1 | 子批列 `*`、机台号列 `Auto`，机台号 `MaxWidth=72`、间距 8 | `WorklistScrollingLayoutTests.ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen` |
+| L2 | XAML 测试断言机台号到行模板之间无 Visibility／Opacity | `TheMachineNumberSitsBesideTheSublotInTheWorklistRowAndNowhereElse` |
+| L3 | 序列化器摘要去掉过时的 `protocol-v5.0.0` | — |
+
+L1 实测（车载屏客户区 1004×660，左栏清单每行约 284 像素，子批那一格约 212）：
+
+- 现场形状的子批 `Q26095466-13`（约 134 像素）与机台号 `2ZPB97`（约 54）都整串显示；现场 EQP 最长形如 `2ZPB101`，约 63，在 72 以内。
+- 60 字符的子批省略号截断、不压到机台号，机台号整串露出。
+- 超长机台号在自己那格省略，最多占 72。
+- 第一版用列上的 `MaxWidth` 只会裁切、不出省略号；审查建议的「机台号 Auto＋MaxWidth」落在文本自身上才生效。
+
+变异（`rework/mutations.txt`，在 `b9253ca` 上每次改一个文件、跑完还原）：入站把 `eqp` 设为必填（`[property: JsonRequired]`）→ M1 新测试红；
+机台号 `Visibility="Collapsed"` → XAML 测试与排版测试红；`Opacity="0"` → XAML 测试红；退回原布局（子批 Auto、机台号 *）→ 排版测试红；
+去掉 72 的限宽 → 排版测试红。
+
+推送前本机（`rework/`）：单元 1340/1340；G2 向量 `CV-WORKLIST-EQP-DISPLAY-ONLY`、清单与横幅排版、屏幕状态 XAML 覆盖共 20/20；
+`check-ui-layout.ps1` PASS（`ui-layout.json`）；`dotnet format --verify-no-changes` 第一次 exit 2（新测试三处 WHITESPACE），修后 exit 0。
