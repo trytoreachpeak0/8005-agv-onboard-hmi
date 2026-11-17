@@ -104,7 +104,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently <c>protocol-v5.0.0</c>.
+/// <see cref="WireToGateRelease"/>.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>

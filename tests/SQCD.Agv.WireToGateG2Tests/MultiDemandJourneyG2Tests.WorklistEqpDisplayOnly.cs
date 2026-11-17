@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SQCD.Agv.Core;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 using ScriptStep = SQCD.Agv.WireToGateG2Tests.FakeIoModuleClient.ScriptStep;
@@ -223,9 +224,98 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Same(texts[0].Parent, shown.Parent);
         Assert.Same(shown, texts[1]);
 
+        // Nothing between the row template and the text may hide it (review L2: a Visibility="Collapsed" on it kept every
+        // other assertion here green). The template's own elements, from the text up to the DataTemplate.
+        string[] hiding =
+        [
+            .. new[] { shown }.Concat(shown.Ancestors().TakeWhile(element => element.Name != presentation + "DataTemplate"))
+                .SelectMany(element => element.Attributes()
+                    .Where(attribute => attribute.Name.LocalName is "Visibility" or "Opacity"
+                        || attribute.Name.LocalName.EndsWith(".Visibility", StringComparison.Ordinal))
+                    .Select(attribute => $"{element.Name.LocalName} {attribute.Name.LocalName}={attribute.Value}"))
+        ];
+        Assert.Empty(hiding);
+
         static bool BindsEqp(string value) =>
             value.Contains("Binding Eqp", StringComparison.Ordinal)
             || value.Contains("Path=Eqp", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A vehicle upgraded with a pre-7.0.0 worklist still in its journal (review M1): the applied row has items and no
+    /// <c>eqp</c>. Restarting on this build restores it before the handshake, then takes the server's next revision with
+    /// <c>eqp</c>, and the row shows that revision's machine number. Today this rests on the deserializer reading a missing
+    /// member as <c>null</c>; a stricter read (required constructor parameters, an inbound required-field check) would
+    /// throw on the restore and keep the vehicle from starting, and this is the test that says so.
+    /// </summary>
+    [Fact]
+    [Trait("ProtocolVector", "CV-WORKLIST-EQP-DISPLAY-ONLY")]
+    public async Task AVehicleWithAPre700WorklistInItsJournalStartsAndShowsTheNextRevisionsMachineNumber()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        await using (SQCD.Agv.Infrastructure.SqliteWireToGateJournal journal = new(journalPath))
+        {
+            await journal.InitializeAsync(token);
+            string v6Worklist = JsonSerializer.Serialize(new
+            {
+                stationId = "ST-01",
+                worklistRevision = 1,
+                operationSessionId = OperationSessionId,
+                stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                stopEndedReason = (string?)null,
+                items = new[]
+                {
+                    new
+                    {
+                        demandId = DemandA,
+                        transportDemandKey = "TD-A",
+                        sublot = "SUBLOT-A",
+                        workType = "WIRE_TO_GATE",
+                        stopRole = "PICKUP",
+                        expectedBasketCount = 2
+                    }
+                }
+            });
+            Assert.DoesNotContain("eqp", v6Worklist, StringComparison.Ordinal);
+            await journal.SaveAppliedJourneySnapshotAsync(
+                new WireToGateAppliedJourneySnapshot(
+                    "CurrentStopWorklistSnapshot",
+                    Guid.NewGuid().ToString("D"),
+                    1,
+                    SQCD.Agv.Contracts.WireToGateProtocolSerializer.ComputePayloadContentSha256(v6Worklist),
+                    v6Worklist,
+                    DateTimeOffset.UtcNow),
+                token);
+        }
+
+        await using Harness harness = await StartStopAsync(
+            ["SUBLOT-A"],
+            [Payloads.Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2, eqp: "N1-03")],
+            journalPath,
+            configure: server =>
+            {
+                server.JourneyWorklistRevision = 2;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(
+                        2,
+                        Payloads.Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2, eqp: "N1-03")),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            awaitSublotEntry: true,
+            token);
+
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2
+                && harness.OnUi(() => harness.ViewModel.WorklistItems.ToArray()) is [{ Sublot: "SUBLOT-A", Eqp: "N1-03" }],
+            "revision 2's row with its machine number",
+            token);
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "ProtocolProblem");
+        Assert.Empty(harness.UiErrors);
     }
 
     private sealed record StopRun(
