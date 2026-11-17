@@ -82,12 +82,9 @@ public sealed class WorklistScrollingLayoutTests
         string longSublot = "LONG-SUBLOT-" + new string('9', 48);
         viewModel.UpdateWireToGateJourney(MultiDemandViewModelTests.Journey(MultiDemandViewModelTests.Worklist(
             1,
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000001", longSublot, "WIRE_TO_GATE", "PICKUP", 2)
-                with { Eqp = "2ZPB101" },
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000002", "Q26095466-13", "WIRE_TO_GATE", "PICKUP", 1)
-                with { Eqp = "2ZPB97" },
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000003", "Q26096568-10", "WIRE_TO_GATE", "PICKUP", 1)
-                with { Eqp = "MACHINE-NUMBER-FAR-LONGER-THAN-ANY-MES-SENDS" })));
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000001", longSublot, "WIRE_TO_GATE", "PICKUP", 2) with { Eqp = "2ZPB101" },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000002", "Q26095466-13", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "2ZPB97" },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000003", "Q26096568-10", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "MACHINE-NUMBER-FAR-LONGER-THAN-ANY-MES-SENDS" })));
 
         RowLayout[] rows = OnStaThread(() =>
         {
