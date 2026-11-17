@@ -58,7 +58,7 @@ public sealed class ProtocolIdentityArchitectureTests
 
         // 4.0.0 added two message schemas, CurrentStopDepartureRequested and its result (8005-agv-onboard-hmi#349);
         // 5.0.0 added none (8005-agv-onboard-hmi#360); 6.0.0 added two, RemainingBasketsSkipRequested and its result
-        // (8005-agv-onboard-hmi#388).
+        // (8005-agv-onboard-hmi#388); 7.0.0 added none, only the worklist item field eqp (8005-agv-onboard-hmi#417).
         Assert.Equal(77, vendored.Length);
         Assert.Equal(75, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
 
@@ -165,10 +165,10 @@ public sealed class ProtocolIdentityArchitectureTests
     /// The tag is schema-legal, and the approval status says it names a candidate, not a release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. Bound to the <c>6.0.0</c>
-    /// candidate by 8005-agv-onboard-hmi#388, whose tag <c>protocol-v6.0.0</c> does not exist yet (the user's
-    /// decision of 2026-10-21: it is cut after both ends have run together on the real rig), so this asserts
-    /// <c>SUPERSEDING_CANDIDATE</c> -- as it did for <c>protocol-v5.0.0</c> until 2026-10-18 (8005-agv-onboard-hmi#360,
+    /// The two are checked together because either alone says too little. Bound to the <c>7.0.0</c>
+    /// candidate by 8005-agv-onboard-hmi#417, whose tag <c>protocol-v7.0.0</c> does not exist yet, so this asserts
+    /// <c>SUPERSEDING_CANDIDATE</c> -- as it did for <c>protocol-v6.0.0</c> (8005-agv-onboard-hmi#388, the user's
+    /// decision of 2026-10-21: cut after both ends had run together on the real rig), for <c>protocol-v5.0.0</c> until 2026-10-18 (8005-agv-onboard-hmi#360,
     /// moved for 8005-agv-control-server#767), for <c>protocol-v4.0.0</c> until 2026-10-16 (8005-agv-onboard-hmi#349,
     /// moved by 8005-agv-onboard-hmi#358), for <c>protocol-v3.0.0</c> until 2026-10-09 (8005-agv-onboard-hmi#214, moved
     /// by 8005-agv-onboard-hmi#284) and for <c>protocol-v2.0.0</c> until 2026-09-16. It moves to
@@ -191,7 +191,7 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// An envelope whose <c>protocolVersion</c> is this build's 7 but whose profile, release version or
+    /// An envelope whose <c>protocolVersion</c> is this build's 8 but whose profile, release version or
     /// manifest is another release's is refused.
     /// </summary>
     /// <remarks>
@@ -201,8 +201,8 @@ public sealed class ProtocolIdentityArchitectureTests
     /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. A peer of another profile can therefore agree with
     /// this build on the one field that looks like a version, and a comparison that stopped there
     /// would admit its payloads -- which have different shapes under the same message names. The
-    /// <c>releaseVersion</c> variant is <c>5.0.0</c>, the release this build replaced
-    /// (8005-agv-onboard-hmi#388).
+    /// <c>releaseVersion</c> variant is <c>6.0.0</c>, the release this build replaced
+    /// (8005-agv-onboard-hmi#417).
     /// </para>
     /// <para>
     /// The three variants below are the three remaining identity fields, each wrong on its own with
@@ -213,7 +213,7 @@ public sealed class ProtocolIdentityArchitectureTests
     [Fact]
     public void AnEnvelopeOnADifferentReleaseWithTheSameProtocolVersionIsRefused()
     {
-        Assert.Equal(7, WireToGateRelease.ProtocolVersion);
+        Assert.Equal(8, WireToGateRelease.ProtocolVersion);
 
         foreach ((string what, string line) in ForeignReleaseEnvelopes())
         {
@@ -239,7 +239,7 @@ public sealed class ProtocolIdentityArchitectureTests
         yield return ("profileId", Envelope(
             "WIRE_TO_GATE_MVP", WireToGateRelease.ReleaseVersion, WireToGateRelease.ManifestSha256));
         yield return ("releaseVersion", Envelope(
-            WireToGateRelease.ProfileId, "5.0.0", WireToGateRelease.ManifestSha256));
+            WireToGateRelease.ProfileId, "6.0.0", WireToGateRelease.ManifestSha256));
         yield return ("protocolReleaseManifestSha256", Envelope(
             WireToGateRelease.ProfileId, WireToGateRelease.ReleaseVersion, ManifestOfAnotherRelease));
 

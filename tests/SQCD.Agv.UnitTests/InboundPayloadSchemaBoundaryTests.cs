@@ -528,7 +528,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
             $$"""
             {"demandId":"00000000-0000-4000-8000-0000000004{{index + 1:D2}}",
             "transportDemandKey":"TDK-{{index + 1}}","sublot":"SL-{{index + 1}}","workType":"{{workType}}",
-            "stopRole":"PICKUP","expectedBasketCount":1}
+            "stopRole":"PICKUP","expectedBasketCount":1,"eqp":"EQP-01"}
             """))}}]}
         """;
 
@@ -541,7 +541,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
             $$"""
             {"demandId":"00000000-0000-4000-8000-0000000001{{n:D2}}",
             "transportDemandKey":"TDK-{{n}}","sublot":"SL-{{n}}","workType":"WIRE_TO_GATE",
-            "stopRole":"PICKUP","expectedBasketCount":1}
+            "stopRole":"PICKUP","expectedBasketCount":1,"eqp":"EQP-01"}
             """))}}]}
         """;
 
@@ -566,14 +566,14 @@ public sealed class InboundPayloadSchemaBoundaryTests
             }))}}]}
         """;
 
-    private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE") =>
+    private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE", string eqp = "\"EQP-01\"") =>
         $$"""
         {"stationId":"STATION-01","worklistRevision":7,
         "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
         "stationDepartureDeadlineAt":{{deadline}},
         "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
         "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"{{workType}}",
-        "stopRole":"PICKUP","expectedBasketCount":2}]}
+        "stopRole":"PICKUP","expectedBasketCount":2,"eqp":{{eqp}}}]}
         """;
 
     /// <summary>
@@ -1083,7 +1083,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
         "stationDepartureDeadlineAt":null,"stopEndedReason":{{stopEndedReason}},
         "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
         "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"WIRE_TO_GATE",
-        "stopRole":"PICKUP","expectedBasketCount":2}]}
+        "stopRole":"PICKUP","expectedBasketCount":2,"eqp":"EQP-01"}]}
         """;
 
     private static string RecoverySessionSnapshotPayload(

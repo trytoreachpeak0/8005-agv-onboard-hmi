@@ -436,6 +436,13 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public string? JourneyStopRole { get; set; }
 
     /// <summary>
+    /// The <c>eqp</c> of the worklist item (protocol 7.0.0, 8005-agv-onboard-hmi#417): MES's machine number as the control
+    /// server recorded it, display-only. <c>null</c> is the server having none, which the schema allows; the field itself
+    /// is required, so it is always written.
+    /// </summary>
+    public string? JourneyWorklistEqp { get; set; } = "EQP-01";
+
+    /// <summary>
     /// When set, the journey snapshots sent after recovery are exactly these message types, in this
     /// order, instead of the default three -- so a vector's own message order can be replayed.
     /// </summary>
@@ -4247,7 +4254,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                         sublot = "SUBLOT-001",
                         workType = JourneyWorkType,
                         stopRole,
-                        expectedBasketCount = 2
+                        expectedBasketCount = 2,
+                        eqp = JourneyWorklistEqp
                     }
                 }
             }))).ConfigureAwait(false);
@@ -4283,7 +4291,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                             sublot = "CONFLICTING-SUBLOT",
                             workType = JourneyWorkType,
                             stopRole = "PICKUP",
-                            expectedBasketCount = 2
+                            expectedBasketCount = 2,
+                            eqp = JourneyWorklistEqp
                         }
                     }
                 })).ConfigureAwait(false);
@@ -4333,7 +4342,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                             sublot = "SUBLOT-001",
                             workType = JourneyWorkType,
                             stopRole = JourneyStopRole ?? "PICKUP",
-                            expectedBasketCount = 2
+                            expectedBasketCount = 2,
+                            eqp = JourneyWorklistEqp
                         }
                     }
                 },
@@ -4488,7 +4498,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                         sublot = "SUBLOT-001",
                         workType = JourneyWorkType,
                         stopRole = JourneyStopRole ?? "PICKUP",
-                        expectedBasketCount = 2
+                        expectedBasketCount = 2,
+                        eqp = JourneyWorklistEqp
                     }
                 }
             })).ConfigureAwait(false);

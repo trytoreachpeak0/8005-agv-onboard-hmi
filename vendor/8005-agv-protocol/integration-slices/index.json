@@ -490,7 +490,8 @@
       ],
       "vectorIds": [
         "CV-WORKLIST-SELECTION-ACCEPTED",
-        "CV-WORKLIST-SELECTION-STALE-REVISION"
+        "CV-WORKLIST-SELECTION-STALE-REVISION",
+        "CV-WORKLIST-EQP-DISPLAY-ONLY"
       ],
       "gates": [
         "G1",
@@ -502,7 +503,8 @@
         "scope": "ONBOARD_WORKLIST_SELECTION",
         "requiredOutcomes": [
           "SELECTION_CONFINED_TO_COMMITTED_WORKLIST",
-          "STALE_REVISION_REJECTED"
+          "STALE_REVISION_REJECTED",
+          "WORKLIST_EQP_DISPLAY_ONLY"
         ],
         "authorityModel": {
           "controlServerFact": "CommittedWorklist",
