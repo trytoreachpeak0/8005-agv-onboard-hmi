@@ -1,0 +1,8 @@
+The empty v6 close-out, then the next journey's first worklist with eqp: second save -> accepted; journal now rev=2 items=with eqp
+The empty v6 close-out, then the next journey's first worklist with eqp: restore of the kept row -> 1 item(s), eqp=N1-03
+A non-empty v6 worklist, then a higher revision with eqp: second save -> accepted; journal now rev=2 items=with eqp
+A non-empty v6 worklist, then a higher revision with eqp: restore of the kept row -> 1 item(s), eqp=N1-03
+A non-empty v6 worklist, then the same revision re-sent with eqp: second save -> InvalidDataException SNAPSHOT_REVISION_CONTENT_CONFLICT; journal now rev=1 items=v6 (no eqp)
+A non-empty v6 worklist, then the same revision re-sent with eqp: restore of the kept row -> 1 item(s), eqp=<null>
+The empty v6 close-out, then the same revision re-sent by a v7 server: second save -> accepted; journal now rev=1 items=none
+The empty v6 close-out, then the same revision re-sent by a v7 server: restore of the kept row -> 0 item(s), eqp=

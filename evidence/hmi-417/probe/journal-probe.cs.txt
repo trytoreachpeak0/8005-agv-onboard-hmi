@@ -1,0 +1,61 @@
+using System.Text.Json;
+using SQCD.Agv.Contracts;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+
+namespace SQCD.Agv.UnitTests;
+
+// PROBE for 8005-agv-onboard-hmi#417 (protocol#29 review M1). Not committed: the source is kept under evidence/hmi417/probe/.
+public sealed class ZzHmi417JournalProbe
+{
+    private const string V6Item =
+        """{"demandId":"d1","transportDemandKey":"TD-1","sublot":"SL-1","workType":"WIRE_TO_GATE","stopRole":"PICKUP","expectedBasketCount":2}""";
+
+    private const string V7Item =
+        """{"demandId":"d1","transportDemandKey":"TD-1","sublot":"SL-1","workType":"WIRE_TO_GATE","stopRole":"PICKUP","expectedBasketCount":2,"eqp":"N1-03"}""";
+
+    private static string Worklist(long revision, string items, string? ended) =>
+        $$"""{"stationId":"ST-01","worklistRevision":{{revision}},"operationSessionId":"00000000-0000-4000-8000-0000000000aa","stationDepartureDeadlineAt":null,"stopEndedReason":{{(ended is null ? "null" : $"\"{ended}\"")}},"items":[{{items}}]}""";
+
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
+    };
+
+    private static void Log(string line) => File.AppendAllText(
+        Path.Combine(Path.GetTempPath(), "claude", "3fad41a8f2e6c7eb", "73a12078-8410-4d82-a0dc-e8b634705768", "scratchpad", "journal-probe.log"),
+        line + Environment.NewLine);
+
+    [Theory]
+    [InlineData("A non-empty v6 worklist, then the same revision re-sent with eqp", 1L, false, 1L, false)]
+    [InlineData("A non-empty v6 worklist, then a higher revision with eqp", 1L, false, 2L, false)]
+    [InlineData("The empty v6 close-out, then the same revision re-sent by a v7 server", 1L, true, 1L, true)]
+    [InlineData("The empty v6 close-out, then the next journey's first worklist with eqp", 1L, true, 2L, false)]
+    public async Task Probe(string label, long firstRevision, bool firstEmpty, long secondRevision, bool secondEmpty)
+    {
+        string path = Path.Combine(Path.GetTempPath(), "hmi417-probe-" + Guid.NewGuid().ToString("N") + ".db");
+        await using SqliteWireToGateJournal journal = new(path);
+        await journal.InitializeAsync(TestContext.Current.CancellationToken);
+        string first = Worklist(firstRevision, firstEmpty ? string.Empty : V6Item, firstEmpty ? "COMPLETED" : null);
+        string second = Worklist(secondRevision, secondEmpty ? string.Empty : V7Item, secondEmpty ? "COMPLETED" : null);
+        await journal.SaveAppliedJourneySnapshotAsync(Row(firstRevision, first), TestContext.Current.CancellationToken);
+
+        Exception? failure = await Record.ExceptionAsync(() => journal.SaveAppliedJourneySnapshotAsync(Row(secondRevision, second), TestContext.Current.CancellationToken));
+        WireToGateAppliedJourneySnapshot kept = Assert.Single(await journal.ReadAppliedJourneySnapshotsAsync(TestContext.Current.CancellationToken));
+        Log($"{label}: second save -> {(failure is null ? "accepted" : failure.GetType().Name + " " + failure.Message)}; journal now rev={kept.Revision} items={(kept.PayloadJson.Contains("\"eqp\"", StringComparison.Ordinal) ? "with eqp" : kept.PayloadJson.Contains("\"items\":[]", StringComparison.Ordinal) ? "none" : "v6 (no eqp)")}");
+
+        // The restored projection reads the kept row with this build's records.
+        CurrentStopWorklistSnapshotPayload restored = JsonSerializer.Deserialize<CurrentStopWorklistSnapshotPayload>(
+            kept.PayloadJson,
+            Options)!;
+        Log($"{label}: restore of the kept row -> {restored.Items.Count} item(s), eqp={string.Join("|", restored.Items.Select(item => item.Eqp ?? "<null>"))}");
+    }
+
+    private static WireToGateAppliedJourneySnapshot Row(long revision, string payload) => new(
+        "CurrentStopWorklistSnapshot",
+        Guid.NewGuid().ToString("D"),
+        revision,
+        WireToGateProtocolSerializer.ComputePayloadContentSha256(payload),
+        payload,
+        DateTimeOffset.UtcNow);
+}
