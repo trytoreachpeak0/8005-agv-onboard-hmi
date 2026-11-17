@@ -732,7 +732,7 @@ public sealed class CurrentStopDepartureTests
         };
 
     private static WireToGateWorklistItem Item(string workType, string stopRole = "PICKUP") =>
-        new(Guid.NewGuid().ToString("D"), "TD-1", "SUBLOT-1", workType, stopRole, 1);
+        new(Guid.NewGuid().ToString("D"), "TD-1", "SUBLOT-1", workType, stopRole, 1, Eqp: null);
 
     private static WireToGateCurrentStopWorklist Worklist(string stationId, params WireToGateWorklistItem[] items) =>
         new(stationId, 1, items.Length == 0 ? null : "00000000-0000-4000-8000-000000000020", null, items, new string('0', 64),

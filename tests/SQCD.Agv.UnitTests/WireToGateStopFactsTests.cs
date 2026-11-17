@@ -252,7 +252,7 @@ public sealed class WireToGateStopFactsTests
         sublot,
         workType,
         stopRole,
-        2);
+        2, Eqp: null);
 
     private static WireToGateUpcomingStopPlan Plan(params WireToGateMovementLeg[] legs) =>
         new(1, legs, new string('b', 64));

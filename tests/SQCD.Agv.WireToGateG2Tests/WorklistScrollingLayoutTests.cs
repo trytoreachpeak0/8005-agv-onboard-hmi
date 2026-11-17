@@ -70,6 +70,95 @@ public sealed class WorklistScrollingLayoutTests
         Assert.Equal(PanningMode.VerticalOnly, panning);
     }
 
+    /// <summary>
+    /// 机台号在子批旁边（<c>8005-agv-onboard-hmi#417</c>，审查 L1）：子批放不下时照旧省略号截断、不越过机台号，机台号仍露出来；
+    /// 现场长度的子批（<c>Q26095466-13</c>）与机台号（<c>2ZPB97</c>）都整串显示；机台号再长只截它自己，最多占 72。量的是车载屏客户区上真排出来的三行。
+    /// </summary>
+    [Fact]
+    public async Task ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        string longSublot = "LONG-SUBLOT-" + new string('9', 48);
+        viewModel.UpdateWireToGateJourney(MultiDemandViewModelTests.Journey(MultiDemandViewModelTests.Worklist(
+            1,
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000001", longSublot, "WIRE_TO_GATE", "PICKUP", 2) with { Eqp = "2ZPB101" },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000002", "Q26095466-13", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "2ZPB97" },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000003", "Q26096568-10", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "MACHINE-NUMBER-FAR-LONGER-THAN-ANY-MES-SENDS" })));
+
+        RowLayout[] rows = OnStaThread(() =>
+        {
+            (FrameworkElement root, _, _) = Lay(viewModel);
+            ListBox list = Find<ListBox>(root, element => AutomationProperties.GetAutomationId(element) == "WorklistItems")!;
+            return Enumerable.Range(0, 3).Select(index =>
+            {
+                ListBoxItem item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(index);
+                TextBlock sublot = Find<TextBlock>(item, _ => true)!;
+                TextBlock eqp = Find<TextBlock>(item, block => AutomationProperties.GetAutomationId(block) == "WorklistItemEqp")!;
+                double itemRight = item.TranslatePoint(new Point(item.ActualWidth, 0), root).X;
+                return new RowLayout(
+                    sublot.Text,
+                    sublot.ActualWidth,
+                    NaturalWidth(sublot),
+                    sublot.TranslatePoint(new Point(sublot.ActualWidth, 0), root).X,
+                    eqp.Text,
+                    eqp.ActualWidth,
+                    NaturalWidth(eqp),
+                    eqp.TranslatePoint(new Point(0, 0), root).X,
+                    eqp.TranslatePoint(new Point(eqp.ActualWidth, 0), root).X,
+                    itemRight,
+                    eqp.Visibility == Visibility.Visible);
+            }).ToArray();
+        });
+
+        RowLayout trimmed = rows[0];
+        Assert.Equal(longSublot, trimmed.Sublot);
+        Assert.True(trimmed.SublotWidth + 1 < trimmed.SublotNatural, $"the long sublot was not trimmed: {trimmed}");
+        Assert.True(trimmed.SublotRight <= trimmed.EqpLeft + 0.5, $"the sublot runs into the machine number: {trimmed}");
+        Assert.True(trimmed.EqpVisible && trimmed.EqpWidth >= trimmed.EqpNatural - 0.5, $"the machine number is cut: {trimmed}");
+        Assert.True(trimmed.EqpRight <= trimmed.ItemRight + 0.5, $"the machine number is pushed off the row: {trimmed}");
+
+        RowLayout fieldShaped = rows[1];
+        Assert.Equal("2ZPB97", fieldShaped.Eqp);
+        Assert.True(fieldShaped.SublotWidth + 0.5 >= fieldShaped.SublotNatural, $"a field-length sublot was trimmed: {fieldShaped}");
+        Assert.True(fieldShaped.EqpVisible && fieldShaped.EqpWidth >= fieldShaped.EqpNatural - 0.5, $"the machine number is cut: {fieldShaped}");
+
+        // A machine number longer than any MES sends is trimmed in its own place, capped, and never runs into the sublot.
+        RowLayout longEqp = rows[2];
+        Assert.True(longEqp.EqpWidth + 1 < longEqp.EqpNatural, $"an over-long machine number was not trimmed: {longEqp}");
+        Assert.True(longEqp.EqpWidth <= 72.5, $"an over-long machine number took more than its cap: {longEqp}");
+        Assert.True(longEqp.SublotRight <= longEqp.EqpLeft + 0.5, $"the sublot runs into the machine number: {longEqp}");
+        Assert.True(longEqp.EqpRight <= longEqp.ItemRight + 0.5, $"the machine number is pushed off the row: {longEqp}");
+    }
+
+    private sealed record RowLayout(
+        string Sublot,
+        double SublotWidth,
+        double SublotNatural,
+        double SublotRight,
+        string Eqp,
+        double EqpWidth,
+        double EqpNatural,
+        double EqpLeft,
+        double EqpRight,
+        double ItemRight,
+        bool EqpVisible);
+
+    /// <summary>How wide the block's text would be with no limit: the same text, font and size, measured unconstrained.</summary>
+    private static double NaturalWidth(TextBlock block)
+    {
+        TextBlock probe = new()
+        {
+            Text = block.Text,
+            FontFamily = block.FontFamily,
+            FontSize = block.FontSize,
+            FontWeight = block.FontWeight,
+            FontStyle = block.FontStyle
+        };
+        probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return probe.DesiredSize.Width;
+    }
+
     private static async Task<MainViewModel> EightRowViewModelAsync(OnboardController controller)
     {
         MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);

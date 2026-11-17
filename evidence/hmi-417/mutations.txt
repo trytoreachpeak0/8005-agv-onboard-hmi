@@ -1,0 +1,39 @@
+## M1 ToCoreWorklistItem drops eqp
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMachineNumberIsShownVerbatimBesideTheSublotOnThePickupScanListAndTheUnloadList [408 ms]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.NoDecisionOnTheVehicleReadsTheMachineNumber [1 s]
+失败!  - 失败:     2，通过:     3，已跳过:     0，总计:     5，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M2 row trims eqp
+file: src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMachineNumberIsShownVerbatimBesideTheSublotOnThePickupScanListAndTheUnloadList [355 ms]
+失败!  - 失败:     1，通过:     4，已跳过:     0，总计:     5，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M3 null eqp shown as dash text
+file: src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ANullMachineNumberShowsNothingAndTheUnloadGoesThrough [85 ms]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.NoDecisionOnTheVehicleReadsTheMachineNumber [1 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ANullMachineNumberShowsNothingAndTheScanGoesThrough [129 ms]
+失败!  - 失败:     3，通过:     2，已跳过:     0，总计:     5，持续时间: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M4 scan matches a worklist eqp
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.NoDecisionOnTheVehicleReadsTheMachineNumber [1 s]
+失败!  - 失败:     1，通过:     4，已跳过:     0，总计:     5，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M5 rows without eqp lose their cancellation
+file: src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.NoDecisionOnTheVehicleReadsTheMachineNumber [1 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ANullMachineNumberShowsNothingAndTheScanGoesThrough [114 ms]
+失败!  - 失败:     2，通过:     3，已跳过:     0，总计:     5，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M6 eqp text not bound in the row
+file: src/SQCD.Agv.Wpf/MainWindow.xaml
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMachineNumberSitsBesideTheSublotInTheWorklistRowAndNowhereElse [16 ms]
+失败!  - 失败:     1，通过:     4，已跳过:     0，总计:     5，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -1927,7 +1927,8 @@ public sealed partial class RecoveryVectorG2Tests
                             sublot,
                             workType = "WIRE_TO_GATE",
                             stopRole = "PICKUP",
-                            expectedBasketCount = 2
+                            expectedBasketCount = 2,
+                            eqp = "EQP-01"
                         }
                     }
                 });

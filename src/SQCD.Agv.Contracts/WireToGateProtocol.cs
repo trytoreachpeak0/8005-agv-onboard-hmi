@@ -11,24 +11,24 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>6.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>98f172642937994ed01668d81fe41e69cf089e10</c>, on <c>fp/v2-candidate</c> the merge
-/// of <c>8005-agv-protocol#27</c> (tree identical to its head <c>13f52e67</c>; for <c>8005-agv-protocol#26</c>, CP-0021):
-/// <c>protocol-v5.0.0</c> with the remaining-baskets skip -- the messages <c>RemainingBasketsSkipRequested</c> and
-/// <c>RemainingBasketsSkipResult</c>, <c>COMPLETED_REMAINING_SKIPPED</c> appended to the closed
-/// <c>OperationResult.overallOutcome</c> enum and the slot reason <c>REMAINING_BASKETS_SKIPPED</c> -- and the revised load
-/// cancellation (no cancellation once a basket is loaded, <c>LOAD_CANCELLATION_BASKET_LOADED</c>), which is a breaking
-/// change and so a new major version. Bound by 8005-agv-onboard-hmi#388, in one package with the control server's
-/// 8005-agv-control-server#830. The tag <c>protocol-v6.0.0</c> does not exist yet (the user's decision of 2026-10-21:
-/// it is cut only after both ends have run together on the real rig), so <see cref="ApprovalStatus"/> is
-/// <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by <see cref="Commit"/>, and evidence produced on this
-/// identity is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
+/// <b>This names the <c>7.0.0</c> candidate, not a release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>a1facf8674b05c67bfbddc14db4a163e8da2782a</c>, on <c>fp/v2-candidate</c> the merge
+/// of <c>8005-agv-protocol#30</c> (for <c>8005-agv-protocol#29</c>): <c>protocol-v6.0.0</c> with one field added to every
+/// <c>CurrentStopWorklistSnapshot</c> item, <c>eqp</c> -- the MES machine number the control server recorded when it
+/// accepted the demand, required and nullable, for display beside the sublot on the pickup scan list and the unload
+/// list and for nothing else (<c>CV-WORKLIST-EQP-DISPLAY-ONLY</c>). The item is a closed object, so a <c>6.0.0</c>
+/// implementation refuses the field and this is a new major version. Bound by 8005-agv-onboard-hmi#417, in one package
+/// with the control server's 8005-agv-control-server#896. The tag <c>protocol-v7.0.0</c> does not exist yet, so
+/// <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by <see cref="Commit"/>, and
+/// evidence produced on this identity is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
 /// </para>
 /// <para>
-/// <c>protocol-v5.0.0</c> (<c>18d4fb34</c>, <c>(AGV_FULL_PRODUCT, 6)</c>) was bound before this,
-/// <c>protocol-v4.0.0</c> (<c>3fb214e5</c>, <c>(AGV_FULL_PRODUCT, 5)</c>) before that. The two ends have no version
-/// negotiation, so a vehicle on this identity and a control server still on v5 refuse each other's session; both
-/// outboxes are drained and both ends are replaced together.
+/// <c>protocol-v6.0.0</c> (<c>98f17264</c>, <c>(AGV_FULL_PRODUCT, 7)</c>) was bound before this, <c>protocol-v5.0.0</c>
+/// (<c>18d4fb34</c>, <c>(AGV_FULL_PRODUCT, 6)</c>) before that. The two ends have no version negotiation, so a vehicle
+/// on this identity and a control server still on v6 refuse each other's session; both outboxes are drained and both
+/// ends are replaced together, with the gate closed and every journey <c>Completed</c> (the protocol's wire notes: the
+/// onboard keeps applied worklists by revision, and a revision re-sent with <c>eqp</c> added would be a content
+/// conflict).
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -37,13 +37,13 @@ namespace SQCD.Agv.Contracts;
 /// <see cref="WireToGateProtocolSerializer.DeserializeAndValidate"/>'s -- therefore compares the
 /// whole <see cref="ProtocolReleaseIdentity"/>, and every log or evidence field that records a
 /// protocol version writes the pair <c>(profileId, protocolVersion)</c>, here
-/// <c>(AGV_FULL_PRODUCT, 7)</c>.
+/// <c>(AGV_FULL_PRODUCT, 8)</c>.
 /// </para>
 /// <para>
 /// <b>These nine values have to match the control server's.</b> <c>ProtocolCandidateIdentity</c>
 /// in <c>8005-agv-control-server</c> is the other copy; the handshake compares <c>commit</c>,
 /// <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the session on any
-/// difference. That end moves to this identity in <c>8005-agv-control-server#830</c>. Neither end
+/// difference. That end moved to this identity in <c>8005-agv-control-server#896</c>. Neither end
 /// copies the other: both read the protocol's published manifest.
 /// </para>
 /// <para>
@@ -55,15 +55,15 @@ namespace SQCD.Agv.Contracts;
 /// </remarks>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 7;
+    public const int ProtocolVersion = 8;
     public const string ProfileId = "AGV_FULL_PRODUCT";
-    public const string ReleaseVersion = "6.0.0";
+    public const string ReleaseVersion = "7.0.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v6.0.0";
-    public const string Commit = "98f172642937994ed01668d81fe41e69cf089e10";
-    public const string ManifestSha256 = "a52876be2ddcc9b8cdd1f1e3b7b7ddbe70d31a307f1d3f017d7a1eb95ffd77b1";
-    public const string SchemaBundleSha256 = "0dab682174e2d3e4f931b3c0e87c7fa55bd2cb3395356d7845e595d8bfb1c795";
-    public const string VectorsSha256 = "e06ca9ea1d4445cd7d70fc190b0cf606a8e33cb7760d848c0270df24e2594c91";
+    public const string Tag = "protocol-v7.0.0";
+    public const string Commit = "a1facf8674b05c67bfbddc14db4a163e8da2782a";
+    public const string ManifestSha256 = "44fa0b273810fb2d5326068c03f9647bfd8fdc1c5f01e27a5177b0e0473fe7cb";
+    public const string SchemaBundleSha256 = "6361d734f9b1a4f81178c79c0bc18b8287fd747622e60c99073e7fd5a5cf4c88";
+    public const string VectorsSha256 = "6295840ec27422dc024a24f6deae9a7379f9b3047a163e903ac862c8b0274eec";
     public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
@@ -104,7 +104,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently <c>protocol-v5.0.0</c>.
+/// <see cref="WireToGateRelease"/>.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>

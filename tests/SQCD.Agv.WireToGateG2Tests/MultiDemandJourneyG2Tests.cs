@@ -127,7 +127,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             string sublot,
             string workType,
             string stopRole,
-            int expectedBasketCount) =>
+            int expectedBasketCount,
+            string? eqp = DefaultEqp) =>
             new
             {
                 demandId,
@@ -135,8 +136,15 @@ public sealed partial class MultiDemandJourneyG2Tests
                 sublot,
                 workType,
                 stopRole,
-                expectedBasketCount
+                expectedBasketCount,
+                eqp
             };
+
+        /// <summary>
+        /// The machine number every item carries unless a test says otherwise (protocol 7.0.0, display-only,
+        /// 8005-agv-onboard-hmi#417). A test about <c>eqp</c> passes its own, <c>null</c> included.
+        /// </summary>
+        public const string DefaultEqp = "EQP-01";
 
         public static object Leg(
             int sequence,

@@ -1,0 +1,7 @@
+# Baseline origin/w2g/fp-v2-impl bbd5df0, detached worktree, dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release
+  失败 SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.ASettledResultIsNotShownOnTheNextTripToTheSameStation
+   Timed out after 5s waiting for: the departure to be shown. UI errors: []
+  失败 SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.PastTheDeadlineTheCountdownLineSaysTheLoadIsBeingCancelledOnlyWhileTheCancellationIsOpen
+   Timed out after 5s waiting for: the entry request and its worklist to arrive
+失败!  - 失败:     2，通过:  1137，已跳过:     0，总计:  1139，持续时间: 5 m 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+# Same pattern as on this branch: a different 2-3 tests each full run, 5 s waits under the full run's load; not this ticket.

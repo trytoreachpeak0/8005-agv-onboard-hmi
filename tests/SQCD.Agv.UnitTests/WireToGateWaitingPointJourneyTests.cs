@@ -162,7 +162,7 @@ public sealed class WireToGateWaitingPointJourneyTests
             null,
             null,
             [.. demandIds.Select((demandId, index) => new WireToGateWorklistItem(
-                demandId, $"TD-{index + 1:D3}", $"SUBLOT-{index + 1:D3}", "WIRE_TO_GATE", "PICKUP", 1))],
+                demandId, $"TD-{index + 1:D3}", $"SUBLOT-{index + 1:D3}", "WIRE_TO_GATE", "PICKUP", 1, Eqp: null))],
             new string('b', 64));
 
     private static WireToGateMovementLeg WaitingPoint(int sequence, string state) =>

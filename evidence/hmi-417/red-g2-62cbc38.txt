@@ -1,0 +1,7 @@
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "DIE_TO_WIRE_STAGING")
+  错误消息:
+   Timed out after 5s waiting for: the worklist on a ready session. UI errors: []
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AtAMachinePickupEveryUnloadedRowHasItsOwnCancellation(workType: "WIRE_TO_GATE")
+  错误消息:
+   Timed out after 5s waiting for: the worklist on a ready session. UI errors: []
+失败!  - 失败:     2，通过:     0，已跳过:     0，总计:     2，持续时间: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

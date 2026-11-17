@@ -81,13 +81,24 @@ public sealed record CurrentStopWorklistSnapshotPayload(
     IReadOnlyList<WireToGateWorklistItem> Items,
     string? StopEndedReason = null);
 
+/// <summary>
+/// One item of <see cref="CurrentStopWorklistSnapshotPayload"/>.
+/// </summary>
+/// <remarks>
+/// <c>Eqp</c> is new in 7.0.0 (8005-agv-onboard-hmi#417, <c>CV-WORKLIST-EQP-DISPLAY-ONLY</c>): MES's machine number of the
+/// demand, as the control server recorded it when it accepted the demand. Required and nullable; <c>null</c> is the
+/// server having none. It is shown beside the sublot on the stop's worklist and read for nothing else -- not which demand
+/// a scanned sublot belongs to, not which slot, station or machine, not whether to accept, load, unload, depart or
+/// recover. The item is <c>additionalProperties: false</c>, so a record without it throws on every 7.0.0 worklist.
+/// </remarks>
 public sealed record WireToGateWorklistItem(
     string DemandId,
     string TransportDemandKey,
     string Sublot,
     string WorkType,
     string StopRole,
-    int ExpectedBasketCount);
+    int ExpectedBasketCount,
+    string? Eqp);
 
 /// <summary>
 /// The C_TO_O upcoming stop plan, shaped by protocol v2's

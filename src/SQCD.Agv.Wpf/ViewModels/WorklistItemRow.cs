@@ -30,6 +30,12 @@ public sealed record WorklistItemRow(
     public bool ShowsDetailLine => !AtStagingPickupStop;
 
     /// <summary>
+    /// 机台号（MES 的 EQP），原样显示在子批旁边；服务端没有时为 <c>null</c>，显示为空（协议 7.0.0，
+    /// <c>8005-agv-onboard-hmi#417</c>）。只给人看：比对子批、选行、取消、装卸都不读它。
+    /// </summary>
+    public string? Eqp { get; init; }
+
+    /// <summary>
     /// 侧标显示的字。有「取消」的行侧一定是「待分配」，字不显示，把宽度让给子批；<see cref="SideCode"/> 照旧给 UIA。
     /// </summary>
     public string ShownSideText => OffersCancellation ? string.Empty : SideText;

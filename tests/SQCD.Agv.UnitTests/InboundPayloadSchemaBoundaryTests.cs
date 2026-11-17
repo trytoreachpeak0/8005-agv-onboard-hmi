@@ -56,6 +56,43 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
+    /// <c>eqp</c> (protocol 7.0.0, 8005-agv-onboard-hmi#417) is required and nullable, with no pattern, enum or length cap:
+    /// MES's machine number, verbatim. Every legal shape is taken through the session client's own inbound check and comes
+    /// out unchanged -- spaces kept, nothing trimmed or mapped -- and <c>null</c> is <c>null</c>, not an empty string.
+    /// </summary>
+    [Theory]
+    [InlineData("\"N1-03\"", "N1-03")]
+    [InlineData("\" N1-03 机台 07 \"", " N1-03 机台 07 ")]
+    [InlineData("\"x\"", "x")]
+    [InlineData("null", null)]
+    public void AWorklistItemIsAcceptedWithItsMachineNumberVerbatimOrNull(string eqpJson, string? expected)
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", eqp: eqpJson));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(expected, Assert.Single(payload.Items).Eqp);
+    }
+
+    /// <summary>
+    /// No length cap: a machine number far longer than any MES sends today is still a legal worklist.
+    /// </summary>
+    [Fact]
+    public void AVeryLongMachineNumberIsAccepted()
+    {
+        string eqp = new('E', 500);
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", eqp: $"\"{eqp}\""));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(eqp, Assert.Single(payload.Items).Eqp);
+    }
+
+    /// <summary>
     /// <c>workType</c> is <c>TransportTaskType</c>, the seven MES literals; every one of them passes
     /// the session client's own inbound check, not only the deserialiser.
     /// </summary>
@@ -528,7 +565,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
             $$"""
             {"demandId":"00000000-0000-4000-8000-0000000004{{index + 1:D2}}",
             "transportDemandKey":"TDK-{{index + 1}}","sublot":"SL-{{index + 1}}","workType":"{{workType}}",
-            "stopRole":"PICKUP","expectedBasketCount":1}
+            "stopRole":"PICKUP","expectedBasketCount":1,"eqp":"EQP-01"}
             """))}}]}
         """;
 
@@ -541,7 +578,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
             $$"""
             {"demandId":"00000000-0000-4000-8000-0000000001{{n:D2}}",
             "transportDemandKey":"TDK-{{n}}","sublot":"SL-{{n}}","workType":"WIRE_TO_GATE",
-            "stopRole":"PICKUP","expectedBasketCount":1}
+            "stopRole":"PICKUP","expectedBasketCount":1,"eqp":"EQP-01"}
             """))}}]}
         """;
 
@@ -566,14 +603,14 @@ public sealed class InboundPayloadSchemaBoundaryTests
             }))}}]}
         """;
 
-    private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE") =>
+    private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE", string eqp = "\"EQP-01\"") =>
         $$"""
         {"stationId":"STATION-01","worklistRevision":7,
         "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
         "stationDepartureDeadlineAt":{{deadline}},
         "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
         "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"{{workType}}",
-        "stopRole":"PICKUP","expectedBasketCount":2}]}
+        "stopRole":"PICKUP","expectedBasketCount":2,"eqp":{{eqp}}}]}
         """;
 
     /// <summary>
@@ -1083,7 +1120,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
         "stationDepartureDeadlineAt":null,"stopEndedReason":{{stopEndedReason}},
         "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
         "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"WIRE_TO_GATE",
-        "stopRole":"PICKUP","expectedBasketCount":2}]}
+        "stopRole":"PICKUP","expectedBasketCount":2,"eqp":"EQP-01"}]}
         """;
 
     private static string RecoverySessionSnapshotPayload(
