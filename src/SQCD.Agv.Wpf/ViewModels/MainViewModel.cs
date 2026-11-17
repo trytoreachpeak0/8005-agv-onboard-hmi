@@ -494,7 +494,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 offersCancellation,
                 CanPressWorklistRowCancellation(item.DemandId, offersCancellation))
             {
-                AtStagingPickupStop = CurrentStopDeparture.AtStagingPickupStop
+                AtStagingPickupStop = CurrentStopDeparture.AtStagingPickupStop,
+                Eqp = item.Eqp
             });
         }
 

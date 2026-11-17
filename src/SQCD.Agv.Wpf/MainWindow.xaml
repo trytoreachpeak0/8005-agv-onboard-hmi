@@ -988,6 +988,8 @@
                             还没装的行右边一个「取消」，按下确认后彻底取消这一条；那几行的侧都是「待分配」，字不显示、ItemStatus 照旧。
                             1024×768 上一次露出约 3 行（8005-agv-onboard-hmi#387 放大字号后，原来约 4 行），其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
                             每行第一个 TextBlock 只放子批：真装置 L2 按「行里第一个 TextBlock 是子批」读清单（L2MultiStopJourney）。
+                            子批右边是机台号（MES 的 EQP，协议 7.0.0，8005-agv-onboard-hmi#417）：取货、卸货停靠都在这张表上，原样显示，
+                            服务端没有时为空。只显示，别处不放；它排在子批之后，所以不改变上面那条读法。
                         -->
                         <ListBox Margin="0,2,0,8"
                                  Background="Transparent"
@@ -1012,11 +1014,27 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="18"
-                                                           FontWeight="Bold"
-                                                           Text="{Binding Sublot}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           ToolTip="{Binding Sublot}" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               FontSize="18"
+                                                               FontWeight="Bold"
+                                                               Text="{Binding Sublot}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Sublot}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Margin="10,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="15"
+                                                               Foreground="{StaticResource MutedBrush}"
+                                                               AutomationProperties.AutomationId="WorklistItemEqp"
+                                                               Text="{Binding Eqp}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Eqp}" />
+                                                </Grid>
                                                 <TextBlock FontSize="14"
                                                            Foreground="{StaticResource MutedBrush}"
                                                            TextTrimming="CharacterEllipsis"

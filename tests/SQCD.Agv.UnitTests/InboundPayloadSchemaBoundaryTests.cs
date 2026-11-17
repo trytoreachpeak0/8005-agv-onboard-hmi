@@ -56,6 +56,43 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
+    /// <c>eqp</c> (protocol 7.0.0, 8005-agv-onboard-hmi#417) is required and nullable, with no pattern, enum or length cap:
+    /// MES's machine number, verbatim. Every legal shape is taken through the session client's own inbound check and comes
+    /// out unchanged -- spaces kept, nothing trimmed or mapped -- and <c>null</c> is <c>null</c>, not an empty string.
+    /// </summary>
+    [Theory]
+    [InlineData("\"N1-03\"", "N1-03")]
+    [InlineData("\" N1-03 机台 07 \"", " N1-03 机台 07 ")]
+    [InlineData("\"x\"", "x")]
+    [InlineData("null", null)]
+    public void AWorklistItemIsAcceptedWithItsMachineNumberVerbatimOrNull(string eqpJson, string? expected)
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", eqp: eqpJson));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(expected, Assert.Single(payload.Items).Eqp);
+    }
+
+    /// <summary>
+    /// No length cap: a machine number far longer than any MES sends today is still a legal worklist.
+    /// </summary>
+    [Fact]
+    public void AVeryLongMachineNumberIsAccepted()
+    {
+        string eqp = new('E', 500);
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", eqp: $"\"{eqp}\""));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(eqp, Assert.Single(payload.Items).Eqp);
+    }
+
+    /// <summary>
     /// <c>workType</c> is <c>TransportTaskType</c>, the seven MES literals; every one of them passes
     /// the session client's own inbound check, not only the deserialiser.
     /// </summary>

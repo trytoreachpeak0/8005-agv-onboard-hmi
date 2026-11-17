@@ -4818,7 +4818,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             item.Sublot,
             item.WorkType,
             item.StopRole,
-            item.ExpectedBasketCount);
+            item.ExpectedBasketCount,
+            item.Eqp);
 
     private static SQCD.Agv.Core.WireToGateMovementLeg ToCoreMovementLeg(
         SQCD.Agv.Contracts.WireToGateMovementLeg leg) =>

@@ -37,13 +37,22 @@ public sealed record WireToGateBlockingFact(
     string SubjectType,
     string? SubjectId);
 
+/// <summary>
+/// One demand of the current stop's worklist.
+/// </summary>
+/// <remarks>
+/// <see cref="Eqp"/> is MES's machine number as the control server sent it (protocol 7.0.0, 8005-agv-onboard-hmi#417),
+/// verbatim, <c>null</c> when it has none. Display-only: it goes beside the sublot on the screen and nowhere else, and no
+/// decision on this vehicle reads it (<c>CV-WORKLIST-EQP-DISPLAY-ONLY</c>, <c>NEVER_DECIDE_BY_WORKLIST_EQP</c>).
+/// </remarks>
 public sealed record WireToGateWorklistItem(
     string DemandId,
     string TransportDemandKey,
     string Sublot,
     string WorkType,
     string StopRole,
-    int ExpectedBasketCount);
+    int ExpectedBasketCount,
+    string? Eqp);
 
 /// <summary>
 /// The business projection of the current stop worklist.

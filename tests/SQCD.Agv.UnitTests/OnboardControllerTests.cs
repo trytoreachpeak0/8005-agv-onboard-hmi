@@ -148,7 +148,7 @@ public sealed class OnboardControllerTests
                     "SUBLOT-001",
                     "WIRE_TO_GATE",
                     "PICKUP",
-                    1)],
+                    1, Eqp: null)],
                 new string('b', 64)),
             null,
             now);
@@ -183,9 +183,9 @@ public sealed class OnboardControllerTests
                 null,
                 [
                     new WireToGateWorklistItem(
-                        "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1),
+                        "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1, Eqp: null),
                     new WireToGateWorklistItem(
-                        "22222222-2222-2222-2222-222222222222", "TD-002", "SUBLOT-002", "WIRE_TO_GATE", "PICKUP", 1)
+                        "22222222-2222-2222-2222-222222222222", "TD-002", "SUBLOT-002", "WIRE_TO_GATE", "PICKUP", 1, Eqp: null)
                 ],
                 new string('b', 64)),
             null,
@@ -232,7 +232,7 @@ public sealed class OnboardControllerTests
                 null,
                 null,
                 [new WireToGateWorklistItem(
-                    "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1)],
+                    "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1, Eqp: null)],
                 new string('b', 64)),
             null,
             now);
