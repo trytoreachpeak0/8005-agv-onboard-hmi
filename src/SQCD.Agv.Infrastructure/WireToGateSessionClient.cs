@@ -2797,8 +2797,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// 与告警快照一样只在接收循环跑着时发、ack 走等待表；服务端在 ack 后面紧跟的 <c>SessionReadiness</c> 由接收循环照常处理。
     /// </para>
     /// </remarks>
-    /// <returns>服务端 ack 了这一份时为 <c>true</c>；会话此刻不能发时为 <c>false</c>。</returns>
-    public async Task<bool> PublishSafetyStateSnapshotAsync(
+    /// <returns>
+    /// 服务端 ack 了这一份时为它带的 <c>safety</c> 摘要；会话此刻不能发时为 <c>null</c>。调用方拿摘要核对「服务端此刻
+    /// 拿着的」与此刻读数是否相同：这一份取代了服务端手上的安全状态，读数若在读取之后又变了，要另报一条变化
+    /// （8005-agv-onboard-hmi#419）。
+    /// </returns>
+    public async Task<WireToGateSafetySummaryPayload?> PublishSafetyStateSnapshotAsync(
         long safetyStateVersion,
         CancellationToken cancellationToken = default)
     {
@@ -2833,7 +2837,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
         if (generation is null)
         {
-            return false;
+            return null;
         }
 
         AdvanceSafetyStateVersion(safetyStateVersion);
@@ -2843,7 +2847,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             sent,
             WireToGateAcceptedSafetySource.RequestedSnapshot));
         PublishAcceptedVersions("SafetyStateSnapshot-ack");
-        return true;
+        return sent ?? throw new InvalidOperationException("SafetyStateSnapshot 已被确认，却没有记下它带的摘要。");
     }
 
     /// <summary>

@@ -390,7 +390,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             safety,
             cancellationToken);
 
-    public Task<bool> PublishSafetyStateSnapshotAsync(
+    public Task<WireToGateSafetySummaryPayload?> PublishSafetyStateSnapshotAsync(
         long safetyStateVersion,
         CancellationToken cancellationToken = default) =>
         _client.PublishSafetyStateSnapshotAsync(safetyStateVersion, cancellationToken);

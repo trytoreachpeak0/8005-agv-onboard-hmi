@@ -367,7 +367,7 @@ public sealed partial class WireToGateG2Tests
 
         io.SetUnreadable(2);
         long snapshotVersion = client.Current.SafetyStateVersion + 1;
-        Assert.True(await client.PublishSafetyStateSnapshotAsync(snapshotVersion, testToken));
+        Assert.NotNull(await client.PublishSafetyStateSnapshotAsync(snapshotVersion, testToken));
         string snapshotLogged = Assert.Single(
             diagnostics,
             line => line.StartsWith("会话中途安全快照：", StringComparison.Ordinal));

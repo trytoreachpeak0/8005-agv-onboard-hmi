@@ -2503,8 +2503,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // server did apply, and the next safety state under this same version with other content would be
             // a revision conflict. A skipped version is not a regression.
             _nextSafetyStateVersion = checked(version + 1);
-            if (!await _session.PublishSafetyStateSnapshotAsync(version, cancellationToken).ConfigureAwait(false))
+            // The snapshot replaces what the server holds, so the last reported signature stops standing for it the
+            // moment the snapshot may have gone out (onboard-hmi#419). Restored below only when nothing went out.
+            string? reportedBefore = _lastSafetySignature;
+            _lastSafetySignature = null;
+            WireToGateSafetySummaryPayload? sent = await _session
+                .PublishSafetyStateSnapshotAsync(version, cancellationToken)
+                .ConfigureAwait(false);
+            if (sent is null)
             {
+                _lastSafetySignature = reportedBefore;
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
@@ -2515,6 +2523,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _nextSafetyStateVersion = Math.Max(
                 _nextSafetyStateVersion,
                 checked(_session.Current.SafetyStateVersion + 1));
+            AdoptAnsweredSnapshot(sent);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2527,11 +2536,57 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 "回应服务端的SafetyStateSnapshot请求失败。",
                 exception);
+            // The snapshot may have been applied without its ack reaching here (onboard-hmi#419): what the server holds
+            // is not known, so the present reading goes out as a change of its own, above the snapshot's version.
+            if (_lastSafetySignature is null)
+            {
+                _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
+            }
         }
         finally
         {
             _safetySendGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Takes an acknowledged mid-session snapshot for what the server now holds (onboard-hmi#419). Under
+    /// <see cref="_safetySendGate"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The snapshot read the IO when it was sent, and the server applies it like a <c>SafetyStateChanged</c> at its
+    /// version. The answer holds the safety send gate until the ack, so an IO change in that window is reported only by
+    /// the pass that runs after it, and that pass decides by the last reported signature. Before #419 the signature was
+    /// still the one of the last <c>SafetyStateChanged</c>: a lock bounce 1→0→1 caught by the snapshot at 0 and over by
+    /// the ack read 1 again, the same signature as before the bounce, and nothing was sent. The server kept the
+    /// snapshot's UNLOCKED (agv02, 2026-11-18, two hours in DEPARTURE_SAFETY_NOT_READY).
+    /// </para>
+    /// <para>
+    /// The rule is the handshake's (<see cref="HandshakeSnapshotHolds"/>, onboard-hmi#399): the snapshot's summary the
+    /// same as the present reading's, the present reading counts as reported; otherwise nothing does, and the next pass
+    /// reports it above the snapshot's version. Never a change after every snapshot: the control server asks for a
+    /// snapshot after each change that touches a slot with an overdue alarm, and the two would answer each other forever.
+    /// </para>
+    /// </remarks>
+    private void AdoptAnsweredSnapshot(WireToGateSafetySummaryPayload sent)
+    {
+        SafetyEvaluation present = EvaluateSafety(_ioModule.CurrentSnapshot);
+        if (WireToGateSafetyEvaluator.SameSummary(sent, present.Safety))
+        {
+            _lastSafetySignature = present.Signature;
+            return;
+        }
+
+        _lastSafetySignature = null;
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            "会话中途安全快照发出后读数已变，改报此刻读数："
+            + $"快照reasonCodes=[{string.Join(',', sent.ReasonCodes)}]，此刻reasonCodes=[{string.Join(',', present.Safety.ReasonCodes)}]。");
+        // A pass is usually already waiting on the gate -- the IO change that made the reading differ asked for one --
+        // but one is asked for here too, so the report does not depend on another IO event arriving.
+        _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
     }
 
     /// <summary>

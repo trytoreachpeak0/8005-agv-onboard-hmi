@@ -221,7 +221,7 @@ public sealed partial class WireToGateG2Tests
         // The readings come in; the vehicle reports them as the business service would, at the next version.
         io.KeepSnapshotFresh = true;
         long recoveredVersion = client.Current.SafetyStateVersion + 1;
-        Assert.True(await client.PublishSafetyStateSnapshotAsync(recoveredVersion, testToken));
+        Assert.NotNull(await client.PublishSafetyStateSnapshotAsync(recoveredVersion, testToken));
         string recoveredLine = server.ReceivedEnvelopes
             .Last(item => item.MessageType == "SafetyStateSnapshot")
             .WireLine;
