@@ -124,6 +124,57 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The bounce with no IO event at all: the readings change while the snapshot waits for its ack, and nothing
+    /// announces them. The answer itself must ask for the pass that reports the closed lock, whether the ack comes or is
+    /// lost -- the real Modbus client announces every poll, so there this only stands in for a module gone quiet.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(bool ackLost)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        long safeVersion = await CompleteLoadAndSettleSafeAsync(harness, token);
+
+        if (ackLost)
+        {
+            harness.Server.MidSessionSafetySnapshotAcksToDrop = 1;
+        }
+        else
+        {
+            harness.Server.BeforeSnapshotAck = (messageType, _) =>
+                messageType == "SafetyStateSnapshot" ? ackRelease.Task : Task.CompletedTask;
+        }
+
+        harness.Io.SetLockFeedback(0, locked: false);
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => harness.Server.AppliedSnapshots.Any(applied =>
+                applied.Item1 == "SafetyStateSnapshot" && applied.Item2 > safeVersion),
+            "the server to take the snapshot read mid-bounce",
+            token,
+            () => DescribeSafety(harness.Server));
+        HeldSafetyState midBounce = HeldSafety(harness.Server);
+        Assert.False(midBounce.DepartureSafe, DescribeSafety(harness.Server));
+
+        harness.Io.SetLockFeedback(0, locked: true);
+        ackRelease.TrySetResult();
+
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server) is { DepartureSafe: true } held && held.Version > midBounce.Version,
+            "a safety state above the mid-bounce snapshot that reads the lock closed",
+            token,
+            () => DescribeSafety(harness.Server));
+    }
+
+    /// <summary>
     /// A snapshot that carries the present reading needs nothing after it: the IO keeps publishing, as the Modbus client
     /// does every poll, and no <c>SafetyStateChanged</c> follows. The control server asks for a snapshot after every change
     /// that touches a slot with an overdue alarm, so a change sent after every snapshot would never stop.
