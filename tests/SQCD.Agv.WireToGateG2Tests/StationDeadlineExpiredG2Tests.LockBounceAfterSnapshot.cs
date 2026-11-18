@@ -176,6 +176,135 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The light curtain of the loaded, locked slot bounces occupied → empty → occupied across the snapshot (review of PR
+    /// #420, M1). The summary carries no light curtain, so it is the same before, during and after; but the snapshot's slot
+    /// states say EMPTY, and the server reads them as the slot's reading until a later <c>SafetyStateChanged</c> names the
+    /// slot. A change above the snapshot must follow once the curtain reads occupied again.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task ALightCurtainBounceCaughtByASnapshotIsFollowedByAChange()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        long safeVersion = await CompleteLoadAndSettleSafeAsync(harness, token);
+
+        harness.Server.BeforeSnapshotAck = (messageType, _) =>
+            messageType == "SafetyStateSnapshot" ? ackRelease.Task : Task.CompletedTask;
+        harness.Io.SetCargoPresent(0, present: false);
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server).Version > safeVersion,
+            "the snapshot answer, read mid-bounce",
+            token,
+            () => DescribeSafety(harness.Server));
+        HeldSafetyState midBounce = HeldSafety(harness.Server);
+        Assert.Equal("SafetyStateSnapshot", midBounce.MessageType);
+        Assert.True(midBounce.DepartureSafe, DescribeSafety(harness.Server));
+        Assert.Equal("EMPTY", SnapshotSlotState(harness.Server, midBounce.Version, 1, "physicalState"));
+
+        harness.Io.PublishSnapshot();
+        await Task.Delay(TimeSpan.FromMilliseconds(100), token);
+        harness.Io.SetCargoPresent(0, present: true);
+        harness.Io.PublishSnapshot();
+        ackRelease.SetResult();
+
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server) is { MessageType: "SafetyStateChanged", DepartureSafe: true } held
+                && held.Version > midBounce.Version,
+            "a change above the snapshot that read slot 1 EMPTY",
+            token,
+            () => DescribeSafety(harness.Server));
+    }
+
+    /// <summary>
+    /// Two locks trade places across the snapshot: slot 2 reads open when it is read, slot 3 by the time it is
+    /// acknowledged. Both readings say LOCK_NOT_CLOSED, so the summary is the same; the slots are not. A change above
+    /// the snapshot must follow.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task TwoLocksTradingPlacesUnderASnapshotAreFollowedByAChange()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        long safeVersion = await CompleteLoadAndSettleSafeAsync(harness, token);
+
+        harness.Server.BeforeSnapshotAck = (messageType, _) =>
+            messageType == "SafetyStateSnapshot" ? ackRelease.Task : Task.CompletedTask;
+        harness.Io.SetLockFeedback(1, locked: false);
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server).Version > safeVersion,
+            "the snapshot answer, read with slot 2 open",
+            token,
+            () => DescribeSafety(harness.Server));
+        HeldSafetyState snapshot = HeldSafety(harness.Server);
+        Assert.Equal("UNLOCKED", SnapshotSlotState(harness.Server, snapshot.Version, 2, "lockState"));
+        Assert.Equal("LOCKED", SnapshotSlotState(harness.Server, snapshot.Version, 3, "lockState"));
+
+        harness.Io.SetLockFeedback(1, locked: true);
+        harness.Io.SetLockFeedback(2, locked: false);
+        harness.Io.PublishSnapshot();
+        ackRelease.SetResult();
+
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server) is { MessageType: "SafetyStateChanged" } held && held.Version > snapshot.Version,
+            "a change above the snapshot that read slot 2 open and slot 3 closed",
+            token,
+            () => DescribeSafety(harness.Server));
+        Assert.Contains("LOCK_NOT_CLOSED", HeldSafety(harness.Server).ReasonCodes);
+    }
+
+    /// <summary>
+    /// The answer fails before anything is written -- here the IO read inside the snapshot's capture throws (review of PR
+    /// #420, L1). The server holds what it held, so the last reported reading still stands: no change follows, however
+    /// often the IO publishes after. A change would only move the version on and void a pre-departure check in flight.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task ASnapshotAnswerThatFailsBeforeWritingLeavesTheReportedStateAlone()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        long safeVersion = await CompleteLoadAndSettleSafeAsync(harness, token);
+        int before = SafetyStates(harness.Server).Length;
+
+        harness.Io.FailNextRead();
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("回应服务端的SafetyStateSnapshot请求失败", StringComparison.Ordinal)),
+            "the snapshot answer to fail on its IO read",
+            token,
+            () => DescribeSafety(harness.Server));
+
+        for (int poll = 0; poll < 5; poll++)
+        {
+            harness.Io.PublishSnapshot();
+            await Task.Delay(TimeSpan.FromMilliseconds(100), token);
+        }
+
+        Assert.True(SafetyStates(harness.Server).Length == before, DescribeSafety(harness.Server));
+        Assert.Equal(safeVersion, harness.Client.Current.SafetyStateVersion);
+        Assert.True(harness.Client.Current.Connected);
+    }
+
+    /// <summary>
     /// A snapshot that carries the present reading needs nothing after it: the IO keeps publishing, as the Modbus client
     /// does every poll, and no <c>SafetyStateChanged</c> follows. The control server asks for a snapshot after every change
     /// that touches a slot with an overdue alarm, so a change sent after every snapshot would never stop.
@@ -285,6 +414,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
                         [.. safety.GetProperty("reasonCodes").EnumerateArray().Select(code => code.GetString()!)]);
                 })
         ];
+    }
+
+    private static string SnapshotSlotState(FakeControlServer server, long version, int slotNo, string property)
+    {
+        string line = server.ReceivedEnvelopes.ToArray().Last(item => item.MessageType == "SafetyStateSnapshot").WireLine;
+        using JsonDocument document = JsonDocument.Parse(line);
+        JsonElement payload = document.RootElement.GetProperty("payload");
+        Assert.Equal(version, payload.GetProperty("safetyStateVersion").GetInt64());
+        return payload.GetProperty("slotStates").EnumerateArray()
+            .Single(item => item.GetProperty("slotNo").GetInt32() == slotNo)
+            .GetProperty(property).GetString()!;
     }
 
     private static string DescribeSafety(FakeControlServer server) =>
