@@ -2269,7 +2269,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             if (!ReferenceEquals(_lastSafetyHandshake, handshake))
             {
                 _lastSafetyHandshake = handshake;
-                _lastSafetySignature = _lastSafetySignature is not null && HandshakeSnapshotHolds(handshake, current, evaluation.Safety)
+                _lastSafetySignature = _lastSafetySignature is not null && HandshakeSnapshotHolds(handshake, current, signature)
                     ? signature
                     : null;
             }
@@ -2604,16 +2604,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <summary>
     /// Whether the server holds <paramref name="present"/> for <paramref name="session"/>'s generation through
     /// <paramref name="handshake"/>'s snapshot alone (onboard-hmi#399): that snapshot was acknowledged in this generation,
-    /// nothing has been accepted above it since, and it carried the same summary.
+    /// nothing has been accepted above it since, and it carried the same content -- the summary and every slot's raw
+    /// readings, the signature a <c>SafetyStateChanged</c> is de-duplicated by. The server reads the snapshot's slot
+    /// states as the slots' readings, so a light curtain that moved after the handshake read it is not held there even
+    /// with the summary unchanged (onboard-hmi#419, the handshake side of review M1 of PR #420).
     /// </summary>
     private static bool HandshakeSnapshotHolds(
         WireToGateAcceptedSafety? handshake,
         WireToGateSessionSnapshot session,
-        WireToGateSafetySummaryPayload present) =>
-        handshake is { Safety: { } held }
+        string presentSignature) =>
+        handshake is { Safety: { } held, Readings: { } readings }
         && handshake.SessionGeneration == session.SessionGeneration
         && handshake.SafetyStateVersion == session.SafetyStateVersion
-        && WireToGateSafetyEvaluator.SameSummary(held, present);
+        && string.Equals(SafetySignature(held, readings), presentSignature, StringComparison.Ordinal);
 
     private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
         session.Connected

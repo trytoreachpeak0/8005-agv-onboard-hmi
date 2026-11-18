@@ -1378,7 +1378,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 safetyStateVersion,
                 generation,
                 safety,
-                WireToGateAcceptedSafetySource.HandshakeSnapshot);
+                WireToGateAcceptedSafetySource.HandshakeSnapshot,
+                io);
             Volatile.Write(ref _handshakeSafety, handshakeSafety);
             RegisterAcceptedSafety(() => handshakeSafety);
 
@@ -2856,7 +2857,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             safetyStateVersion,
             generation,
             sent?.Safety,
-            WireToGateAcceptedSafetySource.RequestedSnapshot));
+            WireToGateAcceptedSafetySource.RequestedSnapshot,
+            sent?.Readings));
         PublishAcceptedVersions("SafetyStateSnapshot-ack");
         return sent ?? throw new InvalidOperationException("SafetyStateSnapshot 已被确认，却没有记下它带的内容。");
     }
