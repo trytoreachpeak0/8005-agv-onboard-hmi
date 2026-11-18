@@ -1,0 +1,7 @@
+# review rework (PR #420 review M1/L1/L2), tests from ff89ec3, src at 9c6950d
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALightCurtainBounceCaughtByASnapshotIsFollowedByAChange [10 s]
+   Timed out after 10s waiting for: a change above the snapshot that read slot 1 EMPTY
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotAnswerThatFailsBeforeWritingLeavesTheReportedStateAlone [1 s]
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.TwoLocksTradingPlacesUnderASnapshotAreFollowedByAChange [11 s]
+   Timed out after 10s waiting for: a change above the snapshot that read slot 2 open and slot 3 closed
+失败!  - 失败:     3，通过:     1，已跳过:     0，总计:     4，持续时间: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

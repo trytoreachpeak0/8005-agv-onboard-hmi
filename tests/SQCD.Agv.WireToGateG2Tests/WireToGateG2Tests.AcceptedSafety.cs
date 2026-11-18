@@ -66,7 +66,7 @@ public sealed partial class WireToGateG2Tests
         long requested = client.Current.SafetyStateVersion + 1;
 
         await server.RequestSafetyStateSnapshotAsync();
-        Assert.True(await client.PublishSafetyStateSnapshotAsync(requested, testToken));
+        Assert.NotNull(await client.PublishSafetyStateSnapshotAsync(requested, testToken));
 
         string snapshot = server.ReceivedEnvelopes.Last(item => item.MessageType == "SafetyStateSnapshot").WireLine;
         Assert.Equal(requested, RevisionOf(snapshot));

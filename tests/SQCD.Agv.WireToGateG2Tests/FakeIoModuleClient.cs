@@ -147,10 +147,23 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     private IoSnapshot _snapshot = null!;
 
+    /// <summary>
+    /// The next read of <see cref="CurrentSnapshot"/> throws, once: a read that fails inside whatever is building a message
+    /// from it, before anything is written (review of PR #420, L1). A test that arms it must know which read comes next.
+    /// </summary>
+    public void FailNextRead() => Interlocked.Exchange(ref _failNextRead, 1);
+
+    private int _failNextRead;
+
     public IoSnapshot CurrentSnapshot
     {
         get
         {
+            if (Interlocked.Exchange(ref _failNextRead, 0) == 1)
+            {
+                throw new InvalidOperationException("G2: the IO read fails once.");
+            }
+
             lock (_sync)
             {
                 if (!KeepSnapshotFresh && !ScriptedHardware)

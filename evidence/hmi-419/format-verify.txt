@@ -1,0 +1,1 @@
+dotnet format SQCD_8005AGV.sln --verify-no-changes --include <every .cs changed since 2c2845f>: exit 0 at 177c11a; round 3 changed only StationDeadlineExpiredG2Tests.LockBounceAfterSnapshot.cs, verified again: exit 0

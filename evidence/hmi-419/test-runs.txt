@@ -1,0 +1,57 @@
+# HEAD 7f3ba8192efdaf730c79a29fa5537e5ad80229ee
+## run 1: new tests + mid-session snapshot / refused change neighbours
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 2: new tests + mid-session snapshot / refused change neighbours
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 14 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 3: new tests + mid-session snapshot / refused change neighbours
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## class runs on 8d10dbd (before fe3ccf9, same src logic + the later-removed request)
+MultiDemandJourneyG2Tests exit=1
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALatchWhileTheLoadWaitsForALostAnswerLeavesTheSameCancellationToBeAskedAgain [3 s]
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverASettledLoadKeepsItsDemandOnBoard [6 s]
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnAcknowledgedFailedCancellationShutsTheEntriesAndIsHandedOff [4 s]
+失败!  - 失败:     3，通过:   223，已跳过:     0，总计:   226，持续时间: 5 m 48 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+WireToGateG2Tests exit=0
+已通过! - 失败:     0，通过:    99，已跳过:     0，总计:    99，持续时间: 1 m 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+RecoveryVectorG2Tests exit=0
+已通过! - 失败:     0，通过:   238，已跳过:     0，总计:   238，持续时间: 4 m 26 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+unit exit=0
+已通过! - 失败:     0，通过:  1340，已跳过:     0，总计:  1340，持续时间: 42 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+## the three MultiDemandJourneyG2Tests reds rerun alone on 8d10dbd, twice
+已通过! - 失败:     0，通过:     3，已跳过:     0，总计:     3，持续时间: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+已通过! - 失败:     0，通过:     3，已跳过:     0，总计:     3，持续时间: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+# rework HEAD 13c594450bd95eb2e76e7d6f582c198dca78e026
+## run 1: the 8 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     8，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 2: the 8 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     8，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 3: the 8 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     8，已跳过:     0，总计:     8，持续时间: 14 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## review probes P1-P3 (not committed)
+已通过! - 失败:     0，通过:     3，已跳过:     0，总计:     3，持续时间: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## StationDeadlineExpiredG2Tests, WireToGateG2Tests, refused safety change, StaleReadinessRepublish
+已通过! - 失败:     0，通过:   189，已跳过:     0，总计:   189，持续时间: 2 m 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## SQCD.Agv.UnitTests
+已通过! - 失败:     0，通过:  1340，已跳过:     0，总计:  1340，持续时间: 39 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+# handshake rework HEAD 860011c8f99886e98b3c0607439b066c26e79411
+## run 1: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 2: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 3: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## StationDeadlineExpiredG2Tests, WireToGateG2Tests, refused/stale safety change, fatal fault, StaleReadinessRepublish
+已通过! - 失败:     0，通过:   204，已跳过:     0，总计:   204，持续时间: 2 m 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## SQCD.Agv.UnitTests
+已通过! - 失败:     0，通过:  1340，已跳过:     0，总计:  1340，持续时间: 33 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+# round 3 HEAD aa32e457d00c3340773dba69b32c2a900ec551e2
+## run 1: the 9 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     9，已跳过:     0，总计:     9，持续时间: 14 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 2: the 9 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     9，已跳过:     0，总计:     9，持续时间: 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 3: the 9 tests of LockBounceAfterSnapshot
+已通过! - 失败:     0，通过:     9，已跳过:     0，总计:     9，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -1,0 +1,6 @@
+# handshake rework: test from 0f561ba, src at c8ff60e
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: True) [5 s]
+   Timed out after 5s waiting for: the occupied slot to be reported again in the new session. UI errors: []
+  失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: False) [5 s]
+   Timed out after 5s waiting for: the occupied slot to be reported again in the new session. UI errors: []
+失败!  - 失败:     2，通过:     0，已跳过:     0，总计:     2，持续时间: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
