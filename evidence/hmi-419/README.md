@@ -26,10 +26,12 @@
 
 ## 修法
 
-1. `WireToGateSessionClient.PublishSafetyStateSnapshotAsync` 返回快照里带的安全摘要（以前返回 `bool`）。
-2. 回应快照请求时，发出前先把签名清空；快照被确认后，按握手同一条规则核对：快照摘要与此刻读数的摘要相同，就把此刻读数当作已经报过；不同，签名保持为空，下一轮把此刻读数作为一条新的 `SafetyStateChanged` 报出去，版本高于快照。下一轮由快照 ack 引起的会话状态发布触发（`OnSessionStateChanged`），它排在本次持有的发送锁后面，所以一定在签名清空之后运行。
-3. 快照的 ack 没等到（超时等失败）：服务端可能已经收下了快照，手上是什么不确定，签名保持为空，并请求一轮上报。
-4. 会话此刻发不了快照（什么也没发出去）：签名恢复原值。
+（审查返工后的样子；第一版只比摘要，审查 M1 指出光幕漏了，见下面「审查返工」。）
+
+1. `WireToGateSessionClient.PublishSafetyStateSnapshotAsync` 返回快照带的内容 `WireToGateSentSafetySnapshot`：安全摘要，加上逐仓状态所依据的原始 IO 读数（以前返回 `bool`）。另有一个带回调的重载，在信封建好、马上写出之前回调一次，带同样的内容。
+2. 快照被确认后（`AdoptAnsweredSnapshot`），用 `SafetyStateChanged` 去重所用的同一个完整签名比对：摘要加每个仓的锁、光幕、开锁输出原始读数。快照的签名与此刻读数的签名相同，此刻读数算已报；不同，签名清空，下一轮把此刻读数作为一条新的 `SafetyStateChanged` 报出去，版本高于快照。服务端见到快照之后有变化涉及这些仓，就不再用快照里的逐仓状态（control-server `SessionSlotReadings`）。下一轮由快照 ack 引起的会话状态发布触发（`OnSessionStateChanged`），它排在本次持有的发送锁后面。
+3. 快照已写出、ack 没等到（超时等失败）：服务端可能已经收下了，手上是什么不确定，签名清空，并请求一轮上报。
+4. 什么也没写出（会话此刻发不了、版本号不合法、读数或构造时抛异常）：签名不动，不请求上报。不再在发出前预先清空签名（审查 L1）。
 
 不做「每次快照后都补报一条变化」：服务端对超时仓每收到一条变化就要一次快照，两边会无限互相触发。用例 `ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange` 守这一点。
 
@@ -60,13 +62,43 @@
 
 M1、M2 第一次写成 `sent is ...` 的条件，被可空性检查拦在编译阶段，`mutations.txt` 里是改用 `_disposed` 后的重跑结果。
 
+## 审查返工（PR #420 审查 M1、L1、L2）
+
+- **M1**：第一版只比摘要。光幕在快照读取时读成「空」、ack 前恢复「有货」，摘要不变，之后不再上报；服务端拿快照里 `physicalState=EMPTY` 当这个仓的读数（`SessionSlotReadings`、`OnboardDispatchFactsReader.HasUnsecuredSlot`）。两扇锁互换状态同理。改为比完整签名。
+- **L1**：第一版在发出前就清空签名，写出之前失败（读数或构造抛异常）也会补报一条内容相同的变化，白白抬一次版本、让服务端在途的出发前检查过期。改为客户端在写出前回调，业务层只在写出后失败时才清签名、请求上报。
+- **L2**（变异 M6：「发不了时不恢复签名」存活）：发出前不再预先清空，也就没有「恢复」这一步，M6 对应的代码不存在了。对应的风险由 L1 的用例覆盖。
+- **L3**（`AdoptAnsweredSnapshot` 里的 `_lastSafetySignature = null` 多余）：预先清空去掉之后，这一句不再多余，是唯一清空的地方，保留。
+
+新用例（同一文件）：
+
+| 用例 | 9c6950d 上 | 返工后 |
+| --- | --- | --- |
+| `ALightCurtainBounceCaughtByASnapshotIsFollowedByAChange`（由审查探针 P1 改写） | 红 | 绿 |
+| `TwoLocksTradingPlacesUnderASnapshotAreFollowedByAChange` | 红 | 绿 |
+| `ASnapshotAnswerThatFailsBeforeWritingLeavesTheReportedStateAlone`（假 IO `FailNextRead`：下一次读数抛一次异常，正好落在快照读取上） | 红（多发 v5，内容与 v3 相同） | 绿 |
+
+`red-rework.txt` 是取红，`mutations-rework.txt` 是返工后的变异：
+
+| 变异 | 文件 | 结果 |
+| --- | --- | --- |
+| R1 只比摘要（即 9c6950d 的做法） | 业务 | 杀（光幕、互换 2 条） |
+| R2 失败一律清签名，不管写没写出 | 业务 | 杀（写出前失败那条） |
+| R3 失败一律不清签名 | 业务 | 杀（ack 丢失 2 条） |
+| R4 客户端写出前不回调 | 客户端 | 杀（ack 丢失 2 条） |
+| R5 确认后一律算已报 | 业务 | 杀（4 条） |
+| R6 确认后一律补报 | 业务 | 杀（守护项），三次重跑都杀；第一次那一遍 8 条全绿，跑的是未变异代码（R6 生效必红守护项，R5 残留必红 4 条），是增量构建没编进去，未再深究 |
+
+审查探针 P1～P3 在返工后临时放进来跑过，3 条全绿，没有入库。
+
 ## 其他 DI 与同类路径清单
 
 | 路径 | 是否同类 | 处置 |
 | --- | --- | --- |
-| 仓锁、光幕、开锁输出回读三路 DI → `SnapshotChanged` → 安全状态上报 | 同一条管线，同一个去重签名 | 本修复在签名层，三路一并覆盖 |
-| 车辆安全信号（`OnVehicleSafetySignalChanged`）、故障闩锁变化 | 同一条管线 | 一并覆盖 |
-| 握手时的全量 `SafetyStateSnapshot` | 同类，已由 hmi#399、#401 修过 | 不动 |
+| 仓锁 DI 被中途快照截到 | 本票 | 修（摘要变了） |
+| 光幕 DI、开锁输出回读被中途快照截到；两扇锁互换状态 | 同类：摘要不变而逐仓读数变了，服务端拿快照里的逐仓状态当读数 | 修（审查 M1：比完整签名，含每仓三路原始读数） |
+| 车辆安全信号、故障闩锁在快照前后变化 | 同类，都在摘要里 | 一并覆盖 |
+| 握手时的全量 `SafetyStateSnapshot`：摘要变化 | 同类，已由 hmi#399、#401 修过 | 不动 |
+| 握手时的全量 `SafetyStateSnapshot`：摘要不变而逐仓读数变化（如光幕在握手读取后变了） | **同类，未修。**`HandshakeSnapshotHolds` 只比摘要（`WireToGateSafetyEvaluator.SameSummary`），握手记录 `WireToGateAcceptedSafety` 也只存摘要；改它要给握手记录加原始读数，动 #399 的逻辑 | 报调度定 |
 | `SafetyStateChanged` 自身等 ack 期间 IO 又变 | 不是：签名记的是发出去的内容，下一轮与此刻读数比 | 不动 |
 | 补发、迟到 ack、换连接重绑的 `SafetyStateChanged` | 不是：签名记的是那条被确认的内容（`SettlePassedSafetyChangeAsync`） | 不动 |
 | 告警快照 `OnboardAlarmSnapshot`（含期待动作超时） | 不是：每秒拿「服务端已确认的告警」与当前告警板比，不同就重报 | 不动 |
