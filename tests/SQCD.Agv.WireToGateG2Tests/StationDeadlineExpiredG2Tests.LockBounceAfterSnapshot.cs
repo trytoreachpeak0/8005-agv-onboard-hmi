@@ -267,6 +267,51 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// Two unlock output readbacks trade places across the snapshot: slot 2's reads energised when it is read, slot 3's
+    /// by the time it is acknowledged (review probe P4 of PR #420, round 2). Both say UNLOCK_OUTPUT_NOT_RESET, so the
+    /// summary is the same; the slots' <c>unlockOutputState</c> is not. A change above the snapshot must follow.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task UnlockOutputsTradingPlacesUnderASnapshotAreFollowedByAChange()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        long safeVersion = await CompleteLoadAndSettleSafeAsync(harness, token);
+
+        harness.Server.BeforeSnapshotAck = (messageType, _) =>
+            messageType == "SafetyStateSnapshot" ? ackRelease.Task : Task.CompletedTask;
+        harness.Io.SetUnlockOutput(1, energised: true);
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server).Version > safeVersion,
+            "the snapshot answer, read with slot 2's output energised",
+            token,
+            () => DescribeSafety(harness.Server));
+        HeldSafetyState snapshot = HeldSafety(harness.Server);
+        Assert.Equal("SafetyStateSnapshot", snapshot.MessageType);
+        Assert.Equal("ACTIVE", SnapshotSlotState(harness.Server, snapshot.Version, 2, "unlockOutputState"));
+        Assert.Equal("RESET", SnapshotSlotState(harness.Server, snapshot.Version, 3, "unlockOutputState"));
+
+        harness.Io.SetUnlockOutput(1, energised: false);
+        harness.Io.SetUnlockOutput(2, energised: true);
+        harness.Io.PublishSnapshot();
+        ackRelease.SetResult();
+
+        await Harness.WaitUntilAsync(
+            () => HeldSafety(harness.Server) is { MessageType: "SafetyStateChanged" } held && held.Version > snapshot.Version,
+            "a change above the snapshot that read slot 2's output energised and slot 3's reset",
+            token,
+            () => DescribeSafety(harness.Server));
+        Assert.Contains("UNLOCK_OUTPUT_NOT_RESET", HeldSafety(harness.Server).ReasonCodes);
+    }
+
+    /// <summary>
     /// The answer fails before anything is written -- here the IO read inside the snapshot's capture throws (review of PR
     /// #420, L1). The server holds what it held, so the last reported reading still stands: no change follows, however
     /// often the IO publishes after. A change would only move the version on and void a pre-departure check in flight.
