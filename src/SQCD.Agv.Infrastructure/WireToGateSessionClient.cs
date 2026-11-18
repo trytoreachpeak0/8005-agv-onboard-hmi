@@ -2797,19 +2797,29 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// 与告警快照一样只在接收循环跑着时发、ack 走等待表；服务端在 ack 后面紧跟的 <c>SessionReadiness</c> 由接收循环照常处理。
     /// </para>
     /// </remarks>
+    /// <param name="writing">
+    /// 这一份读完、马上写出之前调用一次，带它的摘要与读数（8005-agv-onboard-hmi#419）。之后无论 ack 来没来、写出成没成，
+    /// 服务端都可能已经拿着它；没调用就是什么也没写出——会话此刻不能发、版本号不合法、读数或构造时抛了异常。
+    /// </param>
     /// <returns>
-    /// 服务端 ack 了这一份时为它带的 <c>safety</c> 摘要；会话此刻不能发时为 <c>null</c>。调用方拿摘要核对「服务端此刻
-    /// 拿着的」与此刻读数是否相同：这一份取代了服务端手上的安全状态，读数若在读取之后又变了，要另报一条变化
-    /// （8005-agv-onboard-hmi#419）。
+    /// 服务端 ack 了这一份时为它带的摘要与读数；会话此刻不能发时为 <c>null</c>。这一份取代了服务端手上的安全状态与逐仓
+    /// 读数，调用方拿它核对「服务端此刻拿着的」与此刻读数是否相同，读数在读取之后又变了要另报一条变化。
     /// </returns>
-    public async Task<WireToGateSafetySummaryPayload?> PublishSafetyStateSnapshotAsync(
+    public Task<WireToGateSentSafetySnapshot?> PublishSafetyStateSnapshotAsync(
         long safetyStateVersion,
+        CancellationToken cancellationToken = default) =>
+        PublishSafetyStateSnapshotAsync(safetyStateVersion, null, cancellationToken);
+
+    /// <inheritdoc cref="PublishSafetyStateSnapshotAsync(long, CancellationToken)"/>
+    public async Task<WireToGateSentSafetySnapshot?> PublishSafetyStateSnapshotAsync(
+        long safetyStateVersion,
+        Action<WireToGateSentSafetySnapshot>? writing,
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
             safetyStateVersion,
             Volatile.Read(ref _acceptedSafetyStateVersion));
-        WireToGateSafetySummaryPayload? sent = null;
+        WireToGateSentSafetySnapshot? sent = null;
         long? generation = await PublishMidSessionSnapshotAsync(
             "SafetyStateSnapshot",
             "SAFETY_STATE",
@@ -2820,7 +2830,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 // arguments were evaluated in before onboard-hmi#314.
                 DateTimeOffset observedAt = _clock.Now.ToUniversalTime();
                 WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-                sent = safety;
+                sent = new WireToGateSentSafetySnapshot(safety, io);
                 RecordSafetySummary(
                     "会话中途安全快照",
                     Volatile.Read(ref _lastSessionGeneration),
@@ -2834,7 +2844,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     safety,
                     CreateSlotStates(io)));
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            writing is null ? null : () => writing(sent!)).ConfigureAwait(false);
         if (generation is null)
         {
             return null;
@@ -2844,22 +2855,24 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
             safetyStateVersion,
             generation,
-            sent,
+            sent?.Safety,
             WireToGateAcceptedSafetySource.RequestedSnapshot));
         PublishAcceptedVersions("SafetyStateSnapshot-ack");
-        return sent ?? throw new InvalidOperationException("SafetyStateSnapshot 已被确认，却没有记下它带的摘要。");
+        return sent ?? throw new InvalidOperationException("SafetyStateSnapshot 已被确认，却没有记下它带的内容。");
     }
 
     /// <summary>
     /// 会话中途发一份快照并等 <c>SnapshotAppliedAck</c>。规则见 <see cref="PublishAlarmSnapshotAsync"/>。
     /// </summary>
     /// <param name="capture">在锁里、确认能发之后才调用，取这一份的修订号与载荷。</param>
+    /// <param name="beforeSend">信封建好、登记了等 ack、马上写出之前调用；这之前的失败都没有写出任何东西。</param>
     /// <returns>ack 了时为发出这一份的会话代；会话此刻不能发时为 <c>null</c>。</returns>
     private async Task<long?> PublishMidSessionSnapshotAsync(
         string messageType,
         string snapshotKind,
         Func<(long Revision, object Payload)> capture,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action? beforeSend = null)
     {
         ThrowIfDisposed();
         await _alarmPublishGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -2900,6 +2913,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new InvalidOperationException($"重复的{messageType} messageId。");
             }
 
+            beforeSend?.Invoke();
             await SendEnvelopeAsync(envelope, connectionEpoch, cancellationToken).ConfigureAwait(false);
             _alarmPublishGate.Release();
             gateHeld = false;

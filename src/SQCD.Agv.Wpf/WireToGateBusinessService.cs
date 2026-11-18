@@ -2477,6 +2477,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private async Task AnswerSafetyStateSnapshotRequestAsync(CancellationToken cancellationToken)
     {
         await _safetySendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        WireToGateSentSafetySnapshot? written = null;
         try
         {
             WireToGateSessionSnapshot current = _session.Current;
@@ -2503,16 +2504,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // server did apply, and the next safety state under this same version with other content would be
             // a revision conflict. A skipped version is not a regression.
             _nextSafetyStateVersion = checked(version + 1);
-            // The snapshot replaces what the server holds, so the last reported signature stops standing for it the
-            // moment the snapshot may have gone out (onboard-hmi#419). Restored below only when nothing went out.
-            string? reportedBefore = _lastSafetySignature;
-            _lastSafetySignature = null;
-            WireToGateSafetySummaryPayload? sent = await _session
-                .PublishSafetyStateSnapshotAsync(version, cancellationToken)
+            // Set just before the snapshot is written (onboard-hmi#419): from then on the server may hold it, whether
+            // its ack comes or not. Still null means nothing was written and the last reported signature still stands.
+            // No pass can run in between: they all wait on the gate this answer holds.
+            written = null;
+            WireToGateSentSafetySnapshot? sent = await _session
+                .PublishSafetyStateSnapshotAsync(version, snapshot => written = snapshot, cancellationToken)
                 .ConfigureAwait(false);
             if (sent is null)
             {
-                _lastSafetySignature = reportedBefore;
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
@@ -2536,10 +2536,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 "回应服务端的SafetyStateSnapshot请求失败。",
                 exception);
-            // The snapshot may have been applied without its ack reaching here (onboard-hmi#419): what the server holds
-            // is not known, so the present reading goes out as a change of its own, above the snapshot's version.
-            if (_lastSafetySignature is null)
+            // Written, the snapshot may have been applied without its ack reaching here (onboard-hmi#419): what the server
+            // holds is not known, so the present reading goes out as a change of its own, above the snapshot's version.
+            // Not written -- the failure came before the envelope went out -- the server holds what it held, and the
+            // last reported signature stands: a change now would only move the version on and void the server's
+            // pre-departure check in flight (review of PR #420, L1).
+            if (written is not null)
             {
+                _lastSafetySignature = null;
                 _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
             }
         }
@@ -2563,16 +2567,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// snapshot's UNLOCKED (agv02, 2026-11-18, two hours in DEPARTURE_SAFETY_NOT_READY).
     /// </para>
     /// <para>
-    /// The rule is the handshake's (<see cref="HandshakeSnapshotHolds"/>, onboard-hmi#399): the snapshot's summary the
-    /// same as the present reading's, the present reading counts as reported; otherwise nothing does, and the next pass
-    /// reports it above the snapshot's version. Never a change after every snapshot: the control server asks for a
-    /// snapshot after each change that touches a slot with an overdue alarm, and the two would answer each other forever.
+    /// The comparison is the whole signature a <c>SafetyStateChanged</c> is de-duplicated by -- the summary and every
+    /// slot's raw readings -- not the summary alone. The server keeps the snapshot's slot states too, and reads them as
+    /// the slots' readings until a later <c>SafetyStateChanged</c> names the slots (control-server
+    /// <c>SessionSlotReadings</c>, <c>OnboardDispatchFactsReader.HasUnsecuredSlot</c>). A light curtain bounce caught by
+    /// the snapshot leaves the summary as it was and a slot reading EMPTY on the server (review of PR #420, M1), and so
+    /// does a pair of locks trading places. Same signature, the present reading counts as reported; otherwise nothing
+    /// does, and the next pass reports it above the snapshot's version, which voids those slot states on the server.
+    /// </para>
+    /// <para>
+    /// Never a change after every snapshot: the control server asks for a snapshot after each change that touches a slot
+    /// with an overdue alarm, and the two would answer each other forever. A change follows only when the readings moved.
     /// </para>
     /// </remarks>
-    private void AdoptAnsweredSnapshot(WireToGateSafetySummaryPayload sent)
+    private void AdoptAnsweredSnapshot(WireToGateSentSafetySnapshot sent)
     {
         SafetyEvaluation present = EvaluateSafety(_ioModule.CurrentSnapshot);
-        if (WireToGateSafetyEvaluator.SameSummary(sent, present.Safety))
+        string held = SafetySignature(sent.Safety, sent.Readings);
+        if (string.Equals(held, present.Signature, StringComparison.Ordinal))
         {
             _lastSafetySignature = present.Signature;
             return;
@@ -2583,7 +2595,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
             "会话中途安全快照发出后读数已变，改报此刻读数："
-            + $"快照reasonCodes=[{string.Join(',', sent.ReasonCodes)}]，此刻reasonCodes=[{string.Join(',', present.Safety.ReasonCodes)}]。");
+            + $"快照reasonCodes=[{string.Join(',', sent.Safety.ReasonCodes)}]，此刻reasonCodes=[{string.Join(',', present.Safety.ReasonCodes)}]。");
         // No pass is asked for here: the ack already asked for one. The session client publishes the accepted version on
         // the ack (PublishAcceptedVersions), OnSessionStateChanged asks for a pass, and that pass waits on the gate this
         // answer holds, so it runs after the signature is cleared -- with or without another IO event.
@@ -4982,7 +4994,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _vehicleSafetyMaxAge,
             _vehicleSafetyClockSkewTolerance,
             _fatalFaultLatched());
-        string signature = JsonSerializer.Serialize(
+        return new SafetyEvaluation(observedAt, safety, SafetySignature(safety, snapshot));
+    }
+
+    /// <summary>
+    /// The content a safety report is de-duplicated by: the summary and every slot's raw readings. Also what a mid-session
+    /// snapshot is compared by once acknowledged (<see cref="AdoptAnsweredSnapshot"/>, onboard-hmi#419).
+    /// </summary>
+    private static string SafetySignature(WireToGateSafetySummaryPayload safety, IoSnapshot snapshot) =>
+        JsonSerializer.Serialize(
             new
             {
                 safety,
@@ -4998,8 +5018,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ToArray()
             },
             JsonOptions);
-        return new SafetyEvaluation(observedAt, safety, signature);
-    }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
