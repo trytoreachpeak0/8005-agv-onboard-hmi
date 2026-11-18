@@ -35,3 +35,15 @@ unit exit=0
 已通过! - 失败:     0，通过:   189，已跳过:     0，总计:   189，持续时间: 2 m 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 ## SQCD.Agv.UnitTests
 已通过! - 失败:     0，通过:  1340，已跳过:     0，总计:  1340，持续时间: 39 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+# handshake rework HEAD 860011c8f99886e98b3c0607439b066c26e79411
+## run 1: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 2: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## run 3: new handshake test + the 9 hmi#399/#401 roaming tests
+已通过! - 失败:     0，通过:    11，已跳过:     0，总计:    11，持续时间: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## StationDeadlineExpiredG2Tests, WireToGateG2Tests, refused/stale safety change, fatal fault, StaleReadinessRepublish
+已通过! - 失败:     0，通过:   204，已跳过:     0，总计:   204，持续时间: 2 m 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## SQCD.Agv.UnitTests
+已通过! - 失败:     0，通过:  1340，已跳过:     0，总计:  1340，持续时间: 33 s - SQCD.Agv.UnitTests.dll (net8.0)

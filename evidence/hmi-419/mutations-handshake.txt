@@ -1,0 +1,46 @@
+## H1 a change after every handshake (business: the handshake never holds)
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+compiled: SQCD.Agv.Wpf.dll written 20:55:21, mutation written 20:55:17
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARoamWithNothingChangedRaisesTheSafetyVersionOnceAndTheCheckAskedAgainIsAnswered [1 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerThatForgotTheSafetyStateIsReadyOnTheHandshakeSnapshotAlone(storeReplaced: False) [989 ms]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerThatForgotTheSafetyStateIsReadyOnTheHandshakeSnapshotAlone(storeReplaced: True) [983 ms]
+失败!  - 失败:     3，通过:     8，已跳过:     0，总计:    11，持续时间: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## H2 the client keeps no readings for the handshake (so it never holds)
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+compiled: SQCD.Agv.Infrastructure.dll written 20:56:04, mutation written 20:56:02
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARoamWithNothingChangedRaisesTheSafetyVersionOnceAndTheCheckAskedAgainIsAnswered [1 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerThatForgotTheSafetyStateIsReadyOnTheHandshakeSnapshotAlone(storeReplaced: False) [982 ms]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerThatForgotTheSafetyStateIsReadyOnTheHandshakeSnapshotAlone(storeReplaced: True) [967 ms]
+失败!  - 失败:     3，通过:     8，已跳过:     0，总计:    11，持续时间: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## H3 the handshake holds whatever it carried
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+compiled: SQCD.Agv.Wpf.dll written 20:56:49, mutation written 20:56:45
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AReasonThatAppearedAfterTheHandshakeReadTheIoIsReportedAgain [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: True, safeAtHandshake: False) [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: True, safeAtHandshake: True) [6 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: False, safeAtHandshake: True) [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AReadingThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: False, safeAtHandshake: False) [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: True) [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: False) [5 s]
+失败!  - 失败:     7，通过:     4，已跳过:     0，总计:    11，持续时间: 44 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## H4 the handshake compares its summary with the present summary only (slot readings taken from the present)
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+compiled: SQCD.Agv.Wpf.dll written 20:58:05, mutation written 20:58:02
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: True) [5 s]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALightCurtainThatMovedOnAfterTheHandshakeReadItIsReportedAgain(repeatGeneration: False) [5 s]
+失败!  - 失败:     2，通过:     9，已跳过:     0，总计:    11，持续时间: 19 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R6 again, --no-incremental: a change after every answered snapshot
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+compiled: SQCD.Agv.Wpf.dll written 20:59:07, mutation written 20:59:04
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange [1 s]
+失败!  - 失败:     1，通过:     7，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
