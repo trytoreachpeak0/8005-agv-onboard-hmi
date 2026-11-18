@@ -125,8 +125,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
     /// <summary>
     /// The bounce with no IO event at all: the readings change while the snapshot waits for its ack, and nothing
-    /// announces them. The answer itself must ask for the pass that reports the closed lock, whether the ack comes or is
-    /// lost -- the real Modbus client announces every poll, so there this only stands in for a module gone quiet.
+    /// announces them. The closed lock must still be reported, whether the ack comes (the ack's session-state publication
+    /// asks for the pass) or is lost (the failed answer asks for it) -- the real Modbus client announces every poll, so
+    /// there this only stands in for a module gone quiet.
     /// </summary>
     [Theory]
     [InlineData(false)]

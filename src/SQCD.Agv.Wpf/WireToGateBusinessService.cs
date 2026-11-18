@@ -2584,9 +2584,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             nameof(WireToGateBusinessService),
             "会话中途安全快照发出后读数已变，改报此刻读数："
             + $"快照reasonCodes=[{string.Join(',', sent.ReasonCodes)}]，此刻reasonCodes=[{string.Join(',', present.Safety.ReasonCodes)}]。");
-        // A pass is usually already waiting on the gate -- the IO change that made the reading differ asked for one --
-        // but one is asked for here too, so the report does not depend on another IO event arriving.
-        _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
+        // No pass is asked for here: the ack already asked for one. The session client publishes the accepted version on
+        // the ack (PublishAcceptedVersions), OnSessionStateChanged asks for a pass, and that pass waits on the gate this
+        // answer holds, so it runs after the signature is cleared -- with or without another IO event.
     }
 
     /// <summary>
