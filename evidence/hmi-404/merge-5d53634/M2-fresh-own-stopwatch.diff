@@ -1,0 +1,15 @@
+== M2-fresh-own-stopwatch: src/SQCD.Agv.Core/SafetyRules.cs
+diff --git a/src/SQCD.Agv.Core/SafetyRules.cs b/src/SQCD.Agv.Core/SafetyRules.cs
+index 91d4160..6b09725 100644
+--- a/src/SQCD.Agv.Core/SafetyRules.cs
++++ b/src/SQCD.Agv.Core/SafetyRules.cs
+@@ -106,7 +106,7 @@ public static class SafetyRules
+     public static bool IsSnapshotFresh(IoSnapshot snapshot, IClock clock, TimeSpan snapshotMaxAge)
+     {
+         ArgumentNullException.ThrowIfNull(clock);
+-        return IsSnapshotFresh(snapshot, clock.Now, clock.GetTimestamp(), snapshotMaxAge);
++        return IsSnapshotFresh(snapshot, clock.Now, Stopwatch.GetTimestamp(), snapshotMaxAge);
+     }
+ 
+     /// <summary>
+

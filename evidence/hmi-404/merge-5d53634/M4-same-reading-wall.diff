@@ -1,0 +1,22 @@
+== M4-same-reading-wall: src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+diff --git a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+index f44cf2f..9f11eb7 100644
+--- a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
++++ b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+@@ -209,13 +209,13 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
+             LockerSnapshot locker = snapshot.GetLocker(slotIndex);
+             long observed = locker.ObservedTimestamp
+                 ?? throw new InvalidOperationException("IO reading without a monotonic timestamp.");
+-            if (lastEvaluated == observed)
++            if (lastEvaluated == locker.ObservedAt.UtcTicks)
+             {
+                 await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+                 continue;
+             }
+ 
+-            lastEvaluated = observed;
++            lastEvaluated = locker.ObservedAt.UtcTicks;
+             if (predicate(locker))
+             {
+                 stableStartedAt ??= observed;
+

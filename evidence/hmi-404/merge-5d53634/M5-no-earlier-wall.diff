@@ -1,0 +1,15 @@
+== M5-no-earlier-wall: src/SQCD.Agv.Core/DomainModels.cs
+diff --git a/src/SQCD.Agv.Core/DomainModels.cs b/src/SQCD.Agv.Core/DomainModels.cs
+index 2355850..de93baf 100644
+--- a/src/SQCD.Agv.Core/DomainModels.cs
++++ b/src/SQCD.Agv.Core/DomainModels.cs
+@@ -117,7 +117,7 @@ public sealed record LockerSnapshot(
+     {
+         ArgumentNullException.ThrowIfNull(other);
+         return ObservedTimestamp is { } observed && other.ObservedTimestamp is { } otherObserved
+-            ? observed >= otherObserved
++            ? ObservedAt >= other.ObservedAt
+             : ObservedAt >= other.ObservedAt;
+     }
+ 
+

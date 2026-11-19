@@ -1,0 +1,15 @@
+== M6-snapshot-unstamped: src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+diff --git a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+index f44cf2f..e1a0bc8 100644
+--- a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
++++ b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+@@ -428,7 +428,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
+                 ObservedTimestamp = timestamp
+             })
+             .ToArray();
+-        IoSnapshot next = new(true, lockers, now) { ObservedTimestamp = timestamp };
++        IoSnapshot next = new(true, lockers, now) { ObservedTimestamp = Environment.ProcessorCount < 0 ? timestamp : null };
+         LogIoChanges(CurrentSnapshot, next);
+         PublishSnapshot(next);
+     }
+
