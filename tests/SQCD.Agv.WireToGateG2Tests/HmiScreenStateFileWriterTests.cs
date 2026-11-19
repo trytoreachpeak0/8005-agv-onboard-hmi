@@ -431,7 +431,7 @@ public sealed class HmiScreenStateFileWriterTests
                 "SUBLOT-001",
                 "WIRE_TO_GATE",
                 "PICKUP",
-                1)],
+                1, Eqp: null)],
             new string('a', 64)),
         null,
         Now);

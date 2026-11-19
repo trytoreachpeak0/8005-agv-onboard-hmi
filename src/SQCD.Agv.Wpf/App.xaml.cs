@@ -306,10 +306,11 @@ public partial class App : System.Windows.Application, IDisposable
                     sublotEntryPausedUntilStopped: () => _wireToGateBusiness.IsSublotEntryPausedUntilStopped,
                     // 视图模型自己订阅停稳信号的变化，刷新入口、横幅与控制器提示（8005-agv-onboard-hmi#177）。
                     vehicleSafetySignal: vehicleSafetySignalProvider,
-                    // 取消装货在严重安全故障锁存期间唯一还开着的那一半：扫码之前，不碰 IO（8005-agv-onboard-hmi#174）。
+                    // 取消装货在严重安全故障锁存期间还开着的部分：扫码之前那一半（8005-agv-onboard-hmi#174），以及装货中已发出、
+                    // 还没答复的那一次按同一 cancellationId 重问（8005-agv-onboard-hmi#392 第二阶段审查 S1）。两者都不开门。
                     // 不接这一条，视图模型按 false 处理，锁存期间取消装货整个关着——安全，但操作员又只能干等站点超时。
                     canRequestLoadCancellationBeforeAnySublot: () =>
-                        _wireToGateBusiness.CanRequestLoadCancellationBeforeAnySublot);
+                        _wireToGateBusiness.CanRequestLoadCancellationWhileLatched);
                 ForcedIsolationWiring.Configure(viewModel, _wireToGateBusiness);
                 // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
                 StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);

@@ -1,0 +1,178 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Infrastructure -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:37.11]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ACancellationAuthorizedAfterTheLoadsResultWasRecordedRunsToItsEnd [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ACancellationAuthorizedAfterTheLoadsResultWasRecordedRunsToItsEnd [6 s]
+  Error Message:
+   Timed out after 5s waiting for: the cancellation to open and the operator to shut slot 1, then slot 2. UI errors: []
+Stuck on: OperationProgress 9964a311-348b-db5c-8a29-644e8b45c683 (UNLOCKING), on file in the vehicle's outbox since 02:13:49.301 but not read by this double (read loops: connection 1 waiting in ReadLineAsync since 02:13:52.450); the vehicle waits up to 30s for its DurableAck.
+Wait: started 02:13:46.774, timed out 02:13:51.780.
+Thread pool: 7 threads, 0 work items queued.
+Read loops of this double:
+  connection 1: waiting in ReadLineAsync since 02:13:52.450
+Owed by the vehicle's outbox (not acknowledged, not given up):
+  OperationProgress 9964a311-348b-db5c-8a29-644e8b45c683 (UNLOCKING) on file 02:13:49.301
+Sent by the vehicle, last 10:
+  OperationProgress c7295677-6cfa-825e-80cc-b1caef9e4f9d (UNLOCKING) read 02:13:46.412 (sentAt 02:13:46.396) -> DurableAck written 02:13:46.412
+  OperationProgress 74d05d34-c7aa-6951-9df2-e8d9eba2bace (WAITING_OPERATOR) read 02:13:46.461 (sentAt 02:13:46.441) -> DurableAck written 02:13:46.461
+  LoadCancellationStartRequested 2be3f439-c835-4420-90e5-a06f954fea4a read 02:13:46.480 (sentAt 02:13:46.480)
+  OperationProgress 8f74568e-817e-2255-bd64-920498776009 (VERIFYING) read 02:13:46.552 (sentAt 02:13:46.533) -> DurableAck written 02:13:46.552
+  OperationProgress 39b3f8a4-1182-9d57-9e41-e7435c536d52 (SAFE_FINISH) read 02:13:46.618 (sentAt 02:13:46.601) -> DurableAck written 02:13:46.618
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) read 02:13:46.668 (sentAt 02:13:46.647) -> DurableAck written 02:13:46.668
+  OperationProgress f523a8e0-ad13-5c57-9094-c0af39751748 (PREPARING) read 02:13:46.799 (sentAt 02:13:46.781) -> DurableAck written 02:13:46.799
+  OperationProgress 46839e76-aaba-d85e-8287-17099402a8ba (UNLOCKING) read 02:13:46.867 (sentAt 02:13:46.847) -> DurableAck written 02:13:46.867
+  OperationProgress af6a69da-56bb-155c-b6ba-feb46047aec2 (WAITING_OPERATOR) read 02:13:46.904 (sentAt 02:13:46.887) -> DurableAck written 02:13:46.904
+  OperationProgress 3c74b717-0707-c35f-9cad-348c7ac0860e (VERIFYING) read 02:13:47.433 (sentAt 02:13:46.947) -> DurableAck written 02:13:47.433
+Sent by this double, last 10:
+  DurableAck 17a61f86-85e8-4f41-811e-43b2efde22bc (OperationProgress) written 02:13:46.412
+  DurableAck dbacdfad-d8a4-4867-9b54-e5c9035d6f66 (OperationProgress) written 02:13:46.461
+  DurableAck 1d4e16c1-91f8-4b5a-9b98-73c44495d30d (OperationProgress) written 02:13:46.552
+  DurableAck 0a225955-1767-44f0-b98c-25a7fe0511b7 (OperationProgress) written 02:13:46.618
+  DurableAck 5ed65837-028c-415f-a1ca-c5705cb3ff46 (OperationResult) written 02:13:46.668
+  LoadCancellationAuthorization a95c0dde-eb6c-4084-8451-1754acac1c52 written 02:13:46.712
+  DurableAck 99600875-10ca-4399-ac57-024fe5659cd3 (OperationProgress) written 02:13:46.799
+  DurableAck a1f67c75-7ff7-456b-ab48-194b4ae488e3 (OperationProgress) written 02:13:46.867
+  DurableAck 765df22e-6710-4123-ad86-c7be7bbc52c3 (OperationProgress) written 02:13:46.904
+  DurableAck 248e9d40-3e0c-4983-9389-35b53632d57b (OperationProgress) written 02:13:47.433
+Vehicle log, last entries:
+  02:13:45.882 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:13:45.937 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:13:45.941 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-25T02:13:45.8797753+00:00。
+  02:13:45.983 Information WireToGateSessionClient: 收到SessionReadiness：messageId=0d9f4cfc-a653-4de6-ae12-e63d230cd3c3，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+  02:13:45.983 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+  02:13:45.983 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+  02:13:46.177 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+  02:13:46.177 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+  02:13:46.204 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, TimeSpan baseTimeout, CancellationToken cancellationToken) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 828
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ACancellationAuthorizedAfterTheLoadsResultWasRecordedRunsToItsEnd() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 310
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ACancellationAuthorizedAfterTheLoadsResultWasRecordedRunsToItsEnd() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 316
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:37.74]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheSameCheckSentAgainIsAnsweredAgainWithAFreshReading [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheSameCheckSentAgainIsAnsweredAgainWithAFreshReading [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the control server to receive 2 PreDepartureSafetyCheckResult. UI errors: []
+Stuck on: nothing on the wire -- this double owes no ack, its read loops are idle and the vehicle's outbox owes nothing.
+Wait: started 02:14:48.088, timed out 02:14:53.095.
+Thread pool: 7 threads, 0 work items queued.
+Read loops of this double:
+  connection 1: waiting in ReadLineAsync since 02:14:48.088
+Owed by the vehicle's outbox (not acknowledged, not given up):
+Sent by the vehicle, last 10:
+  CapabilitySnapshot adbe1834-062c-46f0-93d9-f13dd581427f read 02:14:47.454 (sentAt 02:14:47.454)
+  SafetyStateSnapshot 0f297edf-472e-4061-a321-eac746647ec0 read 02:14:47.454 (sentAt 02:14:47.454)
+  OnboardAlarmSnapshot 7035d7df-a639-40c3-84ab-cf3111abece8 read 02:14:47.455 (sentAt 02:14:47.454)
+  RecoveryStateReport 5457898b-981f-447a-9fa6-322c076fbd5e read 02:14:47.483 (sentAt 02:14:47.458) -> DurableAck written 02:14:47.483
+  SnapshotAppliedAck 4f3419c1-98f4-462d-9172-7ed2ba16f374 read 02:14:47.524 (sentAt 02:14:47.524)
+  SafetyStateChanged c3533ab2-830c-cd56-8338-94ec368ea98c read 02:14:47.543 (sentAt 02:14:47.504) -> DurableAck written 02:14:47.543
+  SnapshotAppliedAck ee1d8605-e0fb-40a2-90eb-0c06a3eac543 read 02:14:47.700 (sentAt 02:14:47.700)
+  SnapshotAppliedAck 9e77d6a5-1aa4-46e0-ba44-0d9e99161feb read 02:14:47.912 (sentAt 02:14:47.911)
+  PreDepartureSafetyCheckResult afd87bbf-a473-4257-9342-ff3ed13ef5f9 read 02:14:48.015 (sentAt 02:14:47.992) -> DurableAck written 02:14:48.015
+  ProtocolProblem eaeae44b-4434-4602-9310-e2836956f554 read 02:14:48.088 (sentAt 02:14:48.088)
+Sent by this double, last 10:
+  SnapshotAppliedAck 102f7e35-7cf0-4a27-941f-aab89fcfc64e written 02:14:47.455
+  DurableAck 5d282dda-ec4a-43cd-a8a6-7562d058f745 (RecoveryStateReport) written 02:14:47.483
+  SessionReadiness 60c7e748-b497-43d3-b31f-61d79b6c48fa (READY) written 02:14:47.483
+  VehicleBusinessStateSnapshot 7cb13806-1468-4f51-8683-d23a97d09a13 (READY) written 02:14:47.483
+  CurrentStopWorklistSnapshot c9f7e761-73f3-4cd3-8686-7ec96a1f32e3 written 02:14:47.483
+  UpcomingStopPlanSnapshot 469cb3d2-c8a3-47a7-891b-e6314fb2065f written 02:14:47.483
+  DurableAck eea73939-6c10-4e9d-a2cc-1dd98cf2d735 (SafetyStateChanged) written 02:14:47.543
+  PreDepartureSafetyCheck 80022a06-1429-4377-9e8e-e9950803a7ff written 02:14:48.088
+  DurableAck 6a7443e1-026a-4606-a5f0-9e483af5634d (PreDepartureSafetyCheckResult) written 02:14:48.015
+  PreDepartureSafetyCheck 80022a06-1429-4377-9e8e-e9950803a7ff written 02:14:48.088
+Vehicle log, last entries:
+  02:14:47.388 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:14:47.452 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:14:47.454 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-25T02:14:47.3870900+00:00。
+  02:14:47.501 Information WireToGateSessionClient: 收到SessionReadiness：messageId=60c7e748-b497-43d3-b31f-61d79b6c48fa，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+  02:14:47.501 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+  02:14:47.501 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+  02:14:47.991 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+  02:14:47.991 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=none，recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+  02:14:47.996 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+  02:14:48.088 Warning WireToGateBusinessService: 出发前安全检查已过期：check=95a859bf-562f-4d92-b108-3d0cec45263b，询问的安全版本=1，本端已被接受的版本=2。回PREDEPARTURE_CHECK_EXPIRED，不作答。
+
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, TimeSpan baseTimeout, CancellationToken cancellationToken) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 828
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WaitForPreDepartureResultsAsync(Harness harness, Int32 count, CancellationToken token) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PreDepartureReask.cs:line 293
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheSameCheckSentAgainIsAnsweredAgainWithAFreshReading() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PreDepartureReask.cs:line 49
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheSameCheckSentAgainIsAnsweredAgainWithAFreshReading() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PreDepartureReask.cs:line 74
+--- End of stack trace from previous location ---
+[xUnit.net 00:04:46.47]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [8 s]
+  Error Message:
+   Timed out after 7s waiting for: the control server to receive FaultCargoRecoveryResult, past the handoff's operation timeout. UI errors: []
+Stuck on: the vehicle side -- this double read and acknowledged everything the vehicle's outbox still owes (below), and its read loops are idle.
+Wait: started 02:17:54.426, timed out 02:18:01.431.
+Thread pool: 10 threads, 1 work items queued.
+Read loops of this double:
+  connection 1: waiting in ReadLineAsync since 02:17:54.426
+Owed by the vehicle's outbox (not acknowledged, not given up):
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) on file 02:17:54.093
+Sent by the vehicle, last 10:
+  OperationProgress 67b8bc86-fb50-bd57-ab5c-041299ca2dd5 (WAITING_OPERATOR) read 02:17:53.944 (sentAt 02:17:53.925) -> DurableAck written 02:17:53.944
+  OperationProgress f6c4d8c3-455f-f15e-9a34-5917a512f84a (VERIFYING) read 02:17:54.011 (sentAt 02:17:53.984) -> DurableAck written 02:17:54.011
+  OperationProgress abc41c28-2938-c958-9082-1421bc1df4bd (SAFE_FINISH) read 02:17:54.073 (sentAt 02:17:54.054) -> DurableAck written 02:17:54.073
+  OperationResult 44444444-0000-4444-8444-00000000000a (COMPLETED) read 02:17:54.113 (sentAt 02:17:54.093)
+  SafetyStateChanged 42dc5242-0a2d-4a51-ba7b-df33baf817ef read 02:17:54.155 (sentAt 02:17:54.134) -> DurableAck written 02:17:54.155
+  ExceptionRecoverySessionRequested 7fe49d89-6e4b-476a-a3f6-f787ead9e602 read 02:17:54.213 (sentAt 02:17:54.213)
+  RecoveryActionSubmitted 0db65e10-3e6d-4168-a67c-56b67c25d956 read 02:17:54.233 (sentAt 02:17:54.233)
+  OperationProgress 9655cf07-1fe4-8159-bedd-1966b6039e17 (PREPARING) read 02:17:54.310 (sentAt 02:17:54.290) -> DurableAck written 02:17:54.311
+  OperationProgress 9a9785aa-65ed-5057-8579-8965387756ac (UNLOCKING) read 02:17:54.370 (sentAt 02:17:54.353) -> DurableAck written 02:17:54.370
+  OperationProgress 9ca25933-270f-8b5b-9ba6-27e6c7b71025 (WAITING_OPERATOR) read 02:17:54.426 (sentAt 02:17:54.398) -> DurableAck written 02:17:54.426
+Sent by this double, last 10:
+  DurableAck 6c28bfdb-7ceb-4c41-9fe5-b1b2723dda93 (OperationProgress) written 02:17:54.011
+  DurableAck 505a3a0b-9600-4746-a0b0-469339fe422f (OperationProgress) written 02:17:54.073
+  SessionReadiness 92db1bd5-e7a0-476f-919f-c2847f025485 (RECOVERY_REQUIRED) written 02:17:54.127
+  DurableAck d7834052-7ad6-4895-a005-e1fd7c3f30af (SafetyStateChanged) written 02:17:54.155
+  ExceptionRecoverySessionOpened 5faa123d-bbf7-4185-99f4-431050b801e8 written 02:17:54.214
+  RecoveryActionAccepted a19c4129-3b1d-4bd9-a579-d27432cb87b1 written 02:17:54.233
+  FaultCargoRecoveryCommand e9ae10e7-448c-451b-b2bf-7f64c86dec40 written 02:17:54.233
+  DurableAck 97594a90-17e7-4c71-8d5c-cacb4cefc0f5 (OperationProgress) written 02:17:54.311
+  DurableAck 28084bba-0cb1-4e00-b906-dc5f3753775d (OperationProgress) written 02:17:54.370
+  DurableAck f55b5e38-e2ae-42a2-bac4-b86508500ae7 (OperationProgress) written 02:17:54.426
+Vehicle log, last entries:
+  02:17:53.390 Information WireToGateSessionClient: 会话状态发布：source=handshake-start，connected=False，generation=null，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:17:53.440 Information WireToGateSessionClient: 会话状态发布：source=session-accepted，connected=True，generation=1，readiness=Recovering，reasonCodes=[]，safetyStateVersion=1。
+  02:17:53.443 Information WireToGateSessionClient: 握手安全快照：generation=1，safetyStateVersion=1，departureSafe=True，unknownPresent=False，reasonCodes=[]，ioConnected=True，ioObservedAt=2026-10-25T02:17:53.3835138+00:00。
+  02:17:53.487 Information WireToGateSessionClient: 收到SessionReadiness：messageId=2b3948f4-a487-441e-859b-804a51f73db3，generation=1，readiness=READY，reasonCodes=[]，acceptedSafetyStateVersion=1。
+  02:17:53.487 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=1。
+  02:17:53.487 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=2，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+  02:17:53.675 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+  02:17:53.676 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=Ready，reasonCodes=[]，subject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=False。
+  02:17:53.705 Information WireToGateBusinessService: 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+  02:17:54.128 Information WireToGateSessionClient: 收到SessionReadiness：messageId=92db1bd5-e7a0-476f-919f-c2847f025485，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+  02:17:54.128 Information WireToGateSessionClient: 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+  02:17:54.128 Information WireToGateBusinessService: 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/aaaaaaaa-0000-4000-8000-00000000000a/44444444-0000-4444-8444-00000000000a（在途操作），recoveryVector=none，recoverySession=none，faultCargoHandoff=True。
+  02:17:54.128 Information WireToGateSessionClient: 安全状态变化：generation=1，safetyStateVersion=3，departureSafe=True，unknownPresent=False，reasonCodes=[]。
+  02:17:54.187 Information WireToGateSessionClient: 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, TimeSpan baseTimeout, CancellationToken cancellationToken) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 828
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 89
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 120
+--- End of stack trace from previous location ---
+[xUnit.net 00:04:53.56]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AHeldCompensationIsCarriedOutOnceWhenTheOperatorConfirms [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AHeldCompensationIsCarriedOutOnceWhenTheOperatorConfirms [3 s]
+  Error Message:
+   the confirmed compensation has to pulse the slots holding cargo
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AHeldCompensationIsCarriedOutOnceWhenTheOperatorConfirms() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RestartReplay.cs:line 81
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AHeldCompensationIsCarriedOutOnceWhenTheOperatorConfirms() in C:\work\8005-wt\hmi410-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RestartReplay.cs:line 85
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:   441, Skipped:     0, Total:   445, Duration: 6 m 26 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

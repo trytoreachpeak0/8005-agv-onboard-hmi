@@ -31,10 +31,15 @@ public static class WireToGateStationDeadlineText
     public const string CancellingText = "已到期，正在取消本站装货";
 
     /// <summary>The prompt for a load past its deadline whose doors are open or were shut empty.</summary>
-    public static string LoadPrompt(IReadOnlyList<int> slots)
+    /// <param name="giveUp">
+    /// How to give the load up, as the screen offers it now, or <c>null</c> when it offers no way (8005-agv-onboard-hmi#392):
+    /// a cancellation needs every door shut and no basket in (CP-0021 revised <c>REQ-0211</c>).
+    /// </param>
+    public static string LoadPrompt(IReadOnlyList<int> slots, string? giveUp)
     {
         ArgumentNullException.ThrowIfNull(slots);
-        return $"请放入货物并关闭{string.Join("、", slots.Order())}号仓门；不装了请按取消。";
+        string door = $"请放入货物并关闭{string.Join("、", slots.Order())}号仓门";
+        return giveUp is null ? door + "。" : $"{door}；{giveUp}。";
     }
 
     /// <summary>How long the stop is past its deadline, rounded down to the second.</summary>

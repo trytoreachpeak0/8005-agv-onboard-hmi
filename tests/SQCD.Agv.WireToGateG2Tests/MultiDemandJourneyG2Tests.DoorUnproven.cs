@@ -19,6 +19,11 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <remarks>
     /// Red before this ticket: the wait for the handed-over door to lock timed out and the slot was UNKNOWN, so the
     /// cancellation reported <c>UNKNOWN</c> and the demand stayed blocked.
+    /// <para>
+    /// Since protocol 6.0.0 a cancellation is only pressed with every door shut (8005-agv-onboard-hmi#392), and the vector is
+    /// kept as a defence: the operator shuts slot 1 empty and presses, and the door reads open again before the
+    /// authorization -- opened by hand, or a lock that let go -- so the cancellation is still handed an open door.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -27,22 +32,21 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        Harness? started = null;
         await using Harness harness = await StartLatchStopAsync(
             io,
             token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
+                server.BeforeLoadCancellationAuthorization = OpenAgainBeforeTheAuthorization(io, 0, () => started);
             });
+        started = harness;
         Assert.False(harness.ViewModel.HasDoorHold);
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
 
         await harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(

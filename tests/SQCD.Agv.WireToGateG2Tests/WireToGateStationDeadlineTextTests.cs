@@ -6,7 +6,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
 /// 离站期限到期后的文案（批次5-29，onboard-hmi#78）：在途装货仓门未闭或反复空关时覆盖 #75 的通用到期文案，
-/// 提示行显示「请放入货物并关闭 N 号仓门；不装了请按取消」，倒计时那一行显示已过期时长；装货取消挂着时倒计时那一行显示
+/// 提示行显示「请放入货物并关闭 N 号仓门」与屏上此刻给的放弃办法（onboard-hmi#392），倒计时那一行显示已过期时长；装货取消挂着时倒计时那一行显示
 /// 「已到期，正在取消本站装货」。
 /// </summary>
 /// <remarks>
@@ -32,15 +32,17 @@ public sealed class WireToGateStationDeadlineTextTests
     [Fact]
     public void ThePromptNamesTheDoorAndTheWayOut()
     {
-        Assert.Equal("请放入货物并关闭3号仓门；不装了请按取消。", WireToGateStationDeadlineText.LoadPrompt([3]));
+        Assert.Equal(
+            "请放入货物并关闭3号仓门；不装了请先关好仓门，再按「取消装货」。",
+            WireToGateStationDeadlineText.LoadPrompt([3], "不装了请先关好仓门，再按「取消装货」"));
     }
 
     [Fact]
     public void SeveralDoorsAreNamedTogether()
     {
         Assert.Equal(
-            "请放入货物并关闭2、5号仓门；不装了请按取消。",
-            WireToGateStationDeadlineText.LoadPrompt([5, 2]));
+            "请放入货物并关闭2、5号仓门。",
+            WireToGateStationDeadlineText.LoadPrompt([5, 2], null));
     }
 
     [Fact]

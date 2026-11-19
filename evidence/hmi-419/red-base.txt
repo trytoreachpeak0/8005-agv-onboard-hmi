@@ -1,0 +1,26 @@
+# base 2c2845f src + call sites, tests from fe3ccf9
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByASnapshotWhoseAckIsLostEndsWithTheClosedLockReported [11 s]
+   Timed out after 10s waiting for: a safety state above the unacknowledged snapshot that reads the lock closed
+SafetyStateSnapshot v1 departureSafe=True []
+SafetyStateChanged v2 departureSafe=True []
+SafetyStateChanged v3 departureSafe=True []
+SafetyStateSnapshot v4 departureSafe=False [LOCK_NOT_CLOSED]
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: True) [11 s]
+   Timed out after 10s waiting for: a safety state above the mid-bounce snapshot that reads the lock closed
+SafetyStateSnapshot v1 departureSafe=True []
+SafetyStateChanged v2 departureSafe=True []
+SafetyStateChanged v3 departureSafe=True []
+SafetyStateSnapshot v4 departureSafe=False [LOCK_NOT_CLOSED]
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: False) [10 s]
+   Timed out after 10s waiting for: a safety state above the mid-bounce snapshot that reads the lock closed
+SafetyStateSnapshot v1 departureSafe=True []
+SafetyStateChanged v2 departureSafe=True []
+SafetyStateChanged v3 departureSafe=True []
+SafetyStateSnapshot v4 departureSafe=False [LOCK_NOT_CLOSED]
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByAMidSessionSnapshotEndsWithTheClosedLockReported [11 s]
+   Timed out after 10s waiting for: a safety state above the mid-bounce snapshot that reads the lock closed
+SafetyStateSnapshot v1 departureSafe=True []
+SafetyStateChanged v2 departureSafe=True []
+SafetyStateChanged v3 departureSafe=True []
+SafetyStateSnapshot v4 departureSafe=False [LOCK_NOT_CLOSED]
+失败!  - 失败:     4，通过:     1，已跳过:     0，总计:     5，持续时间: 45 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

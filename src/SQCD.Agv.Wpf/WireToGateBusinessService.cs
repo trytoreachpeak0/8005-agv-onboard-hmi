@@ -43,6 +43,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly string _operatorIdEnvironmentVariable;
     private readonly Func<bool> _fatalFaultLatched;
     private readonly TimeSpan _ioSnapshotMaxAge;
+
+    /// <summary>How long a vector gives the operator at each door: named in the log line of one that ran out.</summary>
+    private readonly TimeSpan _vectorOperatorTimeout;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
     private readonly WireToGateRecoveryOptions _recoveryOptions;
@@ -206,6 +209,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             as IObservableVehicleSafetySignalProvider;
         _operatorIdEnvironmentVariable = operatorIdEnvironmentVariable;
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
+        _vectorOperatorTimeout = executorOptions.OperationTimeout;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
         _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance ?? TimeSpan.Zero;
         _recoveryOptions = recoveryOptions ?? new WireToGateRecoveryOptions(
@@ -273,7 +277,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// latched: for <c>UI_COMMAND_FAILED</c> that is the UI thread.
     /// </para>
     /// </remarks>
-    public void RefreshSafetyAfterFatalFaultLatchChange() => _ = Task.Run(RequestSafetyStateChange);
+    public void RefreshSafetyAfterFatalFaultLatchChange()
+    {
+        _ = Task.Run(RequestSafetyStateChange);
+        NoticeUnansweredCancellationUnderLatch();
+    }
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 
@@ -2261,7 +2269,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             if (!ReferenceEquals(_lastSafetyHandshake, handshake))
             {
                 _lastSafetyHandshake = handshake;
-                _lastSafetySignature = _lastSafetySignature is not null && HandshakeSnapshotHolds(handshake, current, evaluation.Safety)
+                _lastSafetySignature = _lastSafetySignature is not null && HandshakeSnapshotHolds(handshake, current, signature)
                     ? signature
                     : null;
             }
@@ -2469,6 +2477,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private async Task AnswerSafetyStateSnapshotRequestAsync(CancellationToken cancellationToken)
     {
         await _safetySendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        WireToGateSentSafetySnapshot? written = null;
         try
         {
             WireToGateSessionSnapshot current = _session.Current;
@@ -2495,7 +2504,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // server did apply, and the next safety state under this same version with other content would be
             // a revision conflict. A skipped version is not a regression.
             _nextSafetyStateVersion = checked(version + 1);
-            if (!await _session.PublishSafetyStateSnapshotAsync(version, cancellationToken).ConfigureAwait(false))
+            // Set just before the snapshot is written (onboard-hmi#419): from then on the server may hold it, whether
+            // its ack comes or not. Still null means nothing was written and the last reported signature still stands.
+            // No pass can run in between: they all wait on the gate this answer holds.
+            written = null;
+            WireToGateSentSafetySnapshot? sent = await _session
+                .PublishSafetyStateSnapshotAsync(version, snapshot => written = snapshot, cancellationToken)
+                .ConfigureAwait(false);
+            if (sent is null)
             {
                 _logger.Write(
                     LogSeverity.Warning,
@@ -2507,6 +2523,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _nextSafetyStateVersion = Math.Max(
                 _nextSafetyStateVersion,
                 checked(_session.Current.SafetyStateVersion + 1));
+            AdoptAnsweredSnapshot(sent);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2519,6 +2536,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 "回应服务端的SafetyStateSnapshot请求失败。",
                 exception);
+            // Written, the snapshot may have been applied without its ack reaching here (onboard-hmi#419): what the server
+            // holds is not known, so the present reading goes out as a change of its own, above the snapshot's version.
+            // Not written -- the failure came before the envelope went out -- the server holds what it held, and the
+            // last reported signature stands: a change now would only move the version on and void the server's
+            // pre-departure check in flight (review of PR #420, L1).
+            if (written is not null)
+            {
+                _lastSafetySignature = null;
+                _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
+            }
         }
         finally
         {
@@ -2527,18 +2554,69 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Takes an acknowledged mid-session snapshot for what the server now holds (onboard-hmi#419). Under
+    /// <see cref="_safetySendGate"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The snapshot read the IO when it was sent, and the server applies it like a <c>SafetyStateChanged</c> at its
+    /// version. The answer holds the safety send gate until the ack, so an IO change in that window is reported only by
+    /// the pass that runs after it, and that pass decides by the last reported signature. Before #419 the signature was
+    /// still the one of the last <c>SafetyStateChanged</c>: a lock bounce 1→0→1 caught by the snapshot at 0 and over by
+    /// the ack read 1 again, the same signature as before the bounce, and nothing was sent. The server kept the
+    /// snapshot's UNLOCKED (agv02, 2026-11-18, two hours in DEPARTURE_SAFETY_NOT_READY).
+    /// </para>
+    /// <para>
+    /// The comparison is the whole signature a <c>SafetyStateChanged</c> is de-duplicated by -- the summary and every
+    /// slot's raw readings -- not the summary alone. The server keeps the snapshot's slot states too, and reads them as
+    /// the slots' readings until a later <c>SafetyStateChanged</c> names the slots (control-server
+    /// <c>SessionSlotReadings</c>, <c>OnboardDispatchFactsReader.HasUnsecuredSlot</c>). A light curtain bounce caught by
+    /// the snapshot leaves the summary as it was and a slot reading EMPTY on the server (review of PR #420, M1), and so
+    /// does a pair of locks trading places. Same signature, the present reading counts as reported; otherwise nothing
+    /// does, and the next pass reports it above the snapshot's version, which voids those slot states on the server.
+    /// </para>
+    /// <para>
+    /// Never a change after every snapshot: the control server asks for a snapshot after each change that touches a slot
+    /// with an overdue alarm, and the two would answer each other forever. A change follows only when the readings moved.
+    /// </para>
+    /// </remarks>
+    private void AdoptAnsweredSnapshot(WireToGateSentSafetySnapshot sent)
+    {
+        SafetyEvaluation present = EvaluateSafety(_ioModule.CurrentSnapshot);
+        string held = SafetySignature(sent.Safety, sent.Readings);
+        if (string.Equals(held, present.Signature, StringComparison.Ordinal))
+        {
+            _lastSafetySignature = present.Signature;
+            return;
+        }
+
+        _lastSafetySignature = null;
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            "会话中途安全快照发出后读数已变，改报此刻读数："
+            + $"快照reasonCodes=[{string.Join(',', sent.Safety.ReasonCodes)}]，此刻reasonCodes=[{string.Join(',', present.Safety.ReasonCodes)}]。");
+        // No pass is asked for here: the ack already asked for one. The session client publishes the accepted version on
+        // the ack (PublishAcceptedVersions), OnSessionStateChanged asks for a pass, and that pass waits on the gate this
+        // answer holds, so it runs after the signature is cleared -- with or without another IO event.
+    }
+
+    /// <summary>
     /// Whether the server holds <paramref name="present"/> for <paramref name="session"/>'s generation through
     /// <paramref name="handshake"/>'s snapshot alone (onboard-hmi#399): that snapshot was acknowledged in this generation,
-    /// nothing has been accepted above it since, and it carried the same summary.
+    /// nothing has been accepted above it since, and it carried the same content -- the summary and every slot's raw
+    /// readings, the signature a <c>SafetyStateChanged</c> is de-duplicated by. The server reads the snapshot's slot
+    /// states as the slots' readings, so a light curtain that moved after the handshake read it is not held there even
+    /// with the summary unchanged (onboard-hmi#419, the handshake side of review M1 of PR #420).
     /// </summary>
     private static bool HandshakeSnapshotHolds(
         WireToGateAcceptedSafety? handshake,
         WireToGateSessionSnapshot session,
-        WireToGateSafetySummaryPayload present) =>
-        handshake is { Safety: { } held }
+        string presentSignature) =>
+        handshake is { Safety: { } held, Readings: { } readings }
         && handshake.SessionGeneration == session.SessionGeneration
         && handshake.SafetyStateVersion == session.SafetyStateVersion
-        && WireToGateSafetyEvaluator.SameSummary(held, present);
+        && string.Equals(SafetySignature(held, readings), presentSignature, StringComparison.Ordinal);
 
     private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
         session.Connected
@@ -4077,13 +4155,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string detailKey)
     {
         WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
-        string guidance = OperationGuidance(
-            command,
-            progress,
-            StationDeadlinePassed(),
-            WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
-                _session.CurrentJourney,
-                Volatile.Read(ref _lastRecoveryState).StagingPickupStationIds ?? [])));
+        WireToGateRecoveryState recovery = Volatile.Read(ref _lastRecoveryState);
+        // In a resume over empty slots the button that gives up is 「不装了」: the load's cancellation is not offered there
+        // (8005-agv-onboard-hmi#410). The executor publishes the wait before this report, so the offer is read for it.
+        // Otherwise the cancellation is named only while its entry is lit over this very load (8005-agv-onboard-hmi#392):
+        // not once the load's result is with the server, nor under a recovery vector that runs it (10-22 agv01,
+        // RESUME_AFTER_REPAIR).
+        bool cancellationEntryOverThisLoad = CanUseStationOperator()
+            && recovery.RecoveryVector is null
+            && string.Equals(
+                CancellableLoadInFlight(recovery)?.SlotOperationAttemptId,
+                command.SlotOperationAttemptId,
+                StringComparison.Ordinal);
+        string? giveUpCaption = CanAbandonResume
+            ? WireToGateResumeAbandonText.Caption
+            : cancellationEntryOverThisLoad
+                ? WireToGateLoadCancellationText.Caption(WireToGateStagingPickupStop.Is(
+                    _session.CurrentJourney,
+                    recovery.StagingPickupStationIds ?? []))
+                : null;
+        string guidance = OperationGuidance(command, progress, StationDeadlinePassed(), giveUpCaption);
         PublishOperation(command, stage, guidance, detailKey, progress.Active);
         if (command.OperationType == OperationType.Load
             && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
@@ -4242,12 +4333,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     // station departure deadline a load's prompt names the way out as well (program#55,
     // onboard-hmi#78): only the operator's cancel ends the load. A door shut over the opposite
     // occupancy is held shut until the operator presses 「重新开门」 (onboard-hmi#385); the text says
-    // which button does what, under the cancel button's own caption.
+    // which button does what, under the cancel button's own caption. It names only a way to give the load
+    // up that the screen offers (onboard-hmi#392): no cancellation when the entry is not lit over this load
+    // -- loadCancellationCaption null -- and, once a basket is in, 「剩下的不装」 instead (CP-0021 revised
+    // REQ-0211); past the deadline with the door open, after shutting it.
     internal static string OperationGuidance(
         WireToGateSlotOperationCommand command,
         WireToGateOperationProgress progress,
         bool deadlinePassed,
-        string loadCancellationCaption = WireToGateLoadCancellationText.MachineCaption) => progress.Phase switch
+        string? loadCancellationCaption = WireToGateLoadCancellationText.MachineCaption) => progress.Phase switch
         {
             "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
             "UNLOCKING" => progress.Cause == WireToGatePromptCause.OppositeReopen
@@ -4263,7 +4357,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "安全状态恢复后请再按「重新开门」。",
             "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
                 ? deadlinePassed
-                    ? WireToGateStationDeadlineText.LoadPrompt(progress.Active)
+                    ? WireToGateStationDeadlineText.LoadPrompt(
+                        progress.Active,
+                        LoadGiveUpWay(progress, loadCancellationCaption) is { } way ? $"不装{way.What}请先关好仓门，再按「{way.Button}」" : null)
                     : $"请在{FormatSlots(progress.Active)}放入货物并关门。"
                 : $"请在{FormatSlots(progress.Active)}取出货物并关门。")
                 + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）"),
@@ -4279,7 +4375,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     internal static string ShutOverOppositeGuidance(
         WireToGateSlotOperationCommand command,
         WireToGateOperationProgress progress,
-        string loadCancellationCaption)
+        string? loadCancellationCaption)
     {
         string slots = FormatSlots(progress.Active);
         bool load = command.OperationType == OperationType.Load;
@@ -4288,13 +4384,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             : load
                 ? $"{slots}关门时没有放入篮子。"
                 : $"{slots}关门时篮子还在仓里。";
-        string next = load
-            ? $"请按「重新开门」继续装；不装了请按「{loadCancellationCaption}」。"
-            : "请按「重新开门」继续卸。";
+        string next = !load
+            ? "请按「重新开门」继续卸。"
+            : LoadGiveUpWay(progress, loadCancellationCaption) is { } way
+                ? $"请按「重新开门」继续装；不装{way.What}请按「{way.Button}」。"
+                : "请按「重新开门」继续装。";
         // No round number: the round counts from the slot's first unlock, so the first of these prompts would already read
         // 「第2次提示」 (review L1 of PR #390). It is a standing instruction while the slot is held, repeated as it is.
         return what + next;
     }
+
+    /// <summary>
+    /// The way to give a load up the prompt names, or <c>null</c> when it names none: with a basket in, 「剩下的不装」 for the
+    /// rest; with none in, the cancellation, when its entry is lit over this load (<paramref name="loadCancellationCaption"/>).
+    /// </summary>
+    private static (string What, string Button)? LoadGiveUpWay(
+        WireToGateOperationProgress progress,
+        string? loadCancellationCaption) =>
+        progress.Completed.Count > 0
+            ? ("剩下的", "剩下的不装")
+            : loadCancellationCaption is { } caption
+                ? ("了", caption)
+                : null;
 
     private static string FormatSlots(IReadOnlyList<int> slots) =>
         string.Join("、", slots.Order()) + "号仓";
@@ -4887,7 +4998,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _vehicleSafetyMaxAge,
             _vehicleSafetyClockSkewTolerance,
             _fatalFaultLatched());
-        string signature = JsonSerializer.Serialize(
+        return new SafetyEvaluation(observedAt, safety, SafetySignature(safety, snapshot));
+    }
+
+    /// <summary>
+    /// The content a safety report is de-duplicated by: the summary and every slot's raw readings. Also what a mid-session
+    /// snapshot is compared by once acknowledged (<see cref="AdoptAnsweredSnapshot"/>, onboard-hmi#419).
+    /// </summary>
+    private static string SafetySignature(WireToGateSafetySummaryPayload safety, IoSnapshot snapshot) =>
+        JsonSerializer.Serialize(
             new
             {
                 safety,
@@ -4903,8 +5022,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ToArray()
             },
             JsonOptions);
-        return new SafetyEvaluation(observedAt, safety, signature);
-    }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 

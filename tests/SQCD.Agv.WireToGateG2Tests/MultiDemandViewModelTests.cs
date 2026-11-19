@@ -1280,7 +1280,7 @@ public sealed class MultiDemandViewModelTests
         string workType,
         string stopRole,
         int expectedBasketCount) =>
-        new(demandId, $"TD-{sublot}", sublot, workType, stopRole, expectedBasketCount);
+        new(demandId, $"TD-{sublot}", sublot, workType, stopRole, expectedBasketCount, Eqp: null);
 
     internal static async Task<MainViewModel> ViewModel(
         OnboardController controller,

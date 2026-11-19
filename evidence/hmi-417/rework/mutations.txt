@@ -1,0 +1,32 @@
+# on b9253ca; filter: ProtocolVector=CV-WORKLIST-EQP-DISPLAY-ONLY|FullyQualifiedName~WorklistScrollingLayoutTests
+
+## R1 (M1) eqp becomes a required inbound member ([property: JsonRequired])
+file: src/SQCD.Agv.Contracts/WireToGateJourneyProtocol.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AVehicleWithAPre700WorklistInItsJournalStartsAndShowsTheNextRevisionsMachineNumber [51 ms]
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R2 (L2) machine number collapsed in the row
+file: src/SQCD.Agv.Wpf/MainWindow.xaml
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen [59 ms]
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMachineNumberSitsBesideTheSublotInTheWorklistRowAndNowhereElse [5 ms]
+失败!  - 失败:     2，通过:     7，已跳过:     0，总计:     9，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R3 (L2) machine number fully transparent
+file: src/SQCD.Agv.Wpf/MainWindow.xaml
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMachineNumberSitsBesideTheSublotInTheWorklistRowAndNowhereElse [5 ms]
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R4 (L1) the review's layout back: sublot Auto, machine number *
+file: src/SQCD.Agv.Wpf/MainWindow.xaml
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen [68 ms]
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R5 (L1) no cap on the machine number
+file: src/SQCD.Agv.Wpf/MainWindow.xaml
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen [60 ms]
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

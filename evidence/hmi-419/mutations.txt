@@ -1,0 +1,31 @@
+## M3 signature kept while the snapshot is out (lost ack)
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByASnapshotWhoseAckIsLostEndsWithTheClosedLockReported [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: True) [11 s]
+失败!  - 失败:     2，通过:     3，已跳过:     0，总计:     5，持续时间: 25 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M4 no pass asked for after a differing snapshot
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 0
+已通过! - 失败:     0，通过:     5，已跳过:     0，总计:     5，持续时间: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M5 no pass asked for after a failed answer
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: True) [11 s]
+失败!  - 失败:     1，通过:     4，已跳过:     0，总计:     5，持续时间: 17 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M1 snapshot always taken for the present reading
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: False) [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByAMidSessionSnapshotEndsWithTheClosedLockReported [10 s]
+失败!  - 失败:     2，通过:     3，已跳过:     0，总计:     5，持续时间: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## M2 a change after every snapshot
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange [1 s]
+失败!  - 失败:     1，通过:     4，已跳过:     0，总计:     5，持续时间: 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+

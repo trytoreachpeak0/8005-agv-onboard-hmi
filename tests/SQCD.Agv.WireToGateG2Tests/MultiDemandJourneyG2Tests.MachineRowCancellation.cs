@@ -141,7 +141,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 验收 1：机台上装货进行中，在装的那一条没有行内「取消」，别的行有按钮但按不动；在装那一篮的取消仍在底部「取消装货」，
-    /// 按得动，确认框照机台原来的说法。
+    /// 按得动，确认框照机台原来的说法。门开着时它在原位按不动、说先关门，空门关好之后才按得动（协议 6.0.0，8005-agv-onboard-hmi#392）。
     /// </summary>
     [Fact]
     public async Task AtAMachinePickupARowWithALoadUnderwayOffersNoRowCancellationAndTheBottomEntryCancelsTheLoad()
@@ -158,7 +158,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A without its row cancellation, B's greyed out",
             token);
 
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+
+        Assert.True(harness.OnUi(() => harness.ViewModel.CanRequestLoadCancellation));
+        Assert.False(harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation));
+        Assert.Equal(WireToGateLoadCancellationText.ShutTheDoorFirst, harness.OnUi(() => harness.ViewModel.LoadCancellationBlockedHintText));
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
         Assert.True(harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation));
+        Assert.False(harness.OnUi(() => harness.ViewModel.WorklistItems.Single(row => row.DemandId == DemandB).CanPressCancellation));
         Assert.Equal(WireToGateLoadCancellationText.MachineCaption, harness.OnUi(() => harness.ViewModel.LoadCancellationCaption));
         LoadCancellationConfirmation press = harness.OnUi(() => harness.ViewModel.BeginLoadCancellation());
         Assert.False(press.AtStagingPickupStop);

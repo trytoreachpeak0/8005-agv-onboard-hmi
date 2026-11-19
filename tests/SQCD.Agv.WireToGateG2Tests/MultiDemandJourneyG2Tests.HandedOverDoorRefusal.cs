@@ -12,9 +12,10 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>构造。</b>1 号仓装好关门，2 号仓开着等操作员，操作员一直不动（<c>OperatorNeverActs</c>）。替身在写出取消授权之前，
-    /// 把 1 号仓的锁反馈设成读不到——授权回来、装货中止、取消向量开始执行时，1 号仓前检必然不过（<c>SLOT_STATE_UNKNOWN</c>），
-    /// 而 2 号仓仍开着。
+    /// <b>构造。</b>装 1、2 号仓：1 号仓开门后空关、锁着等「重新开门」，操作员按取消（协议 6.0.0 起门开着或已装篮时按不出取消，
+    /// 8005-agv-onboard-hmi#392；原先是 1 号仓装好、2 号仓开着时按）。替身在写出取消授权之前让 1 号仓又读成开着、等装货记下这扇门
+    /// （操作员之后一直不动，<c>OperatorNeverActs</c>），再把没开过的 2 号仓的锁反馈设成读不到——授权回来、装货中止、取消向量开始
+    /// 执行时，2 号仓前检必然不过（<c>SLOT_STATE_UNKNOWN</c>），而 1 号仓仍开着。这是 v6 下门存疑的防御形状。
     /// </para>
     /// <para>
     /// <b>修复之前</b>这条拒绝把活动开锁集写成空、报 <c>FAILED</c>：下一次握手告诉服务端「没有门开着」，2 号仓却开着。
@@ -27,44 +28,44 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        Action? reopened = null;
         await using Harness harness = await StartLatchStopAsync(
             io,
             token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1, 2];
-                server.BeforeLoadCancellationAuthorization = () => io.SetUnreadable(0);
+                server.BeforeLoadCancellationAuthorization = () =>
+                {
+                    reopened!();
+                    io.SetUnreadable(1);
+                };
             });
+        reopened = OpenAgainBeforeTheAuthorization(io, 0, () => harness);
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
-        io.CloseDoor(0, cargo: true);
-        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 2, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
 
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(
-            () => io.UnlockCount > 2 || ReceivedPayloads(harness, "LoadCancellationResult").Length > 0,
-            "the cancellation result, or a third pulse",
+            () => io.UnlockCount > 1 || ReceivedPayloads(harness, "LoadCancellationResult").Length > 0,
+            "the cancellation result, or a second pulse",
             token);
         await press;
 
-        Assert.Equal(2, io.UnlockCount);
+        Assert.Equal(1, io.UnlockCount);
         JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
         Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
         JsonElement[] slots = [.. result.GetProperty("slotResults").EnumerateArray()];
-        JsonElement refused = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 1);
+        JsonElement refused = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 2);
         Assert.Equal("NOT_STARTED", refused.GetProperty("outcome").GetString());
         Assert.Equal(["SLOT_STATE_UNKNOWN"], ReasonCodes(refused));
-        JsonElement open = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 2);
+        JsonElement open = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 1);
         Assert.Equal("UNKNOWN", open.GetProperty("outcome").GetString());
         Assert.Equal("UNLOCKED", open.GetProperty("lockState").GetString());
         Assert.Equal(["LOCK_NOT_CLOSED"], ReasonCodes(open));
-        Assert.Equal([2], ReadJournal(harness, token).ActiveUnlockSlots);
+        Assert.Equal([1], ReadJournal(harness, token).ActiveUnlockSlots);
 
         // The harness connects the client itself, so the test reconnects it, as the other reconnect cases do.
         int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
@@ -77,9 +78,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         using JsonDocument report = JsonDocument.Parse(wireLine);
         JsonElement payload = report.RootElement.GetProperty("payload");
         Assert.Equal(
-            [2],
+            [1],
             payload.GetProperty("activeUnlockSlots").EnumerateArray().Select(slot => slot.GetInt32()));
         // Reconnecting opened nothing.
-        Assert.Equal(2, io.UnlockCount);
+        Assert.Equal(1, io.UnlockCount);
     }
 }

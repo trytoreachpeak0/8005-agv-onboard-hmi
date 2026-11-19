@@ -5,23 +5,20 @@ Shared executable protocol contracts for the 8005 AGV full product
 
 ## Current state
 
-The repository currently contains an **unapproved `6.0.0` superseding content
-snapshot** for `ProtocolVersion = 7` and profile `AGV_FULL_PRODUCT`.
-`protocol-v5.0.0` remains immutable, and `protocol-v6.0.0` does not exist yet.
+The repository currently contains an **unapproved `7.0.0` superseding content
+snapshot** for `ProtocolVersion = 8` and profile `AGV_FULL_PRODUCT`.
+`protocol-v6.0.0` remains immutable, and `protocol-v7.0.0` does not exist yet.
 
-This candidate is **breaking** against `protocol-v5.0.0`
+This candidate is **breaking** against `protocol-v6.0.0`
 (`BREAKING_PROTOCOL_VERSION_INCREASE`, `INCOMPATIBLE_EXACT_IDENTITY_REQUIRED`):
-the breaking change is the remaining-baskets skip of CP-0021 (protocol#26).
-The operator may ask to leave the remaining baskets of a multi-basket load
-with the new RELIABLE pair `RemainingBasketsSkipRequested` and
-`RemainingBasketsSkipResult`, and only the control server's authorization lets
-the vehicle end the load short; `OperationResult` gains the outcome
-`COMPLETED_REMAINING_SKIPPED`, `LoadCancellationAuthorization` authorizes
-only an empty scope, and three error codes are appended, one of them refusing
-a load cancellation once a basket is loaded. A `5.0.0`
-implementation rejects all of this, so both implementations move to `6.0.0`
-together. The semantics are stated in [`docs/wire-notes.md`](docs/wire-notes.md).
-See [`compatibility/report.json`](compatibility/report.json) for the full list.
+the breaking change is the machine number on the worklist (protocol#29).
+Every `CurrentStopWorklistSnapshot` item gains `eqp`, required and nullable:
+MES's `EQP` of the demand verbatim, shown on the onboard pickup scan list and
+unload list and never used to decide anything. The item is a closed object, so
+a `6.0.0` implementation rejects the field, and the control server and all
+three vehicles move to `7.0.0` together. The semantics are stated in
+[`docs/wire-notes.md`](docs/wire-notes.md). See
+[`compatibility/report.json`](compatibility/report.json) for the full list.
 
 It is not a formal `ProtocolRelease` until a release approval (the product
 owner, or an AI agent the product owner authorized) covers its exact commit,

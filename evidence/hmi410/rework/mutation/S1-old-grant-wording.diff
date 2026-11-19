@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateNoOnboardExitText.cs b/src/SQCD.Agv.Wpf/WireToGateNoOnboardExitText.cs
+index a0d6746..f77e7c1 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateNoOnboardExitText.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateNoOnboardExitText.cs
+@@ -59,7 +59,7 @@ public static class WireToGateNoOnboardExitText
+         $"这次装货{Outcome(resultKnown)}，已交服务端处理，车上已不能再取消。这次取消没有执行，也没有开任何仓门。"
+         + (compensationOffered ? CompensationSteps : ContactMaintainer);
+ 
+-    private const string CompensationSteps = "仓里没有放货的话：请联系系统维护人员为这辆车开放「补偿清空」，开放后再按「补偿清空」。";
++    private const string CompensationSteps = "仓里没有放货的话：请联系系统维护人员开放这辆车的恢复，开放后按「补偿清空」。";
+ 
+     private static string Outcome(bool resultKnown) => resultKnown ? "没有完成" : "的结果未知";
+ 

@@ -46,11 +46,38 @@ public static class WireToGateLoadCancellationText
         atStagingPickupStop
             ? "请确认车辆已停稳，并由授权人员确认要撤销这一次开仓。\n\n"
                 + detail
-                + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；这一篮这趟不带走。"
+                + "\n\n取消时不会打开任何仓门；这趟不带走这条需求的料。"
                 + "这条需求不会取消，会放回待派，之后还会再派车来装。是否继续？"
             : "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n"
                 + detail
-                + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？";
+                + "\n\n取消时不会打开任何仓门，只核对目标仓位为空、门已锁好。是否继续？";
+
+    /// <summary>
+    /// Beside the entry while a load in flight may not be cancelled, and the answer to a press that gets there anyway
+    /// (CP-0021 revised <c>REQ-0211</c>; 8005-agv-onboard-hmi#392): once loading has started a cancellation is only for a load
+    /// with no basket in, every door shut and locked and every unlock output reset.
+    /// </summary>
+    public const string BasketLoaded = "已经装进花篮，不能取消；要少装请按「剩下的不装」";
+
+    /// <summary>A door is not proven shut and locked; one that will not shut or lock is the exception handling's (<c>REQ-0235</c>).</summary>
+    public const string ShutTheDoorFirst = "请先关好仓门，再取消；门关不上或锁不上时请联系系统维护人员";
+
+    public const string OutputNotReset = "仓门开锁信号还没复位，暂不能取消；持续出现请联系系统维护人员";
+
+    public const string SlotStateUnknown = "仓位状态读不到，不能取消；请联系系统维护人员";
+
+    /// <summary>The sentence for <paramref name="reasonCode"/>, as the vehicle or the control server judged it.</summary>
+    public static string Blocked(string reasonCode) => reasonCode switch
+    {
+        "LOAD_CANCELLATION_BASKET_LOADED" => BasketLoaded,
+        "LOCK_NOT_CLOSED" => ShutTheDoorFirst,
+        "UNLOCK_OUTPUT_NOT_RESET" => OutputNotReset,
+        _ => SlotStateUnknown
+    };
+
+    /// <summary>The reason codes <see cref="Blocked"/> has a sentence of its own for.</summary>
+    public static bool IsBlockedReason(string reasonCode) =>
+        reasonCode is "LOAD_CANCELLATION_BASKET_LOADED" or "LOCK_NOT_CLOSED" or "UNLOCK_OUTPUT_NOT_RESET" or "SLOT_STATE_UNKNOWN";
 
     public static string FailureText(bool atStagingPickupStop) =>
         atStagingPickupStop

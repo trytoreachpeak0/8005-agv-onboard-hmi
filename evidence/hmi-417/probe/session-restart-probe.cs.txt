@@ -1,0 +1,114 @@
+using System.Net;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+// PROBE for 8005-agv-onboard-hmi#417 (protocol#29 review M1). Not committed: the source is kept under evidence/hmi417/.
+public sealed partial class MultiDemandJourneyG2Tests
+{
+    private static void Log(string line) => File.AppendAllText(
+        Path.Combine(Path.GetTempPath(), "claude", "3fad41a8f2e6c7eb", "73a12078-8410-4d82-a0dc-e8b634705768", "scratchpad", "probe.log"),
+        line + Environment.NewLine);
+
+    private static object V6ItemA => new
+    {
+        demandId = DemandA,
+        transportDemandKey = "TD-A",
+        sublot = "SUBLOT-A",
+        workType = "WIRE_TO_GATE",
+        stopRole = "PICKUP",
+        expectedBasketCount = 2
+    };
+
+    [Theory]
+    [InlineData("same-revision-with-eqp", 1L)]
+    [InlineData("higher-revision-with-eqp", 2L)]
+    [InlineData("same-revision-empty-closeout", 1L)]
+    public async Task ZzProbeV6JournalRowThenV7Resend(string label, long secondRevision)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            OperationSessionId = OperationSessionId
+        };
+        bool closeout = label.Contains("empty", StringComparison.Ordinal);
+        ConfigureStop(server, closeout ? [] : ["SUBLOT-A"], closeout ? [] : [V6ItemA]);
+
+        await using (Harness first = await Harness.StartAgainstAsync(server, token, journalPath, NewIoWithCargo()))
+        {
+            await first.WaitUntilAsync(
+                () => first.Session.CurrentJourney.CurrentStopWorklist?.Revision == 1,
+                "the v6-shaped worklist to be applied",
+                token);
+            await first.WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Count(e => e.MessageType == "SnapshotAppliedAck") >= 3,
+                "all three journey snapshots acknowledged (so journaled)",
+                token);
+            Log(
+                $"[{label}] first: rows={first.OnUi(() => first.ViewModel.WorklistItems.Count)} eqp={string.Join("|", first.OnUi(() => first.ViewModel.WorklistItems.Select(r => r.Eqp ?? "<null>")))}");
+        }
+
+        await LogJournalAsync(label, "after first", journalPath, token);
+        int before = server.ReceivedEnvelopes.Count;
+        Log($"[{label}] received before restart={before}, server connections so far={server.ReceivedEnvelopes.Select(e => e.Connection).DefaultIfEmpty().Max()}");
+        server.ReplayJourneySnapshotsWithStableIdentity = false;
+        server.JourneySnapshotPayloads = new Dictionary<string, object>
+        {
+            ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(2, loadingPhase: null),
+            ["CurrentStopWorklistSnapshot"] = closeout
+                ? Payloads.Worklist(secondRevision)
+                : Payloads.Worklist(secondRevision, Payloads.Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2, eqp: "N1-03")),
+            ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+        };
+
+        Harness? second = null;
+        Exception? startFailure = null;
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            startFailure = await Record.ExceptionAsync(async () =>
+                second = await Harness.StartAgainstAsync(server, token, journalPath, NewIoWithCargo()));
+            string first = startFailure?.Message.Split(Environment.NewLine[^1])[0] ?? "Ready";
+            Log($"[{label}] second start attempt {attempt}: {first}");
+            if (first != "HANDSHAKE_SEQUENCE_INVALID")
+            {
+                break;
+            }
+        }
+        await Task.Delay(1500, token);
+        string[] problems =
+        [
+            .. server.ReceivedEnvelopes
+                .Where(envelope => envelope.MessageType == "ProtocolProblem")
+                .Select(envelope => envelope.WireLine)
+        ];
+        Log(
+            $"[{label}] second start: {(startFailure is null ? "Ready" : startFailure.GetType().Name + ": " + startFailure.Message.Split('\n')[0])}");
+        Log($"[{label}] ProtocolProblem lines after restart: {problems.Length}");
+        foreach (string line in problems)
+        {
+            Log($"[{label}]   {line}");
+        }
+
+        if (second is not null)
+        {
+            Log(
+                $"[{label}] second: revision={second.Session.CurrentJourney.CurrentStopWorklist?.Revision} rows={second.OnUi(() => second.ViewModel.WorklistItems.Count)} eqp={string.Join("|", second.OnUi(() => second.ViewModel.WorklistItems.Select(r => r.Eqp ?? "<null>")))} readiness={second.Session.Current.Readiness}");
+            await second.DisposeAsync();
+        }
+
+        await LogJournalAsync(label, "after second", journalPath, token);
+        Log($"[{label}] received total={server.ReceivedEnvelopes.Count}; types after restart: {string.Join(",", server.ReceivedEnvelopes.Skip(before).Select(e => e.Connection + ":" + e.MessageType))}");
+    }
+
+    private static async Task LogJournalAsync(string label, string when, string journalPath, CancellationToken token)
+    {
+        await using SQCD.Agv.Infrastructure.SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(token);
+        foreach (SQCD.Agv.Core.WireToGateAppliedJourneySnapshot row in await journal.ReadAppliedJourneySnapshotsAsync(token))
+        {
+            Log($"[{label}] journal {when}: {row.MessageType} rev={row.Revision} payload={row.PayloadJson}");
+        }
+    }
+}

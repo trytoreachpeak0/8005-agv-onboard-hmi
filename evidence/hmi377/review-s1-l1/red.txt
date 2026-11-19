@@ -1,0 +1,26 @@
+# commit 6d94ebe (review S-1 / L-1 tests only; product code as at 39df2c6)
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter WireToGateSublotRejectionTextTests|SublotRejectedAfterEntryG2Tests
+  失败 SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "STATION_MISMATCH", canEnterAgain: False, expectedReason: "车此刻不在本站上（可能被移开过），不能录入", expectedNextStep: "请把车开回本站、停稳；等待服务端新的录入请求，持续出现请联系系统维护人员。") [2 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                     ↓ (pos 10)
+Expected: "请把车开回本站、停稳；等待服务端新的录入请求，持续出现请联系系统维护人员。"
+Actual:   "请把车开回本站、停稳后再扫码；车确实在本站仍被拒收，请联系系统维护人员。"
+                     ↑ (pos 10)
+  堆栈跟踪:
+     at SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(String reasonCode, Boolean canEnterAgain, String expectedReason, String expectedNextStep) in C:\work\8005-wt\hmi377-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateSublotRejectionTextTests.cs:line 107
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  失败 SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(reasonCode: "VEHICLE_NOT_READY", canEnterAgain: False, expectedReason: "车还没就绪（仍在移动或位置未确认），暂时不能录入", expectedNextStep: "请等车在本站停稳、就绪；等待服务端新的录入请求，持续出现请联系系统维护人员。") [< 1 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                      ↓ (pos 11)
+Expected: "请等车在本站停稳、就绪；等待服务端新的录入请求，持续出现请联系系统维护人员。"
+Actual:   "请等车在本站停稳、就绪后再扫码；持续出现请联系系统维护人员。"
+                      ↑ (pos 11)
+  堆栈跟踪:
+     at SQCD.Agv.WireToGateG2Tests.WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(String reasonCode, Boolean canEnterAgain, String expectedReason, String expectedNextStep) in C:\work\8005-wt\hmi377-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateSublotRejectionTextTests.cs:line 107
+   at InvokeStub_WireToGateSublotRejectionTextTests.AVehicleOffTheStopOrNotReadyTellsTheOperatorToSeeToTheVehicleRatherThanRescan(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+失败!  - 失败:     2，通过:    27，已跳过:     0，总计:    29，持续时间: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1

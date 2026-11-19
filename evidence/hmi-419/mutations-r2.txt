@@ -1,0 +1,7 @@
+## X1 the signature leaves out the unlock output readback
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+compiled: SQCD.Agv.Wpf.dll written 21:37:59, mutation written 21:37:55
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.UnlockOutputsTradingPlacesUnderASnapshotAreFollowedByAChange [11 s]
+失败!  - 失败:     1，通过:     8，已跳过:     0，总计:     9，持续时间: 26 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+

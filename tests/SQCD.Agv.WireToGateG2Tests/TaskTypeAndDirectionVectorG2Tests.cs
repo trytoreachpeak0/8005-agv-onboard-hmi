@@ -313,7 +313,7 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
                 "SUBLOT-001",
                 workType,
                 stopRole,
-                1)],
+                1, Eqp: null)],
             new string('a', 64)),
         null,
         DateTimeOffset.UnixEpoch);

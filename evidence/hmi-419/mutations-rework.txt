@@ -1,0 +1,57 @@
+## R1 compare the summary only (the head before review)
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALightCurtainBounceCaughtByASnapshotIsFollowedByAChange [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.TwoLocksTradingPlacesUnderASnapshotAreFollowedByAChange [11 s]
+失败!  - 失败:     2，通过:     6，已跳过:     0，总计:     8，持续时间: 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R2 a failed answer clears the signature whether written or not
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotAnswerThatFailsBeforeWritingLeavesTheReportedStateAlone [1 s]
+失败!  - 失败:     1，通过:     7，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R3 a failed answer never clears the signature
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByASnapshotWhoseAckIsLostEndsWithTheClosedLockReported [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: True) [11 s]
+失败!  - 失败:     2，通过:     6，已跳过:     0，总计:     8，持续时间: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R4 the client never calls back before writing
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByASnapshotWhoseAckIsLostEndsWithTheClosedLockReported [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: True) [11 s]
+失败!  - 失败:     2，通过:     6，已跳过:     0，总计:     8，持续时间: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R5 an answered snapshot always counts as the present reading
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceNobodyAnnouncesIsStillReportedAfterTheSnapshot(ackLost: False) [10 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALockBounceCaughtByAMidSessionSnapshotEndsWithTheClosedLockReported [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALightCurtainBounceCaughtByASnapshotIsFollowedByAChange [11 s]
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.TwoLocksTradingPlacesUnderASnapshotAreFollowedByAChange [11 s]
+失败!  - 失败:     4，通过:     4，已跳过:     0，总计:     8，持续时间: 53 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R6 a change after every answered snapshot
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+exit: 0
+已通过! - 失败:     0，通过:     8，已跳过:     0，总计:     8，持续时间: 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R6 reruns (the first R6 run above passed all 8, which neither R6 nor the R5 left before it can do: the run tested the unmutated code -- an incremental build that did not pick the mutation up; not investigated further)
+## R6 run 1
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange [1 s]
+失败!  - 失败:     1，通过:     7，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R6 run 2
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange [1 s]
+失败!  - 失败:     1，通过:     7，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## R6 run 3
+exit: 1
+失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASnapshotThatCarriesThePresentReadingIsNotFollowedByAChange [1 s]
+失败!  - 失败:     1，通过:     7，已跳过:     0，总计:     8，持续时间: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+

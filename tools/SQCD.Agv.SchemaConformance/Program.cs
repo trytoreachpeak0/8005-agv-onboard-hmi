@@ -12,7 +12,6 @@ using SQCD.Agv.Contracts;
 // to, read straight from the vendored copy under vendor/8005-agv-protocol (8005-agv-onboard-hmi#74).
 //
 //   SQCD.Agv.SchemaConformance --lines <ndjson> --report <directory> --vendor <directory> [--known <json>]
-//   SQCD.Agv.SchemaConformance --self-test
 //
 // Each input line is {"messageType","origin","site","line"}: origin is product, synthetic-peer
 // (FakeControlServer) or test, site names the sending method. Writes schema-coverage.json always, and
@@ -28,12 +27,6 @@ using SQCD.Agv.Contracts;
 
 const int ErrorsPerLine = 10;
 const string Validator = "Corvus.Json.Validator 4.6.7";
-
-// The known-violations matching rules checked on their own, with no schema compiled (8005-agv-onboard-hmi#388).
-if (args is ["--self-test"])
-{
-    return KnownViolationSelfTest.Run();
-}
 
 Dictionary<string, string> arguments = ParseArguments(args);
 string linesPath = Required(arguments, "lines");
@@ -179,10 +172,15 @@ Violation[] ordered = violations.Values
 HashSet<KnownViolation> usedEntries = [];
 foreach (Violation violation in ordered)
 {
-    if (KnownViolation.Cover(known, violation.MessageType, violation.Origin, violation.Errors) is { } onFile)
+    KnownViolation?[] matches = violation.Errors
+        .Select(error => known.FirstOrDefault(entry => entry.Matches(violation.MessageType, violation.Origin, error)))
+        .ToArray();
+    // One error left unregistered keeps the whole line failing: a new defect riding on a known one
+    // must not hide behind it.
+    if (matches.All(match => match is not null))
     {
-        violation.OnFile = onFile;
-        usedEntries.UnionWith(onFile);
+        violation.OnFile = matches.Distinct().Cast<KnownViolation>().ToArray();
+        usedEntries.UnionWith(violation.OnFile);
     }
 }
 int LinesWhere(Func<Violation, bool> predicate) => ordered.Where(predicate).Sum(violation => violation.Count);
@@ -467,99 +465,23 @@ internal sealed record Violation(string MessageType, string Origin, string Site,
 // purpose to see the vehicle refuse it (Deliberate, naming that test as Class.Method) -- which only ever
 // matches the synthetic peer, never the vehicle's own lines. Every error of a line must match an entry,
 // so a new defect riding on the same line still fails. Array indices in Pointer are written '*'.
-//
-// Actual "*" is the one wildcard, and only on an Issue entry (8005-agv-onboard-hmi#388): a filed defect of the synthetic
-// peer whose actual value changes from line to line -- an id inside it -- is matched by messageType, pointer and keyword
-// alone, still exactly, and only on the synthetic peer's lines, never the vehicle's own. It is for a debt with a ticket
-// that removes it, not a way to file a whole message as known.
 internal sealed record KnownViolation(string MessageType, string Pointer, string Keyword, string Actual, string? Issue, string? Deliberate)
 {
-    public const string AnyActual = "*";
-
     [JsonIgnore]
     public bool IsDeliberate => !string.IsNullOrWhiteSpace(Deliberate);
-
-    [JsonIgnore]
-    public bool IsWildcard => Actual == AnyActual;
 
     [JsonIgnore]
     public bool IsWellFormed =>
         !string.IsNullOrWhiteSpace(MessageType) && !string.IsNullOrWhiteSpace(Pointer) &&
         !string.IsNullOrWhiteSpace(Keyword) && Actual is not null &&
-        !(IsWildcard && IsDeliberate) &&
         (IsDeliberate
             ? string.IsNullOrWhiteSpace(Issue)
             : Issue is { } issue && issue.StartsWith("https://github.com/trytoreachpeak0/", StringComparison.Ordinal) && issue.Contains("/issues/", StringComparison.Ordinal));
 
     public bool Matches(string messageType, string origin, Error error) =>
         messageType == MessageType &&
-        (!IsDeliberate && !IsWildcard || origin == "synthetic-peer") &&
+        (!IsDeliberate || origin == "synthetic-peer") &&
         error.Keyword == Keyword &&
-        (IsWildcard || error.Actual == Actual) &&
+        error.Actual == Actual &&
         string.Join('/', error.Pointer.Split('/').Select(segment => segment.Length > 0 && segment.All(char.IsAsciiDigit) ? "*" : segment)) == Pointer;
-
-    /// <summary>
-    /// The entries that put a line's errors on file, or null: one error left unregistered keeps the whole line failing,
-    /// so a new defect riding on a known one does not hide behind it.
-    /// </summary>
-    public static KnownViolation[]? Cover(KnownViolation[] known, string messageType, string origin, IEnumerable<Error> errors)
-    {
-        KnownViolation?[] matches = errors
-            .Select(error => known.FirstOrDefault(entry => entry.Matches(messageType, origin, error)))
-            .ToArray();
-        return matches.Length > 0 && matches.All(match => match is not null)
-            ? matches.Distinct().Cast<KnownViolation>().ToArray()
-            : null;
-    }
-}
-
-// Checks the rules above on made-up errors, exit 0 when every case holds (8005-agv-onboard-hmi#388). The G2 project runs it.
-internal static class KnownViolationSelfTest
-{
-    public static int Run()
-    {
-        const string Issue = "https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/392";
-        const string Type = "LoadCancellationAuthorization";
-        KnownViolation[] filed =
-        [
-            new(Type, "#/payload/decision", "const", "\"AUTHORIZED\"", Issue, null),
-            new(Type, "#/payload/slots", "maxItems", KnownViolation.AnyActual, Issue, null),
-            new(Type, "#/payload", "else", KnownViolation.AnyActual, Issue, null),
-        ];
-        Error[] sameThree =
-        [
-            new("#/payload/decision", "const", "", "\"AUTHORIZED\""),
-            new("#/payload/slots", "maxItems", "", "[1,2,3]"),
-            new("#/payload", "else", "", "{\"cancellationId\":\"5cf02b51-2bd3-825b-87de-4c79de081e12\"}"),
-        ];
-        (string Name, bool Holds)[] cases =
-        [
-            ("a wildcard covers the same paths whatever the actual values",
-                KnownViolation.Cover(filed, Type, "synthetic-peer", sameThree) is { Length: 3 }),
-            ("an error at another schema path is not swallowed",
-                KnownViolation.Cover(filed, Type, "synthetic-peer", [.. sameThree, new("#/payload/problem", "type", "", "null")]) is null),
-            ("the same path under another keyword is not swallowed",
-                KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/slots", "minItems", "", "[]")]) is null),
-            ("the same keyword at another path is not swallowed",
-                KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/cancellationId", "maxItems", "", "[]")]) is null
-                && KnownViolation.Cover(filed, Type, "synthetic-peer", [new("#/payload/problem", "else", "", "null")]) is null),
-            ("another message type is not swallowed",
-                KnownViolation.Cover(filed, "OperationResult", "synthetic-peer", sameThree) is null),
-            ("a wildcard never covers the vehicle's own lines",
-                KnownViolation.Cover(filed, Type, "product", sameThree) is null),
-            ("a wildcard without an issue link is refused",
-                !new KnownViolation(Type, "#/payload", "else", KnownViolation.AnyActual, null, "SomeTests.SomeTest").IsWellFormed
-                && !new KnownViolation(Type, "#/payload", "else", KnownViolation.AnyActual, null, null).IsWellFormed),
-            ("a wildcard with an issue link is accepted", filed.All(entry => entry.IsWellFormed)),
-            ("an exact entry still needs the exact actual",
-                KnownViolation.Cover([new(Type, "#/payload/slots", "maxItems", "[1]", Issue, null)], Type, "synthetic-peer",
-                    [new("#/payload/slots", "maxItems", "", "[1,2]")]) is null),
-        ];
-        foreach ((string name, bool holds) in cases)
-        {
-            Console.WriteLine($"{(holds ? "PASS" : "FAIL")} {name}");
-        }
-
-        return cases.All(item => item.Holds) ? 0 : 1;
-    }
 }

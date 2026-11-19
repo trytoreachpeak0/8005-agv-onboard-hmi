@@ -51,7 +51,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 server =>
                 {
                     server.RespondToLoadCancellationRequests = true;
-                    server.LoadCancellationAuthorizedSlots = [1];
                     server.LoadCancellationAuthorizationsToDrop = 1;
                     server.ReplayJourneySnapshotsWithStableIdentity = true;
                 },
@@ -59,20 +58,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 before = beforeRestart.Server;
                 await beforeRestart.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-                await Harness.WaitUntilAsync(
-                    () => beforeRestart.Business.CanRequestLoadCancellation,
-                    "the in-flight load cancellation entry to be offered",
-                    token);
+                await ShutEmptyForCancellationAsync(beforeRestart, token);
                 Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
                     "装载结果未知，现场申请取消。", token));
                 Assert.NotNull(beforeRestart.ReadRecoveryState(token).PendingLoadCancellation);
             }
 
-            // 重启之后在岗的是另一个人；门在停机期间被关上，仓里有货。有货，取消的授权一到就得开锁清空：空仓会被直接判为
-            // 已清空、不发脉冲，那样「重启后不经确认就开门」在这条用例里根本看不出来（onboard-hmi#239）。
+            // 重启之后在岗的是另一个人；门在停机期间一直空关锁着。原先这里放了货，好让「重启后不经确认就开门」看得出来
+            // （onboard-hmi#239）；协议 6.0.0 起取消不开任何门（8005-agv-onboard-hmi#392），那一项改由下面的 UnlockCount 为 0 守。
             Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-002");
             FakeIoModuleClient restartedIo = new() { LockerWaitTimesOut = true };
-            restartedIo.CloseDoor(0, cargo: true);
+            restartedIo.CloseDoor(0, cargo: false);
             await using Harness afterRestart = await Harness.StartAsync(
                 restartedIo,
                 token,
@@ -80,13 +76,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 {
                     server.ReplayJourneySnapshotsWithStableIdentity = true;
                     server.RespondToLoadCancellationRequests = true;
-                    server.LoadCancellationAuthorizedSlots = [1];
                     server.AdoptDurableRecoveryMemoryFrom(before);
                 },
                 journalPath: journalPath,
                 baselineRevision: 2);
 
-            // onboard-hmi#239：重启之后不再自动重发。授权一到车就开锁清空，而首次按下可能已是很久以前、车旁未必有人，
+            // onboard-hmi#239：重启之后不再自动重发。首次按下可能已是很久以前、车旁未必有人，
             // 所以车辆只在屏上说明取消没有答复，等人确认现场后再按。
             // 两种结局都结束这次等待：车辆决定不自动重发，或者已经重发出去。
             await Harness.WaitUntilAsync(
@@ -105,12 +100,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 "the in-flight load cancellation entry to be offered after the restart",
                 token);
 
-            // 重启之后在岗的人确认现场后再按：发出去的仍是首次按下的内容。按下的返回值不看——仓里的货没人取，清空不会
-            // 完成；要看的是请求发出、仓门真的开了。
-            _ = await afterRestart.Business.RequestLoadCancellationAsync(
-                "重启后确认现场，再按一次取消。", token);
+            // 重启之后在岗的人确认现场后再按：发出去的仍是首次按下的内容，授权之后不开门、报 ALL_EMPTY。
+            Assert.True(await afterRestart.Business.RequestLoadCancellationAsync(
+                "重启后确认现场，再按一次取消。", token), afterRestart.DescribeEvents());
             await afterRestart.WaitForInboundAsync("LoadCancellationResult", token);
-            Assert.True(afterRestart.Io.UnlockCount > 0, "the confirmed cancellation has to open the slot holding cargo");
+            Assert.Equal(
+                "ALL_EMPTY",
+                afterRestart.SingleResult("LoadCancellationResult").GetProperty("overallOutcome").GetString());
+            Assert.Equal(0, afterRestart.Io.UnlockCount);
 
             Assert.Empty(before.RecoveryRequestConflicts);
             Assert.Empty(afterRestart.Server.RecoveryRequestConflicts);
@@ -163,14 +160,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 server =>
                 {
                     server.RespondToLoadCancellationRequests = true;
-                    server.LoadCancellationAuthorizedSlots = [1];
                     server.ReplayJourneySnapshotsWithStableIdentity = true;
                 });
             await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-            await Harness.WaitUntilAsync(
-                () => harness.Business.CanRequestLoadCancellation,
-                "the in-flight load cancellation entry to be offered",
-                token);
+            await ShutEmptyForCancellationAsync(harness, token);
 
             await harness.Client.DisconnectAsync();
             await Harness.WaitUntilAsync(
@@ -191,17 +184,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 "the load cancellation entry to be offered once the session is ready",
                 token);
 
-            // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
-            // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
-            // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
-            harness.Io.HoldWaitsUntilShut(0);
-            Task<bool> cancellation = harness.Business.RequestLoadCancellationAsync("会话就绪之后再按一次。", token);
-            await Harness.WaitUntilAsync(
-                () => harness.ReadRecoveryState(token).RecoveryVector is not null,
-                "the authorized cancellation to be journaled as a vector",
-                token);
-            harness.Io.CloseDoor(0, cargo: false);
-            Assert.True(await cancellation, harness.DescribeEvents());
+            Assert.True(
+                await harness.Business.RequestLoadCancellationAsync("会话就绪之后再按一次。", token),
+                harness.DescribeEvents());
 
             Assert.Empty(harness.Server.RecoveryRequestConflicts);
             string request = Assert.Single(

@@ -117,7 +117,7 @@ public sealed class DoorOpenPromptLayoutTests
                 1,
                 null,
                 Now + TimeSpan.FromMinutes(5),
-                [new WireToGateWorklistItem("11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "DROP", 1)],
+                [new WireToGateWorklistItem("11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "DROP", 1, Eqp: null)],
                 new string('a', 64)),
             null,
             Now));

@@ -474,6 +474,20 @@
                                Text="{Binding LoadCancellationSelectionHintText}"
                                Visibility="{Binding HasLoadCancellationSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <!--
+                        装货开始后只有一篮未装、门都锁好、开锁输出复位时才能取消（CP-0021 修订后的 REQ-0211，8005-agv-onboard-hmi#392）。
+                        不能时入口在原位禁用，这里说为什么、该按什么。UIA 按 AutomationId LoadCancellationBlocked 找它，ItemStatus 给原因码。
+                    -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               MaxWidth="320"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="LoadCancellationBlocked"
+                               AutomationProperties.ItemStatus="{Binding LoadCancellationBlockedReasonCode}"
+                               Text="{Binding LoadCancellationBlockedHintText}"
+                               Visibility="{Binding HasLoadCancellationBlockedHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
                         补偿自己的目标子批，只在它与「目标：子批 X」那一行不是同一条时出现（onboard-hmi#209 审查 S3）：车上有几条需求、
                         或后装的那条已经卸掉时，补偿仍针对最近一次完成的装货，而交接与强制恢复针对的是车上的货。
                     -->
@@ -730,6 +744,15 @@
                             Visibility="{Binding CanReopenOperation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnReopenOperationClick"
                             Content="重新开门" />
+                    <!-- 续行装货时仓里没货的出路（8005-agv-onboard-hmi#410）：续行按现读的空仓收尾，不再开门。 -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="AbandonResume"
+                            IsEnabled="{Binding CanAbandonResume}"
+                            Visibility="{Binding CanAbandonResume, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnAbandonResumeClick"
+                            Content="不装了" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -965,6 +988,10 @@
                             还没装的行右边一个「取消」，按下确认后彻底取消这一条；那几行的侧都是「待分配」，字不显示、ItemStatus 照旧。
                             1024×768 上一次露出约 3 行（8005-agv-onboard-hmi#387 放大字号后，原来约 4 行），其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
                             每行第一个 TextBlock 只放子批：真装置 L2 按「行里第一个 TextBlock 是子批」读清单（L2MultiStopJourney）。
+                            子批右边是机台号（MES 的 EQP，协议 7.0.0，8005-agv-onboard-hmi#417）：取货、卸货停靠都在这张表上，原样显示，
+                            服务端没有时为空。只显示，别处不放；它排在子批之后，所以不改变上面那条读法。子批那一格是 *，先拿宽度、
+                            放不下照旧省略号；机台号按内容宽、最多 72（现场 EQP 形如 2ZPB101，约 63），长了自己省略，
+                            所以子批至少留下这一格减 80 的宽度，现场子批（Q26095466-13）整串放得下。
                         -->
                         <ListBox Margin="0,2,0,8"
                                  Background="Transparent"
@@ -989,11 +1016,28 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="18"
-                                                           FontWeight="Bold"
-                                                           Text="{Binding Sublot}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           ToolTip="{Binding Sublot}" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               FontSize="18"
+                                                               FontWeight="Bold"
+                                                               Text="{Binding Sublot}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Sublot}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               MaxWidth="72"
+                                                               Margin="8,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="15"
+                                                               Foreground="{StaticResource MutedBrush}"
+                                                               AutomationProperties.AutomationId="WorklistItemEqp"
+                                                               Text="{Binding Eqp}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Eqp}" />
+                                                </Grid>
                                                 <TextBlock FontSize="14"
                                                            Foreground="{StaticResource MutedBrush}"
                                                            TextTrimming="CharacterEllipsis"

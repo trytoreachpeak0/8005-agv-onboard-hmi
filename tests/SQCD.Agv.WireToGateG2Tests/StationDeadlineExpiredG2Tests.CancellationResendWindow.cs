@@ -21,7 +21,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <para>
     /// Until the review the resend ran through the same request path as the press and recorded a press itself, so a
     /// link that kept dropping carried the press forward indefinitely (the reviewer's probe: 306 s after the last
-    /// press, resent, authorized, one unlock). The slot holds cargo, so an authorization would have to pulse it.
+    /// press, resent, authorized, one unlock). The slot holds cargo, so an authorization would have had to pulse it.
+    /// </para>
+    /// <para>
+    /// Since protocol 6.0.0 an authorization opens no door (8005-agv-onboard-hmi#392), and the first press is taken over the
+    /// door shut empty, the one shape a load in flight may be cancelled in. The window is still the vehicle's: an authorization
+    /// it earns by itself ends the load with nobody asked.
     /// </para>
     /// </remarks>
     [Fact]
@@ -38,7 +43,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.LoadCancellationAuthorizationsToDrop = 1;
                 server.ReplayJourneySnapshotsWithStableIdentity = true;
             },
@@ -46,10 +50,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         {
             before = beforeRestart.Server;
             await beforeRestart.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-            await Harness.WaitUntilAsync(
-                () => beforeRestart.Business.CanRequestLoadCancellation,
-                "the in-flight load cancellation entry to be offered",
-                token);
+            await ShutEmptyForCancellationAsync(beforeRestart, token);
             Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync("现场不装了。", token));
             Assert.NotNull(beforeRestart.ReadRecoveryState(token).PendingLoadCancellation);
         }
@@ -66,7 +67,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.ReplayJourneySnapshotsWithStableIdentity = true;
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 // No answer reaches the vehicle in this test: whatever it asks, it is never authorized, so a resend
                 // shows only as a request and nothing here can open a door.
                 server.LoadCancellationAuthorizationsToDrop = 100;

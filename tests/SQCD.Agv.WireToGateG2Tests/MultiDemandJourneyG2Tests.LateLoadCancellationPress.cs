@@ -110,7 +110,6 @@ public sealed partial class MultiDemandJourneyG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
                 server.LoadCancellationAuthorizationHold = authorizationHeld.Task;
             });
         using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
@@ -137,12 +136,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
 
+        // B's empty door is shut first: a cancellation is pressed only with every door shut (8005-agv-onboard-hmi#392).
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over B",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
 
         _ = harness.ViewModel.RequestLoadCancellationAsync(token);
         await harness.WaitUntilAsync(
@@ -397,10 +394,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over A",
-            token);
+        // The empty door is shut first: a cancellation is pressed only with every door shut (8005-agv-onboard-hmi#392).
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 4, token);
         SelectWorklistItem(harness, DemandB);
 
         // 文案与按键出自同一次按下（审查 S1）。
@@ -484,8 +479,12 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 在途取消已经授权、在等操作员清空（向量在日志里）：选中另一行时，确认框复述的仍是向量那条需求。
+    /// 在途取消已经授权、结果还没被确认（向量在日志里）：选中另一行时，确认框复述的仍是向量那条需求。
     /// </summary>
+    /// <remarks>
+    /// 原先向量留在日志里是因为它在等操作员清空开着的门；协议 6.0.0 起取消不开门、门都关好才按得出（8005-agv-onboard-hmi#392），
+    /// 向量一授权就以 <c>ALL_EMPTY</c> 结束，所以改由替身扣下结果的确认，让它留在日志里。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
@@ -499,7 +498,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
-                server.LoadCancellationAuthorizedSlots = [1];
+                server.LoadCancellationResultAcksToDrop = 1;
             });
         await harness.WaitUntilAsync(
             () => harness.ViewModel.WorklistItems.Count == 2,
@@ -507,14 +506,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry over A",
-            token);
+        await ShutEmptyUntilCancellationCanBePressedAsync(harness, io, 0, token);
         _ = harness.ViewModel.RequestLoadCancellationAsync(token);
         await harness.WaitUntilAsync(
-            () => harness.Business.CachedRecoveryStateForTest.RecoveryVector is { } vector && vector.DemandId == DemandA,
-            "A's cancellation to be on file, waiting for slot 1 to be emptied",
+            () => harness.Business.CachedRecoveryStateForTest.RecoveryVector is { } vector && vector.DemandId == DemandA
+                && ReceivedPayloads(harness, "LoadCancellationResult").Length > 0,
+            "A's cancellation to be on file, its result unacknowledged",
             token);
 
         SelectWorklistItem(harness, DemandB);

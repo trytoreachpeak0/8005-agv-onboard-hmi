@@ -1,4 +1,5 @@
 using SQCD.Agv.Contracts;
+using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Infrastructure;
 
@@ -34,11 +35,17 @@ public enum WireToGateAcceptedSafetySource
 /// </summary>
 /// <param name="Safety">The summary sent under <paramref name="SafetyStateVersion"/>; null when it is not known.</param>
 /// <param name="SessionGeneration">The session generation the version was accepted in, when known.</param>
+/// <param name="Readings">
+/// The IO readings a snapshot's slot states were built from -- a handshake's or a requested one -- and null for every
+/// other source, which carries no slot states (onboard-hmi#419). The business service compares a handshake snapshot with
+/// the present reading by them as well as by the summary.
+/// </param>
 public sealed record WireToGateAcceptedSafety(
     long SafetyStateVersion,
     long? SessionGeneration,
     WireToGateSafetySummaryPayload? Safety,
-    WireToGateAcceptedSafetySource Source);
+    WireToGateAcceptedSafetySource Source,
+    IoSnapshot? Readings = null);
 
 /// <summary>
 /// Holds the latest <see cref="WireToGateAcceptedSafety"/> for the session client (onboard-hmi#314). Lock-free: every

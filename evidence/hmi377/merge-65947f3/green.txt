@@ -1,0 +1,20 @@
+# HEAD ab2c0c7 (merge of origin/w2g/fp-v2-impl 65947f31), implementation in place
+
+# dotnet format SQCD_8005AGV.sln --verify-no-changes
+exit=0
+
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter WireToGateSublotRejectionTextTests|SublotRejectedAfterEntryG2Tests|SublotRejectionViewModelTests|WireToGateHmiPresentationTests
+已通过! - 失败:     0，通过:    43，已跳过:     0，总计:    43，持续时间: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+
+# dotnet test tests/SQCD.Agv.UnitTests   (whole project, incl. source-text guards outside the Architecture filter)
+已通过! - 失败:     0，通过:  1335，已跳过:     0，总计:  1335，持续时间: 38 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+# dotnet test tests/SQCD.Agv.UnitTests --filter Architecture
+已通过! - 失败:     0，通过:   203，已跳过:     0，总计:   203，持续时间: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter Architecture   (ProtocolPayloadShapeArchitectureTests etc.)
+已通过! - 失败:     0，通过:    13，已跳过:     0，总计:    13，持续时间: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0

@@ -1,0 +1,17 @@
+# 62cbc38 (re-pin + test payloads carry eqp, no product change)
+# dotnet test tests/SQCD.Agv.UnitTests -c Release --filter "FullyQualifiedName~InboundPayloadSchemaBoundaryTests"  (excerpt)
+  失败 SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorkTypeOutsideTheSchemaIsRefused(workType: "WIRE_TO_FULL_INSPECTON")
+   System.Text.Json.JsonException : The JSON property 'eqp' could not be mapped to any .NET member contained in type 'SQCD.Agv.Contracts.WireToGateWorklistItem'.
+  失败 SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorkTypeOutsideTheSchemaIsRefused(workType: "WIRE_TO_OVEN")
+   System.Text.Json.JsonException : The JSON property 'eqp' could not be mapped to any .NET member contained in type 'SQCD.Agv.Contracts.WireToGateWorklistItem'.
+  失败 SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.TheWorkTypeCheckAcceptsExactlyTheSchemasTransportTaskTypes
+   System.Text.Json.JsonException : The JSON property 'eqp' could not be mapped to any .NET member contained in type 'SQCD.Agv.Contracts.WireToGateWorklistItem'.
+  失败 SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorklistMixingTheFiveSameDirectionTypesWithWireToGateIsAccepted
+  (... every worklist case of the class, same message)
+
+# dotnet test tests/SQCD.Agv.UnitTests -c Release --filter "FullyQualifiedName~ArchitectureTests"  (on the re-pin alone, before the test payloads changed)
+  失败 ProtocolVectorTestBindingArchitectureTests.TheIndexParsesIntoSixteenSlicesAndFiftySevenDistinctVectors
+   Assert.Equal() Failure: Values differ  Expected: 61  Actual: 62
+  失败 ProtocolVectorTestBindingArchitectureTests.EveryFrozenVectorIsBoundToANamedTestOrPinned
+   These frozen vectors have no named test and are not pinned. ...: CV-WORKLIST-EQP-DISPLAY-ONLY
+  失败!  - 失败: 2，通过: 201，总计: 203
