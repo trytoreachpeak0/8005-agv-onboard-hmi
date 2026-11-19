@@ -1,3 +1,4 @@
+using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
@@ -88,6 +89,45 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Contains(
             harness.Events,
             notice => notice.Message.Contains("服务端已经确认", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 结果已上报、确认丢了（向量还在日志簿里）：排队的第二次按键不发申请，答「结果尚未得到服务端确认；可再按一次……补报」；
+    /// 照提示再按那一行，确实补报了结果、服务端确认后结清——提示叫人按的键是按得动、起作用的（审查 L1 放行前补测）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task APressOverAnUnacknowledgedResultSaysPressAgainAndPressingAgainReportsIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartStagingRowStopAsync(token, server => server.LoadCancellationResultAcksToDrop = 1);
+
+        WorklistRowCancellationConfirmation first = harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB));
+        WorklistRowCancellationConfirmation second = harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB));
+        Assert.False(await first.SendAsync(token));
+        Assert.NotNull(ReadJournal(harness, token).RecoveryVector);
+        int resultsBefore = Received(harness, "LoadCancellationResult").Count;
+
+        Assert.True(await second.SendAsync(token));
+        WireToGateOperatorEvent told = Assert.Single(harness.Events, notice => notice.Kind == "RESULT_ACK_PENDING"
+            && notice.Message.Contains("可再按一次那一行的「取消」补报", StringComparison.Ordinal));
+        Assert.Equal(resultsBefore, Received(harness, "LoadCancellationResult").Count);
+
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestWorklistRowCancellation(DemandB),
+            "B's row pressable, as the notice says",
+            token);
+        WorklistRowCancellationConfirmation again = harness.OnUi(() => harness.ViewModel.BeginWorklistRowCancellation(DemandB));
+        Assert.True(await again.SendAsync(token));
+
+        Assert.True(Received(harness, "LoadCancellationResult").Count > resultsBefore);
+        Assert.Null(ReadJournal(harness, token).RecoveryVector);
+        Assert.Contains(harness.Events, notice => notice.Kind == "RECOVERY_VECTOR_COMPLETED");
+        Assert.Single(harness.Events, notice => notice.Kind == "RESULT_ACK_PENDING" && notice.Message == told.Message);
+        Assert.Single(Received(harness, "LoadCancellationStartRequested"));
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        Assert.Equal(0, harness.Io.UnlockCount);
     }
 
     /// <summary>
