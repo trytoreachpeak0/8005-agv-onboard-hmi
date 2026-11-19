@@ -930,6 +930,16 @@ public sealed partial class WireToGateBusinessService
                 return AnswerLoadResultHandedOver(pressedSubject, ResultKnown(state, reported));
             }
 
+            // Gone because the cancellation it named has concluded -- a second press on the same row taken while the first
+            // was out, and run after it settled (8005-agv-onboard-hmi#408): answered as concluded, not told the subject
+            // changed and to press again. After the load-in-flight cases above, which keep their own answers.
+            if (BeforeSublotCancellationIdOf(pressedSubject) is { } pressedCancellationId
+                && await LoadCancellationResultOnFileAsync(pressedCancellationId, cancellationToken).ConfigureAwait(false)
+                    is { } concluded)
+            {
+                return AnswerLoadCancellationAlreadyConcluded(concluded);
+            }
+
             return AnswerNothingToCancel(
                 $"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}",
                 rowPress);
@@ -2176,6 +2186,21 @@ public sealed partial class WireToGateBusinessService
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
         LoadCancellationResultKey(vector.PrimaryId);
+
+    /// <summary>
+    /// The cancellationId a press subject names when it is a cancellation before any sublot -- new
+    /// (<c>before-sublot:</c>) or authorized and reporting (<c>vector:</c> over such a vector) -- or <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// A <c>vector:</c> subject over a load in flight names a cancellation id too, and its result on file means the same
+    /// thing; a <c>load:</c> subject names an attempt, not a cancellation, and is left to its own path.
+    /// </remarks>
+    private static string? BeforeSublotCancellationIdOf(string pressedSubject) =>
+        pressedSubject.StartsWith("before-sublot:", StringComparison.Ordinal)
+            ? pressedSubject["before-sublot:".Length..]
+            : pressedSubject.StartsWith("vector:", StringComparison.Ordinal)
+                ? pressedSubject["vector:".Length..]
+                : null;
 
     private static string LoadCancellationResultKey(string cancellationId) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{cancellationId}";

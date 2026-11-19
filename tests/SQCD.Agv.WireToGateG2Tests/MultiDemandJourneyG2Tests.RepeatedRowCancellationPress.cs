@@ -39,6 +39,11 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         Assert.Equal([true, true], answers);
         AssertOneCancellationAndNoFailureShown(harness);
+        // The queued press is told its cancellation took effect, not that its subject changed and to press again.
+        Assert.Contains(
+            harness.Events,
+            notice => notice.Message.Contains("服务端已经确认", StringComparison.Ordinal));
+        Assert.DoesNotContain(harness.Events, notice => notice.Kind == WireToGateBusinessService.LoadCancellationNothingToCancelKind);
     }
 
     /// <summary>
