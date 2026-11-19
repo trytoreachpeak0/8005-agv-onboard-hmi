@@ -2,4 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SQCD.Agv.UnitTests" />
+  </ItemGroup>
 </Project>

@@ -459,6 +459,29 @@ public sealed class SafetyRulesTests
         Assert.False(first.IsObservedNoEarlierThan(later));
     }
 
+    /// <summary>
+    /// With only one of the two readings stamped -- an unknown placeholder against an IO module's reading -- there is no
+    /// common monotonic clock to compare on, so the order is read off <c>ObservedAt</c>, either way round (PR #412 review S2).
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WithOnlyOneReadingStampedTheOrderIsReadOffTheWallClock(bool stampedIsTheLater)
+    {
+        DateTimeOffset firstAt = DateTimeOffset.Now;
+        DateTimeOffset laterAt = firstAt.AddMilliseconds(100);
+        LockerSnapshot stamped = new LockerSnapshot(0, 1, false, true, true, stampedIsTheLater ? laterAt : firstAt)
+        {
+            ObservedTimestamp = Stopwatch.GetTimestamp()
+        };
+        LockerSnapshot unstamped = LockerSnapshot.Unknown(0, stampedIsTheLater ? firstAt : laterAt);
+        LockerSnapshot first = stampedIsTheLater ? unstamped : stamped;
+        LockerSnapshot later = stampedIsTheLater ? stamped : unstamped;
+
+        Assert.True(later.IsObservedNoEarlierThan(first));
+        Assert.False(first.IsObservedNoEarlierThan(later));
+    }
+
     [Fact]
     public void ActiveUnlockOutputIsRejectedBeforeUnlock()
     {

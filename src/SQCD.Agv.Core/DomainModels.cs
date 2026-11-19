@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SQCD.Agv.Core;
 
 /// <summary>
@@ -103,6 +105,11 @@ public sealed record LockerSnapshot(
     /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this reading was taken, or <c>null</c> for a
     /// reading no IO module produced (8005-agv-onboard-hmi#404).
     /// </summary>
+    /// <remarks>
+    /// Never serialized: it means nothing outside this process, and a value that changes with every poll would bump the
+    /// automation interface's revision fingerprint at every reading (PR #412 review L1).
+    /// </remarks>
+    [JsonIgnore]
     public long? ObservedTimestamp { get; init; }
 
     /// <summary>
@@ -137,6 +144,8 @@ public sealed record IoSnapshot(
     /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this snapshot was read, or <c>null</c> for a
     /// snapshot no IO module produced (8005-agv-onboard-hmi#404).
     /// </summary>
+    /// <remarks>Never serialized, as <see cref="LockerSnapshot.ObservedTimestamp"/>.</remarks>
+    [JsonIgnore]
     public long? ObservedTimestamp { get; init; }
 
     // 按索引取仓位

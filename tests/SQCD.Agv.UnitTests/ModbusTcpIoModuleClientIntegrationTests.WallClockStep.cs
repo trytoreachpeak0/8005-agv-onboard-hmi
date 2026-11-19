@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 
@@ -60,8 +61,11 @@ public sealed partial class ModbusTcpIoModuleClientIntegrationTests
         await client.WaitForLockerAsync(0, locker => locker.IsLocked, TimeSpan.FromSeconds(5), window, timeout.Token);
         TimeSpan waited = Stopwatch.GetElapsedTime(started);
 
+        // The window starts at the stamp of the snapshot current when the wait began, which can be up to a poll interval
+        // (20 ms) plus one request's latency older than `started`; under load that is more than a few milliseconds. 100 ms
+        // allows for it and still tells the defect apart: on the wall clock the window closed some 20 ms in (PR #412 review L2).
         Assert.True(
-            waited >= window - TimeSpan.FromMilliseconds(30),
+            waited >= window - TimeSpan.FromMilliseconds(100),
             $"the reading was taken as stable after {waited.TotalMilliseconds:0} ms of a {window.TotalMilliseconds:0} ms window");
 
         await client.StopAsync(timeout.Token);
@@ -102,8 +106,8 @@ public sealed partial class ModbusTcpIoModuleClientIntegrationTests
     /// shut over the opposite occupancy.
     /// </summary>
     /// <remarks>
-    /// The predicates are the executor's, copied: its own tests run it against IO doubles that implement the stable window
-    /// themselves, and the window under test is this client's. The window is a second, not the configured 300 ms, so the
+    /// The predicates are the executor's own members (PR #412 review S1): its own tests run it against IO doubles that
+    /// implement the stable window themselves, and the window under test is this client's. The window is a second, not the configured 300 ms, so the
     /// brief reading ends with 900 ms to spare however late this test gets round to ending it.
     /// </remarks>
     [Fact]
@@ -123,19 +127,19 @@ public sealed partial class ModbusTcpIoModuleClientIntegrationTests
 
         Task<LockerSnapshot> reached = client.WaitForLockerAsync(
             0,
-            locker => locker.IsKnown && locker.IsLocked && locker.HasCargo,
+            WireToGateSlotOperationExecutor.ClosedDoorReached(expectedOccupied: true),
             waitTimeout,
             window,
             race.Token);
         Task<LockerSnapshot> opposite = client.WaitForLockerAsync(
             0,
-            locker => locker.IsKnown && locker.IsLocked && !locker.HasCargo,
+            WireToGateSlotOperationExecutor.ClosedDoorOpposite(expectedOccupied: true),
             waitTimeout,
             window,
             race.Token);
         Task<LockerSnapshot> unknown = client.WaitForLockerAsync(
             0,
-            locker => !locker.IsKnown,
+            WireToGateSlotOperationExecutor.ClosedDoorUnknown,
             waitTimeout,
             window,
             race.Token);
