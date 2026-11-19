@@ -930,6 +930,19 @@ public sealed partial class WireToGateBusinessService
                 return AnswerLoadResultHandedOver(pressedSubject, ResultKnown(state, reported));
             }
 
+            // Gone because the cancellation it named has concluded -- a second press on the same row taken while the first
+            // was out, and run after it settled (8005-agv-onboard-hmi#408): answered as concluded, not told the subject
+            // changed and to press again. Only a cancellation before any sublot: one over a load in flight (a vector: subject
+            // too) keeps the answer it had, for its late outcome need not be ALL_EMPTY and the screen may just have said
+            // so (review L2).
+            if (BeforeSublotCancellationIdOf(pressedSubject) is { } pressedCancellationId
+                && await LoadCancellationResultOnFileAsync(pressedCancellationId, cancellationToken).ConfigureAwait(false)
+                    is { } concluded
+                && IsBeforeSublotCancellationResult(concluded))
+            {
+                return AnswerLoadCancellationAlreadyConcluded(concluded);
+            }
+
             return AnswerNothingToCancel(
                 $"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}",
                 rowPress);
@@ -2016,6 +2029,12 @@ public sealed partial class WireToGateBusinessService
                 + "不是此刻选中的这条。 ");
         }
 
+        if (await LoadCancellationResultOnFileAsync(target.CancellationId, cancellationToken).ConfigureAwait(false)
+            is { } concluded)
+        {
+            return AnswerLoadCancellationAlreadyConcluded(concluded);
+        }
+
         if (await AskForLoadCancellationAsync(
                 state,
                 target.CancellationId,
@@ -2169,7 +2188,114 @@ public sealed partial class WireToGateBusinessService
             : $"「{LoadCancellationCaptionHere()}」";
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
-        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
+        LoadCancellationResultKey(vector.PrimaryId);
+
+    /// <summary>
+    /// The cancellationId a press subject names when it is a cancellation before any sublot -- new
+    /// (<c>before-sublot:</c>) or authorized and reporting (<c>vector:</c> over such a vector) -- or <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// A <c>vector:</c> subject over a load in flight names a cancellation id too; the caller tells the two apart by the
+    /// result row (<see cref="IsBeforeSublotCancellationResult"/>). A <c>load:</c> subject names an attempt, not a
+    /// cancellation, and is left to its own path.
+    /// </remarks>
+    private static string? BeforeSublotCancellationIdOf(string pressedSubject) =>
+        pressedSubject.StartsWith("before-sublot:", StringComparison.Ordinal)
+            ? pressedSubject["before-sublot:".Length..]
+            : pressedSubject.StartsWith("vector:", StringComparison.Ordinal)
+                ? pressedSubject["vector:".Length..]
+                : null;
+
+    private static string LoadCancellationResultKey(string cancellationId) =>
+        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{cancellationId}";
+
+    /// <summary>
+    /// The result this vehicle has on file for the cancellation <paramref name="cancellationId"/>, or <c>null</c> when
+    /// there is none or the journal cannot say (8005-agv-onboard-hmi#408).
+    /// </summary>
+    /// <remarks>
+    /// A result on file means the server authorized this cancellation and this vehicle reported it: the cancellation has
+    /// concluded, or is concluding, under this id. A cancellation before any sublot derives its id from the demand and the
+    /// operation session, so a press made after that -- the row still on the screen because the server resent the same
+    /// entry request before its worklist without the demand arrived (agv02 at 217, 2026-10-22 and 2026-10-24) -- would ask
+    /// about the same cancellation again with its own operator verification time, and the server refuses that as
+    /// <c>BUSINESS_ID_CONTENT_CONFLICT</c>. Nothing is sent for it; the press is answered from this row instead.
+    /// </remarks>
+    private async Task<WireToGateDurableMessage?> LoadCancellationResultOnFileAsync(
+        string cancellationId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(cancellationId), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Answers a press about a cancellation whose result is already on file: nothing is sent, no door is opened, and the
+    /// press is not a failure -- the cancellation the operator asked for has taken effect, or is taking it.
+    /// </summary>
+    private bool AnswerLoadCancellationAlreadyConcluded(WireToGateDurableMessage result)
+    {
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"装货取消的结果已在发件箱，这次按键不再发申请、未开仓门：resultKey={result.DeduplicationKey}，"
+            + $"acknowledged={result.Acknowledged}，abandoned={result.AbandonedReasonCode ?? "null"}。");
+        if (result.Abandoned)
+        {
+            // Refused for good (MANUAL_REVIEW, onboard-hmi#254): nothing more goes out under this id, and what the server
+            // holds is for a maintainer to reconcile.
+            PublishOperatorResponse(
+                "RESULT_ABANDONED",
+                "这项装货取消的结果服务端没有收下，正在等维护人员核对；这次按键没有再发申请，也没有打开任何仓门。 ");
+        }
+        else if (result.Acknowledged)
+        {
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_COMPLETED",
+                "这项装货取消服务端已经确认，这次按键没有再发申请，也没有打开任何仓门；清单以服务端下一次下发的为准。 ");
+        }
+        else
+        {
+            // The words RestoreLoadCancellationBeforeSublot uses for the same state: the next press reports it again.
+            PublishOperatorResponse(
+                "RESULT_ACK_PENDING",
+                "这项装货取消已获服务端授权，结果尚未得到服务端确认；"
+                + $"可再按一次{BeforeSublotPressPhrase(ResultDemandId(result))}补报，不会打开仓门。 ");
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a load cancellation's result row is a cancellation before any sublot's: one that names no attempt. A load in
+    /// flight's names its attempt, and keeps the answers its own path gives (8005-agv-onboard-hmi#408 review L2).
+    /// </summary>
+    private static bool IsBeforeSublotCancellationResult(WireToGateDurableMessage row)
+    {
+        using JsonDocument document = JsonDocument.Parse(row.WireLine);
+        return document.RootElement.TryGetProperty("payload", out JsonElement payload)
+            && payload.TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+            && attempt.ValueKind == JsonValueKind.Null;
+    }
+
+    /// <summary>The <c>demandId</c> of a load cancellation's result row, as it went on the wire.</summary>
+    private static string ResultDemandId(WireToGateDurableMessage row)
+    {
+        using JsonDocument document = JsonDocument.Parse(row.WireLine);
+        return document.RootElement.TryGetProperty("payload", out JsonElement payload)
+            && payload.TryGetProperty("demandId", out JsonElement demand)
+            && demand.ValueKind == JsonValueKind.String
+                ? demand.GetString() ?? string.Empty
+                : string.Empty;
+    }
 
     /// <summary>The cancellationId every press over this load in flight asks about.</summary>
     private static string InFlightLoadCancellationId(string demandId, string slotOperationAttemptId) =>
