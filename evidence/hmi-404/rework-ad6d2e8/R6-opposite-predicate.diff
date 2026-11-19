@@ -1,0 +1,15 @@
+== R6-opposite-predicate: src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index 38e80d1..6781ec4 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -3112,7 +3112,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+ 
+     /// <inheritdoc cref="ClosedDoorReached"/>
+     internal static Func<LockerSnapshot, bool> ClosedDoorOpposite(bool expectedOccupied) =>
+-        locker => locker.IsKnown && locker.IsLocked && locker.HasCargo != expectedOccupied;
++        locker => locker.IsKnown && locker.IsLocked;
+ 
+     /// <inheritdoc cref="ClosedDoorReached"/>
+     internal static bool ClosedDoorUnknown(LockerSnapshot locker) => !locker.IsKnown;
+

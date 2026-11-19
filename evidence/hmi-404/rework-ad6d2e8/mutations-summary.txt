@@ -1,0 +1,23 @@
+HEAD ad6d2e81b26f3899e4382bc54ad0ccf4358f7e27
+R1-jsonignore-both: 失败!  - 失败:     1，通过:    65，已跳过:     0，总计:    66，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.OnboardAutomationHostTests.ANewPollOfTheSameIoReadingsKeepsTheRevision [113 ms]
+R2-jsonignore-locker: 失败!  - 失败:     1，通过:    65，已跳过:     0，总计:    66，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.OnboardAutomationHostTests.ANewPollOfTheSameIoReadingsKeepsTheRevision [122 ms]
+R3-jsonignore-io: 失败!  - 失败:     1，通过:    65，已跳过:     0，总计:    66，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.OnboardAutomationHostTests.ANewPollOfTheSameIoReadingsKeepsTheRevision [126 ms]
+R4-mixed-always-true: 失败!  - 失败:     2，通过:    64，已跳过:     0，总计:    66，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.WithOnlyOneReadingStampedTheOrderIsReadOffTheWallClock(stampedIsTheLater: True) [17 ms]
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.WithOnlyOneReadingStampedTheOrderIsReadOffTheWallClock(stampedIsTheLater: False) [2 ms]
+R5-mixed-inverted: 失败!  - 失败:     2，通过:    64，已跳过:     0，总计:    66，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.WithOnlyOneReadingStampedTheOrderIsReadOffTheWallClock(stampedIsTheLater: True) [17 ms]
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.WithOnlyOneReadingStampedTheOrderIsReadOffTheWallClock(stampedIsTheLater: False) [2 ms]
+R6-opposite-predicate: 失败!  - 失败:     4，通过:    62，已跳过:     0，总计:    66，持续时间: 1 m 35 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ABriefOppositeReadingDoesNotWinTheClosedDoorRaceWhileTheWallClockRunsForwards [1 s]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedBeforeThePrecheckStillOpensTheSlot(stepMs: 1500) [30 s]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAsTheFirstDoorShutsStillOpensTheNextSlot(stepMs: 1500) [30 s]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAsTheFirstDoorShutsStillOpensTheNextSlot(stepMs: -500) [30 s]
+R7-window-wall-tolerance100: 失败!  - 失败:     3，通过:    63，已跳过:     0，总计:    66，持续时间: 13 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ABriefOppositeReadingDoesNotWinTheClosedDoorRaceWhileTheWallClockRunsForwards [150 ms]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.TheStableWindowIsNotLengthenedByAWallClockRunningBackwards [3 s]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.TheStableWindowIsNotShortenedByAWallClockRunningForwards [71 ms]
+final status: ''

@@ -1,0 +1,15 @@
+== R4-mixed-always-true: src/SQCD.Agv.Core/DomainModels.cs
+diff --git a/src/SQCD.Agv.Core/DomainModels.cs b/src/SQCD.Agv.Core/DomainModels.cs
+index 3d56f79..4319162 100644
+--- a/src/SQCD.Agv.Core/DomainModels.cs
++++ b/src/SQCD.Agv.Core/DomainModels.cs
+@@ -125,7 +125,7 @@ public sealed record LockerSnapshot(
+         ArgumentNullException.ThrowIfNull(other);
+         return ObservedTimestamp is { } observed && other.ObservedTimestamp is { } otherObserved
+             ? observed >= otherObserved
+-            : ObservedAt >= other.ObservedAt;
++            : Environment.ProcessorCount > 0;
+     }
+ 
+     // 未知仓位
+

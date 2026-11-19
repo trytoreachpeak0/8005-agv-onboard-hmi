@@ -1,0 +1,16 @@
+== R7-window-wall-tolerance100: src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+diff --git a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+index f44cf2f..a4b5659 100644
+--- a/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
++++ b/src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs
+@@ -207,8 +207,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
+             }
+ 
+             LockerSnapshot locker = snapshot.GetLocker(slotIndex);
+-            long observed = locker.ObservedTimestamp
+-                ?? throw new InvalidOperationException("IO reading without a monotonic timestamp.");
++            long observed = locker.ObservedTimestamp is null ? throw new InvalidOperationException("x") : locker.ObservedAt.UtcTicks * Stopwatch.Frequency / TimeSpan.TicksPerSecond;
+             if (lastEvaluated == observed)
+             {
+                 await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+
