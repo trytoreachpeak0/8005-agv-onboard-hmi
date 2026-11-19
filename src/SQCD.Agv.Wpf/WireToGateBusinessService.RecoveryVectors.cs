@@ -2016,6 +2016,12 @@ public sealed partial class WireToGateBusinessService
                 + "不是此刻选中的这条。 ");
         }
 
+        if (await LoadCancellationResultOnFileAsync(target.CancellationId, cancellationToken).ConfigureAwait(false)
+            is { } concluded)
+        {
+            return AnswerLoadCancellationAlreadyConcluded(concluded);
+        }
+
         if (await AskForLoadCancellationAsync(
                 state,
                 target.CancellationId,
@@ -2169,7 +2175,65 @@ public sealed partial class WireToGateBusinessService
             : $"「{LoadCancellationCaptionHere()}」";
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
-        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
+        LoadCancellationResultKey(vector.PrimaryId);
+
+    private static string LoadCancellationResultKey(string cancellationId) =>
+        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{cancellationId}";
+
+    /// <summary>
+    /// The result this vehicle has on file for the cancellation <paramref name="cancellationId"/>, or <c>null</c> when
+    /// there is none or the journal cannot say (8005-agv-onboard-hmi#408).
+    /// </summary>
+    /// <remarks>
+    /// A result on file means the server authorized this cancellation and this vehicle reported it: the cancellation has
+    /// concluded, or is concluding, under this id. A cancellation before any sublot derives its id from the demand and the
+    /// operation session, so a press made after that -- the row still on the screen because the server resent the same
+    /// entry request before its worklist without the demand arrived (agv02 at 217, 2026-10-22 and 2026-10-24) -- would ask
+    /// about the same cancellation again with its own operator verification time, and the server refuses that as
+    /// <c>BUSINESS_ID_CONTENT_CONFLICT</c>. Nothing is sent for it; the press is answered from this row instead.
+    /// </remarks>
+    private async Task<WireToGateDurableMessage?> LoadCancellationResultOnFileAsync(
+        string cancellationId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(cancellationId), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Answers a press about a cancellation whose result is already on file: nothing is sent, no door is opened, and the
+    /// press is not a failure -- the cancellation the operator asked for has taken effect, or is taking it.
+    /// </summary>
+    private bool AnswerLoadCancellationAlreadyConcluded(WireToGateDurableMessage result)
+    {
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"装货取消的结果已在发件箱，这次按键不再发申请、未开仓门：resultKey={result.DeduplicationKey}，"
+            + $"acknowledged={result.Acknowledged}，abandoned={result.AbandonedReasonCode ?? "null"}。");
+        if (result is { Acknowledged: true, Abandoned: false })
+        {
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_COMPLETED",
+                "这项装货取消服务端已经确认，这次按键没有再发申请，也没有打开任何仓门；清单以服务端下一次下发的为准。 ");
+        }
+        else
+        {
+            PublishOperatorResponse(
+                "RESULT_ACK_PENDING",
+                "这项装货取消已获服务端授权、结果已经上报，这次按键没有再发申请，也没有打开任何仓门；结果以服务端为准。 ");
+        }
+
+        return true;
+    }
 
     /// <summary>The cancellationId every press over this load in flight asks about.</summary>
     private static string InFlightLoadCancellationId(string demandId, string slotOperationAttemptId) =>
