@@ -373,7 +373,7 @@ public sealed class OnboardController : IAsyncDisposable
             await _ioModule.WaitForLockerAsync(
                 slotIndex,
                 locker => locker.IsKnown
-                    && locker.ObservedAt >= unlockedLocker.ObservedAt
+                    && locker.IsObservedNoEarlierThan(unlockedLocker)
                     && locker.UnlockOutputRaw is false,
                 _options.UnlockOutputResetTimeout,
                 _options.FeedbackStableWindow,
@@ -402,7 +402,7 @@ public sealed class OnboardController : IAsyncDisposable
             LockerSnapshot completedLocker = recoveryOutcome.Locker;
             string? completionSafetyError = SafetyRules.ValidateAllDoorsSafe(
                 _ioModule.CurrentSnapshot,
-                _clock.Now,
+                _clock,
                 _options.IoSnapshotMaxAge);
             if (completionSafetyError is not null)
             {
@@ -822,7 +822,7 @@ public sealed class OnboardController : IAsyncDisposable
             authorization,
             _ioModule.CurrentSnapshot,
             _startedOperationIds.Keys.ToHashSet(StringComparer.Ordinal),
-            _clock.Now,
+            _clock,
             _options.IoSnapshotMaxAge);
     }
 
@@ -924,7 +924,7 @@ public sealed class OnboardController : IAsyncDisposable
             await _ioModule.WaitForLockerAsync(
                 operation.SlotIndex,
                 locker => locker.IsKnown
-                    && locker.ObservedAt >= unlockedLocker.ObservedAt
+                    && locker.IsObservedNoEarlierThan(unlockedLocker)
                     && locker.UnlockOutputRaw is false,
                 MinTimeout(_options.UnlockOutputResetTimeout, GetRemainingOperationTime(deadline)),
                 _options.FeedbackStableWindow,
@@ -1061,7 +1061,7 @@ public sealed class OnboardController : IAsyncDisposable
         }
 
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
-        if (!SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+        if (!SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return "仓位状态长时间未更新，请等待状态恢复。";
         }
@@ -1270,7 +1270,7 @@ public sealed class OnboardController : IAsyncDisposable
             io,
             success ? null : operation,
             hasBlockingFault: !success,
-            _clock.Now,
+            _clock,
             _options.IoSnapshotMaxAge)
             && IsExternalSafetyReady();
         return new OperationResult(
@@ -1826,7 +1826,7 @@ public sealed class OnboardController : IAsyncDisposable
                 io,
                 active,
                 state == OnboardState.Faulted,
-                _clock.Now,
+                _clock,
                 _options.IoSnapshotMaxAge);
     }
 
@@ -1936,7 +1936,7 @@ public sealed class OnboardController : IAsyncDisposable
             return "仓门控制设备连接中断，请等待恢复。";
         }
 
-        if (!SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+        if (!SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return "仓位状态长时间没有更新，请等待恢复。";
         }

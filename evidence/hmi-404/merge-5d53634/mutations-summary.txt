@@ -1,0 +1,27 @@
+HEAD 5d5363403631d743c89de749123773249a7d1b62
+M1-fresh-wall: 失败!  - 失败:    11，通过:    44，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.ReadingJustTakenStaysFreshWhenTheWallClockIsStepped(stepMs: 1500) [22 ms]
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.ReadingJustTakenStaysFreshWhenTheWallClockIsStepped(stepMs: -5000) [< 1 ms]
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.ReadingJustTakenStaysFreshWhenTheWallClockIsStepped(stepMs: -500) [< 1 ms]
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.ReadingOlderThanTheMaximumAgeIsStaleWhateverTheWallClockSays [3 ms]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedBeforeThePrecheckStillOpensTheSlot(stepMs: -500) [1 s]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedBeforeThePrecheckStillOpensTheSlot(stepMs: 1500) [99 ms]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAsTheFirstDoorShutsStillOpensTheNextSlot(stepMs: 1500) [559 ms]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAsTheFirstDoorShutsStillOpensTheNextSlot(stepMs: -500) [341 ms]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAfterThePulseStillFailsTheJammedSlotAtASafeFinish(stepMs: 31000) [1 s]
+      失败 SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.WallClockSteppedAfterThePulseStillFailsTheJammedSlotAtASafeFinish(stepMs: -3000) [1 s]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ReadingsCarryTheMonotonicTimestampAndStayFreshWhileTheWallClockRunsBackwards [104 ms]
+M2-fresh-own-stopwatch: 失败!  - 失败:     1，通过:    54，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.ReadingOlderThanTheMaximumAgeIsStaleWhateverTheWallClockSays [16 ms]
+M3-window-wall: 失败!  - 失败:     3，通过:    52，已跳过:     0，总计:    55，持续时间: 13 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ABriefOppositeReadingDoesNotWinTheClosedDoorRaceWhileTheWallClockRunsForwards [144 ms]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.TheStableWindowIsNotLengthenedByAWallClockRunningBackwards [3 s]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.TheStableWindowIsNotShortenedByAWallClockRunningForwards [73 ms]
+M4-same-reading-wall: 已通过! - 失败:     0，通过:    55，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+M5-no-earlier-wall: 失败!  - 失败:     2，通过:    53，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.SafetyRulesTests.LaterReadingIsNoEarlierThanTheFirstAfterTheWallClockIsSteppedBack [17 ms]
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ReadingsCarryTheMonotonicTimestampAndStayFreshWhileTheWallClockRunsBackwards [99 ms]
+M6-snapshot-unstamped: 失败!  - 失败:     1，通过:    54，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+      失败 SQCD.Agv.UnitTests.ModbusTcpIoModuleClientIntegrationTests.ReadingsCarryTheMonotonicTimestampAndStayFreshWhileTheWallClockRunsBackwards [69 ms]
+M7-future-clause: 已通过! - 失败:     0，通过:    55，已跳过:     0，总计:    55，持续时间: 12 s - SQCD.Agv.UnitTests.dll (net8.0)
+final status: ''

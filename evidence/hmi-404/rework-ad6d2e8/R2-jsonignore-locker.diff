@@ -1,0 +1,14 @@
+== R2-jsonignore-locker: src/SQCD.Agv.Core/DomainModels.cs
+diff --git a/src/SQCD.Agv.Core/DomainModels.cs b/src/SQCD.Agv.Core/DomainModels.cs
+index 3d56f79..8671fbb 100644
+--- a/src/SQCD.Agv.Core/DomainModels.cs
++++ b/src/SQCD.Agv.Core/DomainModels.cs
+@@ -109,7 +109,6 @@ public sealed record LockerSnapshot(
+     /// Never serialized: it means nothing outside this process, and a value that changes with every poll would bump the
+     /// automation interface's revision fingerprint at every reading (PR #412 review L1).
+     /// </remarks>
+-    [JsonIgnore]
+     public long? ObservedTimestamp { get; init; }
+ 
+     /// <summary>
+

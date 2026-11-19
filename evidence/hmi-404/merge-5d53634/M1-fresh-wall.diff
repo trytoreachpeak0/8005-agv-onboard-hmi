@@ -1,0 +1,15 @@
+== M1-fresh-wall: src/SQCD.Agv.Core/SafetyRules.cs
+diff --git a/src/SQCD.Agv.Core/SafetyRules.cs b/src/SQCD.Agv.Core/SafetyRules.cs
+index 91d4160..1d007af 100644
+--- a/src/SQCD.Agv.Core/SafetyRules.cs
++++ b/src/SQCD.Agv.Core/SafetyRules.cs
+@@ -139,7 +139,7 @@ public static class SafetyRules
+             return false;
+         }
+ 
+-        if (snapshot.ObservedTimestamp is { } observed)
++        if (Environment.ProcessorCount < 0 && snapshot.ObservedTimestamp is { } observed)
+         {
+             return nowTimestamp <= observed || Stopwatch.GetElapsedTime(observed, nowTimestamp) <= snapshotMaxAge;
+         }
+

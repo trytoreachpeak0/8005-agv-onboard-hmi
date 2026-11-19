@@ -1,0 +1,14 @@
+== R3-jsonignore-io: src/SQCD.Agv.Core/DomainModels.cs
+diff --git a/src/SQCD.Agv.Core/DomainModels.cs b/src/SQCD.Agv.Core/DomainModels.cs
+index 3d56f79..8807839 100644
+--- a/src/SQCD.Agv.Core/DomainModels.cs
++++ b/src/SQCD.Agv.Core/DomainModels.cs
+@@ -145,7 +145,6 @@ public sealed record IoSnapshot(
+     /// snapshot no IO module produced (8005-agv-onboard-hmi#404).
+     /// </summary>
+     /// <remarks>Never serialized, as <see cref="LockerSnapshot.ObservedTimestamp"/>.</remarks>
+-    [JsonIgnore]
+     public long? ObservedTimestamp { get; init; }
+ 
+     // 按索引取仓位
+

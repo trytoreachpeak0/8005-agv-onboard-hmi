@@ -199,7 +199,7 @@ public sealed partial class WireToGateBusinessService
     {
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         if (!snapshot.IsConnected
-            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _ioSnapshotMaxAge)
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _ioSnapshotMaxAge)
             || slots.Any(slot => !snapshot.GetLocker(slot - 1).IsKnown))
         {
             throw new InvalidOperationException("SLOT_STATE_UNKNOWN");

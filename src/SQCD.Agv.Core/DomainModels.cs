@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SQCD.Agv.Core;
 
 /// <summary>
@@ -99,6 +101,33 @@ public sealed record LockerSnapshot(
     // 光幕极性
     public bool HasCargo => LightCurtainRaw is false;
 
+    /// <summary>
+    /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this reading was taken, or <c>null</c> for a
+    /// reading no IO module produced (8005-agv-onboard-hmi#404).
+    /// </summary>
+    /// <remarks>
+    /// Never serialized: it means nothing outside this process, and a value that changes with every poll would bump the
+    /// automation interface's revision fingerprint at every reading (PR #412 review L1).
+    /// </remarks>
+    [JsonIgnore]
+    public long? ObservedTimestamp { get; init; }
+
+    /// <summary>
+    /// Whether this reading was taken no earlier than <paramref name="other"/> (8005-agv-onboard-hmi#404).
+    /// </summary>
+    /// <remarks>
+    /// Compared on <see cref="ObservedTimestamp"/> when both carry one: after the wall clock is stepped back, a reading
+    /// taken later has the earlier <see cref="ObservedAt"/>, and a wait for one taken after an unlock went on until the
+    /// wall clock caught up. On <see cref="ObservedAt"/> only when either does not, as for readings no IO module took.
+    /// </remarks>
+    public bool IsObservedNoEarlierThan(LockerSnapshot other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return ObservedTimestamp is { } observed && other.ObservedTimestamp is { } otherObserved
+            ? observed >= otherObserved
+            : ObservedAt >= other.ObservedAt;
+    }
+
     // 未知仓位
     public static LockerSnapshot Unknown(int slotIndex, DateTimeOffset observedAt) =>
         new(slotIndex, slotIndex + 1, null, null, null, observedAt);
@@ -111,6 +140,14 @@ public sealed record IoSnapshot(
     IReadOnlyList<LockerSnapshot> Lockers,
     DateTimeOffset ObservedAt)
 {
+    /// <summary>
+    /// The <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at which this snapshot was read, or <c>null</c> for a
+    /// snapshot no IO module produced (8005-agv-onboard-hmi#404).
+    /// </summary>
+    /// <remarks>Never serialized, as <see cref="LockerSnapshot.ObservedTimestamp"/>.</remarks>
+    [JsonIgnore]
+    public long? ObservedTimestamp { get; init; }
+
     // 按索引取仓位
     public LockerSnapshot GetLocker(int slotIndex)
     {

@@ -36,6 +36,7 @@ public static class WireToGateSafetyEvaluator
         IoSnapshot snapshot,
         VehicleSafetySignal vehicleSignal,
         DateTimeOffset now,
+        long nowTimestamp,
         TimeSpan ioSnapshotMaxAge,
         TimeSpan vehicleSafetyMaxAge,
         TimeSpan vehicleSafetyClockSkewTolerance,
@@ -45,7 +46,7 @@ public static class WireToGateSafetyEvaluator
         ArgumentNullException.ThrowIfNull(vehicleSignal);
 
         bool ioFresh = snapshot.IsConnected
-            && SafetyRules.IsSnapshotFresh(snapshot, now, ioSnapshotMaxAge);
+            && SafetyRules.IsSnapshotFresh(snapshot, now, nowTimestamp, ioSnapshotMaxAge);
         bool slotUnknown = !ioFresh
             || snapshot.Lockers.Count != 8
             || snapshot.Lockers.Any(locker => !locker.IsKnown);

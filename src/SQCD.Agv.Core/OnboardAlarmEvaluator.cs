@@ -43,6 +43,12 @@ public sealed record OnboardAlarmInputs(
     /// 期待动作超时门槛，车载端配置，默认 3 个 <c>OperationTimeout</c>。不是正数时不判（旧模式没有这一项）。
     /// </summary>
     public TimeSpan ExpectedActionOverdueThreshold { get; init; }
+
+    /// <summary>
+    /// 与 <see cref="Now"/> 同一时刻取的单调时钟读数（<see cref="IClock.GetTimestamp"/>），仓门快照的新鲜度只拿它比，
+    /// 系统时间被调整也不变（8005-agv-onboard-hmi#404）。不给时取构造这一刻的单调时钟。
+    /// </summary>
+    public long NowTimestamp { get; init; } = System.Diagnostics.Stopwatch.GetTimestamp();
 }
 
 /// <summary>
@@ -90,7 +96,7 @@ public static class OnboardAlarmEvaluator
                 now,
                 "仓门控制模块离线，读不到仓门状态，禁止开仓。"));
         }
-        else if (!SafetyRules.IsSnapshotFresh(inputs.Io, now, inputs.IoSnapshotMaxAge))
+        else if (!SafetyRules.IsSnapshotFresh(inputs.Io, now, inputs.NowTimestamp, inputs.IoSnapshotMaxAge))
         {
             alarms.Add(Vehicle(
                 OnboardAlarmCodes.SlotStateStale,

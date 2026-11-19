@@ -201,6 +201,40 @@ public sealed class OnboardAutomationHostTests
         Assert.Null(WireToGateHmiOperationStage.Completed.ToProtocolPhase());
     }
 
+    [Fact]
+    public async Task ANewPollOfTheSameIoReadingsKeepsTheRevision()
+    {
+        // PR #412 review L1 (8005-agv-onboard-hmi#404): every poll of the IO module stamps a new ObservedAt and a new
+        // monotonic ObservedTimestamp. The fingerprint drops observedAt; the monotonic stamp must not reach it either, or
+        // the revision moves every 100 ms against a real module and /sublots/submit answers REVISION_CONFLICT.
+        FakeFacade facade = new();
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync(facade);
+        DateTimeOffset firstAt = DateTimeOffset.UtcNow;
+        facade.ShowIo(ConnectedIo(firstAt, timestamp: 1_000_000, lockFeedback: true));
+        long revision = await harness.ReadRevisionAsync();
+
+        facade.ShowIo(ConnectedIo(firstAt.AddMilliseconds(100), timestamp: 2_000_000, lockFeedback: true));
+        Assert.Equal(revision, await harness.ReadRevisionAsync());
+
+        // Control: a reading that did change still moves it.
+        facade.ShowIo(ConnectedIo(firstAt.AddMilliseconds(200), timestamp: 3_000_000, lockFeedback: false));
+        Assert.Equal(revision + 1, await harness.ReadRevisionAsync());
+    }
+
+    private static IoSnapshot ConnectedIo(DateTimeOffset observedAt, long timestamp, bool lockFeedback) =>
+        new(
+            true,
+            Enumerable.Range(0, 8)
+                .Select(index => new LockerSnapshot(index, index + 1, false, lockFeedback, true, observedAt)
+                {
+                    ObservedTimestamp = timestamp
+                })
+                .ToArray(),
+            observedAt)
+        {
+            ObservedTimestamp = timestamp
+        };
+
     private static int GetFreePort()
     {
         using System.Net.Sockets.TcpListener listener =
@@ -221,11 +255,11 @@ public sealed class OnboardAutomationHostTests
 
         public HttpClient Client { get; }
 
-        public static async Task<AutomationHostHarness> StartAsync()
+        public static async Task<AutomationHostHarness> StartAsync(FakeFacade? facade = null)
         {
             OnboardAutomationHttpServer server = new(
                 new OnboardAutomationHostOptions("127.0.0.1", GetFreePort()),
-                new FakeFacade());
+                facade ?? new FakeFacade());
             await server.StartAsync(TestContext.Current.CancellationToken);
             return new AutomationHostHarness(server);
         }
@@ -260,11 +294,13 @@ public sealed class OnboardAutomationHostTests
     {
         public const string AgvId = "AGV-8005-01";
 
-        private readonly OnboardAutomationSnapshot _snapshot = CreateSnapshot();
+        private OnboardAutomationSnapshot _snapshot = CreateSnapshot(IoSnapshot.Unknown(DateTimeOffset.UtcNow));
 
         public int SubmitCount { get; private set; }
 
         public OnboardAutomationSnapshot ReadSnapshot() => _snapshot;
+
+        public void ShowIo(IoSnapshot io) => _snapshot = CreateSnapshot(io);
 
         public Task<OnboardAutomationSubmitOutcome> SubmitSublotAsync(
             string sublot,
@@ -278,10 +314,9 @@ public sealed class OnboardAutomationHostTests
                 _snapshot));
         }
 
-        private static OnboardAutomationSnapshot CreateSnapshot()
+        private static OnboardAutomationSnapshot CreateSnapshot(IoSnapshot io)
         {
             DateTimeOffset now = DateTimeOffset.UtcNow;
-            IoSnapshot io = IoSnapshot.Unknown(now);
             OnboardSnapshot onboard = new(
                 OnboardState.ReadyToScan,
                 true,

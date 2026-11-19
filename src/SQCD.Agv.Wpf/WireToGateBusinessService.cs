@@ -3046,7 +3046,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             VehicleSafetySignal vehicle = ReadVehicleSafety();
             DateTimeOffset now = _clock.Now;
             bool fresh = snapshot.IsConnected
-                && SafetyRules.IsSnapshotFresh(snapshot, now, _ioSnapshotMaxAge)
+                && SafetyRules.IsSnapshotFresh(snapshot, _clock, _ioSnapshotMaxAge)
                 && vehicle.IsFresh(
                     now,
                     _vehicleSafetyMaxAge,
@@ -4508,7 +4508,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string checkId)
     {
         IReadOnlyList<int> held = WireToGateDoorHoldText.HeldSlots(_session.CurrentJourney);
-        bool fresh = snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _ioSnapshotMaxAge);
+        bool fresh = snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock, _ioSnapshotMaxAge);
         bool heldUnknown = !fresh || held.Any(slot => !snapshot.GetLocker(slot - 1).IsKnown);
         bool heldProven = !heldUnknown && held.All(slot => snapshot.GetLocker(slot - 1) is
         {
@@ -4993,6 +4993,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             snapshot,
             ReadVehicleSafety(),
             observedAt,
+            _clock.GetTimestamp(),
             _ioSnapshotMaxAge,
             _vehicleSafetyMaxAge,
             _vehicleSafetyClockSkewTolerance,

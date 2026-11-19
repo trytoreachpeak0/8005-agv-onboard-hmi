@@ -1439,7 +1439,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateSlotOperationCommand command = context.ToCommand();
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         bool fresh = snapshot.IsConnected
-            && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+            && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
         List<int> completed = [];
         List<int> stillActive = [];
         bool unsafeSlot = false;
@@ -1748,7 +1748,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         if (!snapshot.IsConnected
-            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             throw new WireToGateResumeNotStartedException("SLOT_STATE_UNKNOWN");
         }
@@ -2679,7 +2679,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 await WaitForOutputResetAsync(
                     slotIndex,
                     locker => locker.IsKnown
-                        && locker.ObservedAt >= unlocked.ObservedAt
+                        && locker.IsObservedNoEarlierThan(unlocked)
                         && locker.UnlockOutputRaw is false,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -3103,6 +3103,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
+    /// The three outcomes <see cref="WaitForClosedDoorAsync"/> races, each held for the stable window: the door shut over
+    /// the expected occupancy, shut over the opposite one, the slot unreadable. Members so that the test racing them on the
+    /// real Modbus client's window uses these very predicates (PR #412 review S1, 8005-agv-onboard-hmi#404).
+    /// </summary>
+    internal static Func<LockerSnapshot, bool> ClosedDoorReached(bool expectedOccupied) =>
+        locker => locker.IsKnown && locker.IsLocked && locker.HasCargo == expectedOccupied;
+
+    /// <inheritdoc cref="ClosedDoorReached"/>
+    internal static Func<LockerSnapshot, bool> ClosedDoorOpposite(bool expectedOccupied) =>
+        locker => locker.IsKnown && locker.IsLocked && locker.HasCargo != expectedOccupied;
+
+    /// <inheritdoc cref="ClosedDoorReached"/>
+    internal static bool ClosedDoorUnknown(LockerSnapshot locker) => !locker.IsKnown;
+
+    /// <summary>
     /// Waits for the first of: the door shut over the expected occupancy, the door shut over the
     /// opposite one, the slot turning unreadable -- each held for
     /// <see cref="WireToGateSlotOperationExecutorOptions.FeedbackStableWindow"/> -- or one
@@ -3122,19 +3137,19 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task<LockerSnapshot> reachedTask = _ioModule.WaitForLockerAsync(
             slotIndex,
-            locker => locker.IsKnown && locker.IsLocked && locker.HasCargo == expectedOccupied,
+            ClosedDoorReached(expectedOccupied),
             _options.OperationTimeout,
             _options.FeedbackStableWindow,
             waitCts.Token);
         Task<LockerSnapshot> oppositeTask = _ioModule.WaitForLockerAsync(
             slotIndex,
-            locker => locker.IsKnown && locker.IsLocked && locker.HasCargo != expectedOccupied,
+            ClosedDoorOpposite(expectedOccupied),
             _options.OperationTimeout,
             _options.FeedbackStableWindow,
             waitCts.Token);
         Task<LockerSnapshot> unknownTask = _ioModule.WaitForLockerAsync(
             slotIndex,
-            locker => !locker.IsKnown,
+            ClosedDoorUnknown,
             _options.OperationTimeout,
             _options.FeedbackStableWindow,
             waitCts.Token);
@@ -3308,7 +3323,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return null;
         }
 
-        if (!snapshot.IsConnected || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+        if (!snapshot.IsConnected || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return "SLOT_STATE_UNKNOWN";
         }
@@ -3471,7 +3486,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// fresh, otherwise UNKNOWN -- a stale reading is not a reading.
     /// </summary>
     private LockerSnapshot ReadLocker(IoSnapshot snapshot, int slotIndex) =>
-        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge)
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge)
             ? TryGetLocker(snapshot, slotIndex)
             : LockerSnapshot.Unknown(slotIndex, snapshot.ObservedAt);
 
@@ -3584,12 +3599,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     private bool IsFresh(IoSnapshot snapshot) =>
-        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
 
     private bool IsSafeFinish(IoSnapshot snapshot, int slotIndex)
     {
         if (!snapshot.IsConnected
-            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge))
         {
             return false;
         }

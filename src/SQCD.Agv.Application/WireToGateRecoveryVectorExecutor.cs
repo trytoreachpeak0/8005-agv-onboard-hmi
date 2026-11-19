@@ -718,7 +718,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown
-                            && locker.ObservedAt >= unlocked.ObservedAt
+                            && locker.IsObservedNoEarlierThan(unlocked)
                             && locker.UnlockOutputRaw is false,
                         MinTimeout(_options.UnlockOutputResetTimeout, GetRemaining(deadline)),
                         _options.FeedbackStableWindow,
@@ -949,7 +949,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         return await _ioModule.WaitForLockerAsync(
             slotIndex,
             locker => locker.IsKnown
-                && locker.ObservedAt >= empty.ObservedAt
+                && locker.IsObservedNoEarlierThan(empty)
                 && locker.IsLocked
                 && locker.HasCargo
                 && locker.UnlockOutputRaw is false,
@@ -1359,7 +1359,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
 
     private bool IsFresh(IoSnapshot snapshot) =>
         snapshot.IsConnected
-        && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        && SafetyRules.IsSnapshotFresh(snapshot, _clock, _options.IoSnapshotMaxAge);
 
     /// <summary>
     /// What a result may state about a slot: the reading when the snapshot is fresh, otherwise UNKNOWN.
