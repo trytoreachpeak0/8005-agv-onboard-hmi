@@ -1,0 +1,9 @@
+Targeted run on 38575f7's tree (filter: Cancel|ArchitectureTests|OutboundResultShape|Journal|Recovery|SourceText|Guard):
+已通过! - 失败:     0，通过:   469，已跳过:     0，总计:   469，持续时间: 19 s - SQCD.Agv.UnitTests.dll (net8.0)
+失败!  - 失败:     1，通过:   441，已跳过:     0，总计:   442，持续时间: 3 m 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ACancellationPressedWhileTheSessionIsNotReadyIsNotRememberedAsTheFirstPress [FAIL]
+The one red timed out waiting for WaitingOperator before any cancellation was pressed; rerun 3x in isolation, green each time:
+已通过! - 失败:     0，通过:     2，已跳过:     0，总计:     2，持续时间: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+已通过! - 失败:     0，通过:     2，已跳过:     0，总计:     2，持续时间: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+已通过! - 失败:     0，通过:     2，已跳过:     0，总计:     2，持续时间: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+The earlier run's one red, AnAcknowledgedFailedCancellationShutsTheEntriesAndIsHandedOff, green in the same 3 isolated reruns.

@@ -43,8 +43,14 @@ public sealed partial class WireToGateBusinessService
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _owedVectorResultsLogged =
         new(StringComparer.Ordinal);
 
+    /// <remarks>
+    /// A load cancellation's is its subject's (<see cref="LoadCancellationResultKey(WireToGateRecoveryVectorContext)"/>,
+    /// onboard-hmi#421): every press takes its own cancellationId, and the row has to be found by what was cancelled.
+    /// </remarks>
     private static string RecoveryVectorResultKey(WireToGateRecoveryVectorContext vector) =>
-        $"{RecoveryVectorResultKeyPrefix}{vector.VectorType}:{vector.PrimaryId}";
+        vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation
+            ? LoadCancellationResultKey(vector)
+            : $"{RecoveryVectorResultKeyPrefix}{vector.VectorType}:{vector.PrimaryId}";
 
     private static bool IsSameVector(WireToGateRecoveryVectorContext left, WireToGateRecoveryVectorContext right) =>
         string.Equals(left.VectorType, right.VectorType, StringComparison.Ordinal)
@@ -259,6 +265,8 @@ public sealed partial class WireToGateBusinessService
                 ? [.. listed.EnumerateArray().Select(item => item.GetInt32()).Order()]
                 : [];
         return Matches("demandId", vector.DemandId)
+            && (vector.VectorType != WireToGateRecoveryVectorTypes.LoadCancellation
+                || Matches("cancellationId", vector.PrimaryId))
             && Matches("slotOperationAttemptId", vector.SlotOperationAttemptId)
             && Matches("exceptionRecoverySessionId", vector.ExceptionRecoverySessionId)
             && Matches("handoffId", vector.HandoffId)

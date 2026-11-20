@@ -1,0 +1,1 @@
+dotnet format SQCD_8005AGV.sln --verify-no-changes on 271451a: exit=0

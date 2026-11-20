@@ -147,6 +147,17 @@ public sealed record WireToGateRecoveryVectorContext(
     /// never replaced: a later press with other text still sends this one.
     /// </remarks>
     public WireToGateForcedCargoHandoff? CargoHandoff { get; init; }
+
+    /// <summary>
+    /// For <see cref="WireToGateRecoveryVectorTypes.LoadCancellation"/> only: the subject key of the cancellation it carries
+    /// out (<see cref="WireToGatePendingLoadCancellation.SubjectKey"/>, onboard-hmi#421), under which its result goes into
+    /// the outbox; null for every other vector, and on one an earlier version wrote, whose <see cref="PrimaryId"/> was that key.
+    /// </summary>
+    /// <remarks>
+    /// The result is keyed by what was cancelled, not by the press's id, so "has this load (or this demand at this stop)
+    /// been cancelled already" stays one lookup however many presses asked.
+    /// </remarks>
+    public string? LoadCancellationSubjectKey { get; init; }
 }
 
 /// <summary>
@@ -704,7 +715,20 @@ public sealed record WireToGatePendingLoadCancellation(
     string OperatorId,
     string OperatorVerificationMethod,
     DateTimeOffset OperatorVerifiedAt,
-    string Reason);
+    string Reason)
+{
+    /// <summary>
+    /// What this cancellation is about, as a key derived from the demand and the attempt (a load in flight) or the demand
+    /// and the operation session (before any sublot) -- the value the cancellationId itself used to be (onboard-hmi#421).
+    /// </summary>
+    /// <remarks>
+    /// Since onboard-hmi#421 every press takes a new <see cref="CancellationId"/>, so the id no longer names its subject; a
+    /// press, a restart's resend and the entry gates find the unanswered request about this load or this demand by this
+    /// key, and resend it under its own id and content. <c>null</c> on an entry an earlier version wrote: there the id was
+    /// that key.
+    /// </remarks>
+    public string? SubjectKey { get; init; }
+}
 
 public sealed record WireToGateDurableMessage(
     string DeduplicationKey,

@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index 0c5b4ff..7eb3620 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -5302,7 +5302,7 @@ public sealed partial class WireToGateBusinessService
+ 
+         WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
+         WireToGatePendingLoadCancellation pending = new(
+-            NewLoadCancellationId(),
++            subjectKey,
+             slotOperationAttemptId,
+             operatorContext.OperatorId,
+             operatorContext.VerificationMethod,

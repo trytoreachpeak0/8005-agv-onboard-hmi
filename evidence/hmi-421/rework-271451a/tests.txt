@@ -1,0 +1,46 @@
+All on 271451a, exit = dotnet test exit code.
+Unit full:
+已通过! - 失败:     0，通过:  1361，已跳过:     0，总计:  1361，持续时间: 38 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+G2 full, three runs (each red is a setup-phase timeout before any cancellation is pressed; a different set every run):
+-- hmi-g2-full
+失败!  - 失败:     5，通过:  1163，已跳过:     0，总计:  1168，持续时间: 6 m 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+StationDeadlineExpiredG2Tests.AResendRefusedWithAProtocolProblemStillRestoresTheRecoveryEntry
+RemainingBasketsSkipG2Tests.NotOfferedOnceTheOperationHasGoneToManualRecovery(onFile: "EXCEPTION_RECOVERY_SESSION")
+MultiDemandJourneyG2Tests.WithACancellationSentAndUnansweredOnlyItsRowCanBePressedAndItResendsIt
+MultiDemandJourneyG2Tests.AnUnknownHandoffOverASettledLoadKeepsItsDemandOnBoard
+MultiDemandJourneyG2Tests.ARefusedRowCancellationLeavesTheRowAndScanningAsTheyWere
+-- hmi-g2-full-2
+失败!  - 失败:     4，通过:  1164，已跳过:     0，总计:  1168，持续时间: 5 m 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+UnableToChargeFieldConfirmationG2Tests.TheLineKeptThroughTheClearingGoesWhenTheClaimOrItsCycleEnds(purpose: "IDLE_RETURN", cycleState: "NOT_CHARGING")
+WaitingPointIdleReturnG2Tests.TheCancellationBeforeAnySublotIsNotOfferedAtAWaitingPoint
+LoadCancellationEmptyScopeG2Tests.AServerRefusalIsShownAndTheLoadGoesOn(reasonCode: "SLOT_STATE_UNKNOWN")
+StationDeadlineExpiredG2Tests.TheDoubleHoldsJourneyAndCommandsBehindRecoveryRequiredUntilTheReportedAttemptsResultArrives
+-- hmi-g2-full-3
+失败!  - 失败:     4，通过:  1164，已跳过:     0，总计:  1168，持续时间: 6 m 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart
+DoorShutOverOppositeOccupancyG2Tests.AReopenWhoseLockFeedbackTurnsUnreadableIsStillUnknown
+MultiDemandJourneyG2Tests.EveryLoadedDemandOfAJourneyCanBeHandedOff
+MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle
+
+Every red above rerun in isolation:
+已通过! - 失败:     0，通过:     6，已跳过:     0，总计:     6，持续时间: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+已通过! - 失败:     0，通过:    10，已跳过:     0，总计:    10，持续时间: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+已通过! - 失败:     0，通过:     4，已跳过:     0，总计:     4，持续时间: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) / exit=0  (third run's four)
+
+Baseline 75929b41 (w2g/fp-v2-impl with #422), same machine, G2 full once:
+失败!  - 失败:     3，通过:  1159，已跳过:     0，总计:  1162，持续时间: 5 m 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+StationDeadlineExpiredG2Tests.AResultRefusedAcrossAReconnectIsDeliveredOnTheNextSessionAndSettledOnce(moment: DuringHandshake)
+CurrentStopDepartureG2Tests.AStaleWorklistRefusalIsShownAndANewPressIsANewRequest
+StationDeadlineExpiredG2Tests.AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued
+
+Ticket classes (LoadCancellationBeforeSublotG2Tests, LoadCancellationEmptyScopeG2Tests, RepeatedRowCancellationPress), incl. the two deliberate schema violations:
+已通过! - 失败:     0，通过:    37，已跳过:     0，总计:    37，持续时间: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0 (printed by the run)

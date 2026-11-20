@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index aa27c14..9dcf47d 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -2196,7 +2196,7 @@ public sealed partial class WireToGateBusinessService
+     /// The outbox key of a load cancellation vector's result: its subject's, not its cancellationId's (onboard-hmi#421).
+     /// </summary>
+     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
+-        LoadCancellationResultKey(LoadCancellationSubjectKeyOf(vector));
++        LoadCancellationResultKey(vector.PrimaryId);
+ 
+     /// <summary>
+     /// What a load cancellation vector cancels, as a subject key (<see cref="WireToGatePendingLoadCancellation.SubjectKey"/>).
