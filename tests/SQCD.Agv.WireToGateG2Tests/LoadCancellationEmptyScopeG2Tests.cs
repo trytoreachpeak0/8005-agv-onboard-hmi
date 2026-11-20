@@ -224,6 +224,8 @@ public sealed partial class LoadCancellationEmptyScopeG2Tests
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [Slot];
             });
+        // The id the deliberate violation on file names (schema-known-violations.json): one press, one id, so it is fixed here.
+        harness.Business.LoadCancellationIdFactoryForTest = () => "5cf02b51-2bd3-825b-87de-4c79de081e12";
 
         await WaitForReopenOfferAsync(harness, token);
         Assert.False(await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token)));

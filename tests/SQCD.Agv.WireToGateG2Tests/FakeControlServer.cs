@@ -1350,16 +1350,33 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         }
     }
 
+    /// <param name="answeredAsBusinessIdConflict">
+    /// Set when the refusal is a load cancellation's id carried again with other content: the real server answers that
+    /// with a correlated <c>ProtocolProblem</c> <c>BUSINESS_ID_CONTENT_CONFLICT</c> and keeps the connection
+    /// (control-server <c>FirstLoadCancellationRefusalAsync</c>, onboard-hmi#421 review L3), so the caller does too.
+    /// </param>
     private bool JudgeRecoveryRequest(
         string messageType,
         string messageId,
         string wireLine,
-        JsonElement root)
+        JsonElement root,
+        out bool answeredAsBusinessIdConflict)
     {
+        answeredAsBusinessIdConflict = false;
         try
         {
-            return BindRecoveryRequestLine(messageId, wireLine)
-                && BindRecoveryWorkflowContent(messageType, root);
+            if (!BindRecoveryRequestLine(messageId, wireLine))
+            {
+                return false;
+            }
+
+            if (!BindRecoveryWorkflowContent(messageType, root))
+            {
+                answeredAsBusinessIdConflict = messageType == "LoadCancellationStartRequested";
+                return false;
+            }
+
+            return true;
         }
         finally
         {
@@ -1419,6 +1436,18 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         lock (_sync)
         {
             _recoveryRequestLines[messageId] = wireLine;
+        }
+    }
+
+    /// <summary>
+    /// 让替身假装早就以另一份内容收到过这个 <c>cancellationId</c>：旧版车载端被拒后再按、同一派生 id 带新 <c>verifiedAt</c> 的那一份，
+    /// 车上日志簿里留着的却是更早那次（onboard-hmi#421 审查 H2）。
+    /// </summary>
+    public void PreloadLoadCancellationContent(string cancellationId, string payloadJson)
+    {
+        lock (_sync)
+        {
+            _recoveryWorkflowContents[cancellationId] = payloadJson;
         }
     }
 
@@ -2314,8 +2343,17 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
                 if (messageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted"
                         or "LoadCancellationStartRequested" or "LoadCorrectionRequested"
-                    && !JudgeRecoveryRequest(messageType, messageId, line, root))
+                    && !JudgeRecoveryRequest(messageType, messageId, line, root, out bool businessIdConflict))
                 {
+                    if (businessIdConflict)
+                    {
+                        await WriteEnvelopeAsync(
+                                context,
+                                CreateProtocolProblem(context, messageId, messageType, "BUSINESS_ID_CONTENT_CONFLICT"))
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+
                     context.Client.Close();
                     return;
                 }

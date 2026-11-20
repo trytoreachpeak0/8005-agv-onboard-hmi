@@ -85,4 +85,88 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.Equal(requests[0].GetRawText(), requests[1].GetRawText());
         Assert.Empty(harness.Server.RecoveryRequestConflicts);
     }
+
+    /// <summary>
+    /// 换装前的版本留下的待答取消（日志簿里没有对象键，id 就是由需求与作业会话推出的那个）：照旧按它的 id 与首发内容逐字重提，不换 id、不换操作员
+    /// 与 <c>verifiedAt</c>（审查 M2；把旧格式的回退改坏，这条变红）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task AnUnansweredPressAnEarlierVersionJournaledIsResentUnderItsIdWithItsContent()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        DateTimeOffset verifiedAt = new(2026, 11, 19, 8, 0, 0, TimeSpan.Zero);
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            seed: WireToGateRecoveryState.Empty with { PendingLoadCancellation = EarlierVersionsPress(verifiedAt) });
+
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "换装之后换了个人再按。", token));
+
+        JsonElement sent = Assert.Single(harness.PayloadsReceived("LoadCancellationStartRequested"));
+        Assert.Equal(DerivedBeforeSublotKey(), sent.GetProperty("cancellationId").GetString());
+        Assert.Equal("operator-000", sent.GetProperty("operator").GetProperty("operatorId").GetString());
+        Assert.Equal(verifiedAt, sent.GetProperty("operator").GetProperty("verifiedAt").GetDateTimeOffset());
+        Assert.Equal("换装之前按下、没等到答复。", sent.GetProperty("reason").GetString());
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        (string _, JsonElement result) = Assert.Single(harness.ResultsReceived());
+        Assert.Equal(DerivedBeforeSublotKey(), result.GetProperty("cancellationId").GetString());
+    }
+
+    /// <summary>
+    /// 同一种待答取消，而服务端以另一份内容持有这个 id（旧版车载端被拒后再按、同一派生 id 带新 <c>verifiedAt</c>，答复没到车就换装了）：
+    /// 服务端回 <c>BUSINESS_ID_CONTENT_CONFLICT</c>。车载端放掉这次申请，不留死出口（审查 H2、L3）：待答清掉，屏上说没受理、叫再按一次；
+    /// 照做那一行按得动，用新的 id 申请、授权、上报结果。修前待答不清，每次按都原样重提、每次 1105。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task APressTheServerHoldsWithOtherContentIsLetGoAndThePressItAsksForIsJudgedUnderANewId()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            seed: WireToGateRecoveryState.Empty with
+            {
+                PendingLoadCancellation = EarlierVersionsPress(new DateTimeOffset(2026, 11, 19, 8, 0, 0, TimeSpan.Zero))
+            });
+        harness.Server.PreloadLoadCancellationContent(DerivedBeforeSublotKey(), "{\"verifiedAt\":\"a later press\"}");
+
+        Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "换装之后再按。", token));
+
+        Assert.Null((await harness.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+        await harness.WaitForRecoveryBlockedAsync("这次取消服务端没有受理，没有打开任何仓门；如仍要取消，请再按一次", token);
+        Assert.Empty(harness.ResultsReceived());
+
+        // The way out the notice names: the row, pressable, and pressing it is a new request.
+        Assert.True(harness.Business.CanRequestWorklistRowCancellation(DemandId));
+        Assert.True(await harness.Business.RequestWorklistRowCancellationAsync(DemandId, "照提示再按一次。", token));
+
+        IReadOnlyList<JsonElement> requests = harness.PayloadsReceived("LoadCancellationStartRequested");
+        Assert.Equal(2, requests.Count);
+        Assert.Equal(DerivedBeforeSublotKey(), requests[0].GetProperty("cancellationId").GetString());
+        string newId = requests[1].GetProperty("cancellationId").GetString()!;
+        Assert.NotEqual(DerivedBeforeSublotKey(), newId);
+        (string _, JsonElement result) = Assert.Single(harness.ResultsReceived());
+        Assert.Equal(newId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>A press the version before onboard-hmi#421 journaled: its id is the derived key, and it carries no subject key.</summary>
+    private static WireToGatePendingLoadCancellation EarlierVersionsPress(DateTimeOffset verifiedAt) =>
+        new(DerivedBeforeSublotKey(), null, "operator-000", "SESSION", verifiedAt, "换装之前按下、没等到答复。");
+
+    /// <summary>The id the version before onboard-hmi#421 derived for this demand at this stop (<c>StableUuid</c>).</summary>
+    private static string DerivedBeforeSublotKey()
+    {
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{DemandId}|{OperationSessionId}|load-cancellation-before-sublot"));
+        Span<byte> bytes = stackalloc byte[16];
+        hash.AsSpan(0, 16).CopyTo(bytes);
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes).ToString("D");
+    }
 }

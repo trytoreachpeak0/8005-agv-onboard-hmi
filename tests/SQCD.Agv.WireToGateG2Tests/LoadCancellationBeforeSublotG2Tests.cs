@@ -163,6 +163,8 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
             token,
             server => server.LoadCancellationBeforeSublotAuthorizedSlots = [1]);
+        // The id the deliberate violation on file names (schema-known-violations.json): one press, one id, so it is fixed here.
+        harness.Business.LoadCancellationIdFactoryForTest = () => "6a420c71-af65-d154-a765-168c4f5dbe84";
 
         Assert.False(await harness.Business.RequestWorklistRowCancellationAsync(DemandId,
             "到站后现场确认本站没有要装的货。", token));

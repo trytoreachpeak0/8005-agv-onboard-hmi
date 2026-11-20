@@ -1900,6 +1900,27 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             throw;
         }
+        catch (InvalidDataException exception) when (
+            string.Equals(exception.Message, "BUSINESS_ID_CONTENT_CONFLICT", StringComparison.Ordinal))
+        {
+            // The server holds this cancellationId with other content (onboard-hmi#421 review H2): an entry an earlier
+            // version journaled under its derived id after that id was refused once, or answered while this process was
+            // away. Resent as it stands it is refused the same way on every press, and the load holds its doors shut for
+            // an answer that never comes. The server took nothing from this request, so it is let go like a refusal: the
+            // load goes on, and the next press is a new request under a new id, judged afresh.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"装货取消被服务端以BUSINESS_ID_CONTENT_CONFLICT拒收，放弃这次申请，下一次按键用新的取消号重新申请：cancellation={cancellationId}，"
+                + $"demand={demandId}，attempt={slotOperationAttemptId ?? "null"}。",
+                exception);
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            PublishOperatorResponse(
+                "RECOVERY_BLOCKED",
+                $"这次取消服务端没有受理，没有打开任何仓门；如仍要取消，请再按一次{BeforeSublotPressPhrase(demandId)}，会作为新的申请重新判定。 ");
+            return null;
+        }
         catch (TimeoutException) when (slotOperationAttemptId is not null)
         {
             // Sent and not answered: the load holds every door shut for the answer (8005-agv-onboard-hmi#392, second-phase
@@ -2342,7 +2363,13 @@ public sealed partial class WireToGateBusinessService
     /// The cancellationId of a new press (onboard-hmi#421, protocol 98f17264, as for <c>skipRequestId</c>): one press, one
     /// id, journaled before it is sent. Only a resend of a press still waiting for its answer reuses one, with its content.
     /// </summary>
-    private static string NewLoadCancellationId() => Guid.NewGuid().ToString("D");
+    private string NewLoadCancellationId() => LoadCancellationIdFactoryForTest();
+
+    /// <summary>
+    /// Where a new press's cancellationId comes from: a random UUID, except in a test that has to name the id it sends -- a
+    /// deliberate schema violation on file names the authorization by its bytes (<c>schema-known-violations.json</c>).
+    /// </summary>
+    internal Func<string> LoadCancellationIdFactoryForTest { get; set; } = () => Guid.NewGuid().ToString("D");
 
     /// <summary>
     /// Whether a <c>SlotOperationCommand</c> names an attempt that is no longer a new command for this

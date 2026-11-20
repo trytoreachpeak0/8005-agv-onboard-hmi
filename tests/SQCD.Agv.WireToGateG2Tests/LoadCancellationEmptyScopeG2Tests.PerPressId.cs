@@ -71,4 +71,49 @@ public sealed partial class LoadCancellationEmptyScopeG2Tests
         Assert.Equal(1, io.UnlockCount);
         AssertNoOperationResult(harness);
     }
+
+    /// <summary>
+    /// 服务端以另一份内容持有这次按键的 id，回 <c>BUSINESS_ID_CONTENT_CONFLICT</c>（审查 H2、L3）：车载端放掉这次申请，装货不再停着等答复，屏上说没受理、
+    /// 叫再按一次；照做，取消入口按得动，用新的 id 申请、授权，不开门、报 <c>ALL_EMPTY</c>。修前待答不清，装货一直停着，再按原样重提、每次 1105。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task APressTheServerHoldsWithOtherContentIsLetGoAndThePressItAsksForIsJudgedUnderANewId()
+    {
+        const string heldId = "42142142-1421-4421-8421-421421421421";
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { ScriptedHardware = true };
+        io.ScriptPulse(Slot, OpensThenShut(cargo: false));
+        await using Harness harness = await StartAsync(io, token, server => server.RespondToLoadCancellationRequests = true);
+        harness.Server.PreloadLoadCancellationContent(heldId, "{\"verifiedAt\":\"another press\"}");
+        harness.Business.LoadCancellationIdFactoryForTest = () => heldId;
+
+        await WaitForReopenOfferAsync(harness, token);
+        Assert.False(await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token)));
+
+        Assert.Null((await harness.Session.Journal.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+        Assert.Contains(
+            harness.Events,
+            notice => notice.Kind == "RECOVERY_BLOCKED"
+                && notice.Message.Contains("这次取消服务端没有受理，没有打开任何仓门；如仍要取消，请再按一次", StringComparison.Ordinal));
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationResult");
+
+        // The way out the notice names: the entry, pressable, and pressing it is a new request.
+        harness.Business.LoadCancellationIdFactoryForTest = () => Guid.NewGuid().ToString("D");
+        await WaitUntilAsync(
+            harness,
+            () => harness.OnUi(() => harness.ViewModel.CanPressLoadCancellation),
+            "the cancellation pressable after the conflict",
+            token);
+        Assert.True(
+            await harness.OnUi(() => harness.ViewModel.RequestLoadCancellationAsync(token)),
+            "The press the notice asks for was not carried out: " + Said(harness));
+
+        JsonElement result = await WaitForCancellationResultAsync(harness, token);
+        Assert.NotEqual(heldId, result.GetProperty("cancellationId").GetString());
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(1, io.UnlockCount);
+        AssertNoOperationResult(harness);
+    }
 }
