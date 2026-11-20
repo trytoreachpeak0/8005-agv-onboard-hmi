@@ -231,7 +231,7 @@ public sealed partial class WireToGateBusinessService
         bool concluded = await _session.Journal
             .ReadOutgoingByDeduplicationKeyAsync(
                 $"{RecoveryVectorResultKeyPrefix}{WireToGateRecoveryVectorTypes.LoadCancellation}:"
-                + InFlightLoadCancellationId(demandId, slotOperationAttemptId),
+                + InFlightLoadCancellationKey(demandId, slotOperationAttemptId),
                 cancellationToken)
             .ConfigureAwait(false) is not null;
         if (concluded)

@@ -24,7 +24,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// 替身服务端按 v6 回空范围授权（<see cref="FakeControlServer.LoadCancellationAuthorizedSlots"/> 默认为空）。
 /// </para>
 /// </remarks>
-public sealed class LoadCancellationEmptyScopeG2Tests
+public sealed partial class LoadCancellationEmptyScopeG2Tests
 {
     private const int Slot = 1;
 

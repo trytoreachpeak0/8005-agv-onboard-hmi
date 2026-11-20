@@ -1037,6 +1037,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             ValidateOptionalUuid(
                 cancellation.SlotOperationAttemptId,
                 nameof(cancellation.SlotOperationAttemptId));
+            ValidateOptionalUuid(cancellation.SubjectKey, nameof(cancellation.SubjectKey));
             ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.OperatorId);
             ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.OperatorVerificationMethod);
             ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.Reason);
@@ -1185,6 +1186,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         ValidateOptionalUuid(vector.ExceptionRecoverySessionId, nameof(vector.ExceptionRecoverySessionId));
         ValidateOptionalUuid(vector.SlotOperationAttemptId, nameof(vector.SlotOperationAttemptId));
         ValidateOptionalUuid(vector.HandoffId, nameof(vector.HandoffId));
+        ValidateOptionalUuid(vector.LoadCancellationSubjectKey, nameof(vector.LoadCancellationSubjectKey));
         // Only the cancellation before any sublot is entered carries no slot; every other vector names
         // the slots it puts into a proven state.
         if (vector.Slots is null

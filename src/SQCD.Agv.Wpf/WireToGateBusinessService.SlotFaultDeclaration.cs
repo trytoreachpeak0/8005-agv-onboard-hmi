@@ -192,7 +192,7 @@ public sealed partial class WireToGateBusinessService
             || await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(
                     $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:"
-                    + InFlightLoadCancellationId(command.DemandId, command.SlotOperationAttemptId),
+                    + InFlightLoadCancellationKey(command.DemandId, command.SlotOperationAttemptId),
                     cancellationToken)
                 .ConfigureAwait(false) is not null)
         {

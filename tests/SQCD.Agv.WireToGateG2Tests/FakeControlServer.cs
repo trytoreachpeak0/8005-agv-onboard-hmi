@@ -928,6 +928,12 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     public string LoadCancellationDecision { get; set; } = "AUTHORIZED";
 
     /// <summary>
+    /// 每个被拒的 cancellationId 首次拒绝的原因码。同一 id 再来（内容相同，内容不同已在 <see cref="BindRecoveryWorkflowContent"/>
+    /// 当冲突拒收）就照这条回放、不重判，照真服务端 onboard-hmi#421 之后的做法；之前 cs#837 的过渡做法是每次重判。
+    /// </summary>
+    private readonly Dictionary<string, string> _loadCancellationFirstRefusals = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// 拒绝取消时 <c>problem.reasonCode</c> 回什么。默认是真服务端在途单已落进 RecoveryRequired 时回的码；
     /// 站点结束之后迟到的取消，服务端回 <c>WORKLIST_REVISION_STALE</c>（control-server#324）。
     /// </summary>
@@ -1307,6 +1313,11 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                     _recoveryWorkflowContents[workflowId] = content;
                 }
 
+                foreach ((string cancellationId, string reasonCode) in previous._loadCancellationFirstRefusals)
+                {
+                    _loadCancellationFirstRefusals[cancellationId] = reasonCode;
+                }
+
                 _settledAttempts.UnionWith(previous._settledAttempts);
                 _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
                 _openRecoverySession = previous._openRecoverySession;
@@ -1360,16 +1371,17 @@ public sealed partial class FakeControlServer : IAsyncDisposable
     /// messageId 之外真服务端还有一道：取消与修正落成 <c>RecoveryWorkflows</c> 行，主键是
     /// <c>cancellationId</c>/<c>correctionId</c>，之后同一个 id 带来的 payload 字节不同就抛
     /// <c>Recovery workflow id was replayed with different content.</c> 并掐连接
-    /// （<c>OnboardRecoveryCoordinator.UpsertSimpleWorkflowAsync</c>）。拒绝不落行，所以只绑定会被受理的请求。
+    /// （<c>OnboardRecoveryCoordinator.UpsertSimpleWorkflowAsync</c>）。
     /// 替身不照做的话，换了 messageId、却每次按下都带新 <c>verifiedAt</c> 的重试在 G2 里是绿的。
+    /// 装货取消自 onboard-hmi#421 起不论授权还是拒绝都绑定：真服务端从收件箱读回同一 cancellationId 的首个请求，内容不同回
+    /// <c>BUSINESS_ID_CONTENT_CONFLICT</c>，内容相同而首次是拒绝就回放那次拒绝（<c>FirstLoadCancellationRefusalAsync</c>）。
     /// </summary>
     private bool BindRecoveryWorkflowContent(string messageType, JsonElement root)
     {
         JsonElement payload = root.GetProperty("payload");
         string? workflowId = messageType switch
         {
-            "LoadCancellationStartRequested" when RespondToLoadCancellationRequests
-                && LoadCancellationDecision == "AUTHORIZED" =>
+            "LoadCancellationStartRequested" when RespondToLoadCancellationRequests =>
                 payload.GetProperty("cancellationId").GetString(),
             "LoadCorrectionRequested" => payload.GetProperty("correctionId").GetString(),
             _ => null
@@ -3364,8 +3376,8 @@ public sealed partial class FakeControlServer : IAsyncDisposable
         bool beforeSublot = attemptId is null;
         // 在途取消照真服务端判：那次装货的非完成结果已经收下、落进 RecoveryRequired 之后一律拒绝。出处是
         // control-server `OnboardRecoveryCoordinator.AuthorizeLoadCancellationAsync`（fp/v2-impl a234e3ea）：
-        // `operation.Status != StationOperationStatus.RecoveryRequired` 才授权，每次都重判、不按旧记录回答，
-        // 重发的请求是新 messageId，也不会被收件箱当成重放。这个替身原先照样授权，于是有用例测的是一个真服务端下
+        // `operation.Status != StationOperationStatus.RecoveryRequired` 才授权；同一 cancellationId 首次被拒的，自 onboard-hmi#421
+        // 起回放那次拒绝（见 _loadCancellationFirstRefusals），其余每次都重判。这个替身原先照样授权，于是有用例测的是一个真服务端下
         // 不存在的世界（8005-agv-onboard-hmi#188）。
         bool operationNeedsRecovery;
         lock (_sync)
@@ -3375,6 +3387,22 @@ public sealed partial class FakeControlServer : IAsyncDisposable
 
         BeforeLoadCancellationAuthorization?.Invoke();
         string decision = operationNeedsRecovery ? "REJECTED" : LoadCancellationDecision;
+        string rejectionReasonCode = operationNeedsRecovery
+            ? "ACTION_NOT_ALLOWED_IN_STATE"
+            : LoadCancellationRejectionReasonCode;
+        lock (_sync)
+        {
+            if (_loadCancellationFirstRefusals.TryGetValue(cancellationId, out string? firstRefusal))
+            {
+                decision = "REJECTED";
+                rejectionReasonCode = firstRefusal;
+            }
+            else if (decision == "REJECTED")
+            {
+                _loadCancellationFirstRefusals.Add(cancellationId, rejectionReasonCode);
+            }
+        }
+
         bool authorized = decision == "AUTHORIZED";
         WireToGateEnvelope answer = CreateEnvelope(
                 context,
@@ -3397,9 +3425,7 @@ public sealed partial class FakeControlServer : IAsyncDisposable
                         ? null
                         : new
                         {
-                            reasonCode = operationNeedsRecovery
-                                ? "ACTION_NOT_ALLOWED_IN_STATE"
-                                : LoadCancellationRejectionReasonCode,
+                            reasonCode = rejectionReasonCode,
                             fieldPath = "payload.demandId",
                             displayMessage = "当前状态不允许取消装货。"
                         }

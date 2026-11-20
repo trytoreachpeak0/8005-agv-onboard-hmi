@@ -82,10 +82,9 @@ public sealed partial class WireToGateBusinessService
             WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
             return state.RecoveryVector is null
                 && CancellableLoadInFlight(state) is { } load
-                && !string.Equals(
-                    state.PendingLoadCancellation?.CancellationId,
-                    InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
-                    StringComparison.Ordinal)
+                && !IsPendingFor(
+                    state.PendingLoadCancellation,
+                    InFlightLoadCancellationKey(load.DemandId, load.SlotOperationAttemptId))
                     ? LoadCancellationRefusal(state, load)
                     : null;
         }
@@ -589,7 +588,7 @@ public sealed partial class WireToGateBusinessService
                 && string.Equals(vector.DemandId, demandId, StringComparison.Ordinal)
                 && !IsAwaitingManualCheck(state)
                 && session.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired
-                    ? new LoadCancellationTarget($"vector:{vector.PrimaryId}", vector.DemandId, IsLoadInFlight: false)
+                    ? new LoadCancellationTarget($"vector:{LoadCancellationSubjectKeyOf(vector)}", vector.DemandId, IsLoadInFlight: false)
                     : null;
         }
 
@@ -603,7 +602,7 @@ public sealed partial class WireToGateBusinessService
         LoadCancellationBeforeSublotOutcome outcome = FindLoadCancellationBeforeSublot(state, demandId, rowPress: true);
         return outcome is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
             && string.Equals(target.DemandId, demandId, StringComparison.Ordinal)
-                ? new LoadCancellationTarget($"before-sublot:{target.CancellationId}", target.DemandId, IsLoadInFlight: false)
+                ? new LoadCancellationTarget($"before-sublot:{target.SubjectKey}", target.DemandId, IsLoadInFlight: false)
                 : null;
     }
 
@@ -806,10 +805,7 @@ public sealed partial class WireToGateBusinessService
         && !string.Equals(state.UnsettledSlotOperationAttemptId, attempt, StringComparison.Ordinal)
         && state.LastCompletedLoadOperationContext is { } recorded
         && string.Equals(recorded.SlotOperationAttemptId, attempt, StringComparison.Ordinal)
-        && string.Equals(
-            pending.CancellationId,
-            InFlightLoadCancellationId(recorded.DemandId, attempt),
-            StringComparison.Ordinal)
+        && IsPendingFor(pending, InFlightLoadCancellationKey(recorded.DemandId, attempt))
             ? recorded
             : null;
 
@@ -844,7 +840,7 @@ public sealed partial class WireToGateBusinessService
         {
             return vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation && !IsAwaitingManualCheck(state)
                 ? new LoadCancellationTarget(
-                    $"vector:{vector.PrimaryId}",
+                    $"vector:{LoadCancellationSubjectKeyOf(vector)}",
                     vector.DemandId,
                     !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
                 : null;
@@ -860,7 +856,7 @@ public sealed partial class WireToGateBusinessService
 
         LoadCancellationBeforeSublotOutcome beforeSublot = FindLoadCancellationBeforeSublot(state, selectedDemandId, rowPress);
         return beforeSublot is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
-            ? new LoadCancellationTarget($"before-sublot:{target.CancellationId}", target.DemandId, IsLoadInFlight: false)
+            ? new LoadCancellationTarget($"before-sublot:{target.SubjectKey}", target.DemandId, IsLoadInFlight: false)
             : null;
     }
 
@@ -935,8 +931,8 @@ public sealed partial class WireToGateBusinessService
             // changed and to press again. Only a cancellation before any sublot: one over a load in flight (a vector: subject
             // too) keeps the answer it had, for its late outcome need not be ALL_EMPTY and the screen may just have said
             // so (review L2).
-            if (BeforeSublotCancellationIdOf(pressedSubject) is { } pressedCancellationId
-                && await LoadCancellationResultOnFileAsync(pressedCancellationId, cancellationToken).ConfigureAwait(false)
+            if (BeforeSublotSubjectKeyOf(pressedSubject) is { } pressedSubjectKey
+                && await LoadCancellationResultOnFileAsync(pressedSubjectKey, cancellationToken).ConfigureAwait(false)
                     is { } concluded
                 && IsBeforeSublotCancellationResult(concluded))
             {
@@ -1188,7 +1184,11 @@ public sealed partial class WireToGateBusinessService
         && FindLoadCancellationBeforeSublot(Volatile.Read(ref _lastRecoveryState), null, rowPress: false).Availability
             is LoadCancellationBeforeSublotAvailability.SelectionRequired;
 
-    private sealed record LoadCancellationBeforeSublotTarget(string CancellationId, string DemandId);
+    /// <param name="SubjectKey">
+    /// What a cancellation of this demand at this stop is about (<see cref="LoadCancellationBeforeSublotKey"/>): not the id
+    /// a press goes out under, which is new for every press (onboard-hmi#421).
+    /// </param>
+    private sealed record LoadCancellationBeforeSublotTarget(string SubjectKey, string DemandId);
 
     /// <summary>Why a cancellation before any sublot has no subject, when it has none.</summary>
     private enum LoadCancellationBeforeSublotAvailability
@@ -1242,10 +1242,10 @@ public sealed partial class WireToGateBusinessService
     /// </para>
     /// <para>
     /// <b>A cancellation already sent keeps its own subject.</b> Its demand is recovered by deriving
-    /// each item's cancellationId and matching the journaled <c>PendingLoadCancellation</c>, not from
-    /// whatever is picked now: the server compares a retry's whole payload with the one it first
-    /// accepted, so a retry naming another demand is a different request under the same id. No field
-    /// is added to the recovery state for this -- the derivation is the record.
+    /// each item's subject key and matching the journaled <c>PendingLoadCancellation</c>'s
+    /// (<see cref="WireToGatePendingLoadCancellation.SubjectKey"/>), not from whatever is picked now: the
+    /// server compares a retry's whole payload with the one it first saw, so a retry naming another
+    /// demand is a different request under the same id.
     /// </para>
     /// <para>
     /// "Nothing commanded" is read from what this vehicle holds: no slot operation unsettled or
@@ -1253,8 +1253,10 @@ public sealed partial class WireToGateBusinessService
     /// makes the same judgement from its side and refuses a cancellation once a load command exists.
     /// </para>
     /// <para>
-    /// The cancellationId is derived from the demand and the operation session, so every press at
-    /// this stop -- across a lost answer and a restart -- asks about the same cancellation.
+    /// The subject key is derived from the demand and the operation session, so every press at this
+    /// stop -- across a lost answer and a restart -- is about the same demand and finds the request
+    /// still waiting for its answer. The cancellationId is not: each new press takes its own
+    /// (onboard-hmi#421), and only a resend of the one waiting reuses it.
     /// </para>
     /// </remarks>
     /// <param name="selectedDemandId">
@@ -1311,10 +1313,7 @@ public sealed partial class WireToGateBusinessService
         if (state.PendingLoadCancellation is { SlotOperationAttemptId: null } sent)
         {
             Core.WireToGateWorklistItem? sentItem = worklist.Items.FirstOrDefault(
-                item => string.Equals(
-                    LoadCancellationBeforeSublotId(item.DemandId, request.OperationSessionId),
-                    sent.CancellationId,
-                    StringComparison.Ordinal));
+                item => IsPendingFor(sent, LoadCancellationBeforeSublotKey(item.DemandId, request.OperationSessionId)));
             return sentItem is null
                 ? new(LoadCancellationBeforeSublotAvailability.SentSelectionMissing, null)
                 : JudgeLoadCancellationBeforeSublot(state, sentItem, request) with
@@ -1367,11 +1366,14 @@ public sealed partial class WireToGateBusinessService
             : new(
                 LoadCancellationBeforeSublotAvailability.Ready,
                 new(
-                    LoadCancellationBeforeSublotId(item.DemandId, request.OperationSessionId),
+                    LoadCancellationBeforeSublotKey(item.DemandId, request.OperationSessionId),
                     item.DemandId));
 
-    /// <summary>The cancellationId every press over this demand at this stop asks about.</summary>
-    private static string LoadCancellationBeforeSublotId(string demandId, string operationSessionId) =>
+    /// <summary>
+    /// The subject key of a cancellation of this demand at this stop before any sublot. Until onboard-hmi#421 it was also
+    /// the cancellationId every such press went out under.
+    /// </summary>
+    private static string LoadCancellationBeforeSublotKey(string demandId, string operationSessionId) =>
         StableUuid($"{demandId}|{operationSessionId}|load-cancellation-before-sublot");
 
     private bool HasRecoveryVectorOrCompletedLoad(string vectorType)
@@ -1459,7 +1461,7 @@ public sealed partial class WireToGateBusinessService
                     cancellationToken,
                     result => SendRecoveryVectorResultAsync(
                         existingVector,
-                        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{existingVector.PrimaryId}",
+                        LoadCancellationResultKey(existingVector),
                         result,
                         cancellationToken),
                     releaseSettledFailure: () => ForgetSettledRecoveryVectorAsync(existingVector, cancellationToken))
@@ -1501,11 +1503,12 @@ public sealed partial class WireToGateBusinessService
         // Revised REQ-0211 (8005-agv-onboard-hmi#392): asked over a basket in, a door not shut or an output not reset, the
         // server refuses it, and nothing about the load changes; so it is not asked. The entry is shut over it already; this is
         // the press that got there anyway, the state changed under the confirmation dialog. Answered as the entry is
-        // captioned, nothing sent, the load left running. Not a request already out under this id: the server may have
-        // authorized it, and only asking again -- the first press's content, its stored answer replayed -- settles it.
-        string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
-        bool recordedNow = false;
-        if (!string.Equals(state.PendingLoadCancellation?.CancellationId, cancellationId, StringComparison.Ordinal))
+        // captioned, nothing sent, the load left running. Not a request already out over this load: the server may have
+        // authorized it, and only asking again -- the first press's id and content, its stored answer replayed -- settles it.
+        // Any other press is a new request under a new id (onboard-hmi#421), a refused one's included.
+        string subjectKey = InFlightLoadCancellationKey(operation.DemandId, operation.SlotOperationAttemptId);
+        WireToGatePendingLoadCancellation? recordedByThisPress = null;
+        if (!IsPendingFor(state.PendingLoadCancellation, subjectKey))
         {
             // Judged and journaled where the load's executor sends no pulse (8005-agv-onboard-hmi#392, control-server#837
             // review): journaled first, the load holds every door shut until the answer; pulsed first, its slot reads not
@@ -1522,9 +1525,9 @@ public sealed partial class WireToGateBusinessService
 
                         // As AskForLoadCancellationAsync does before it records: only a press that can send is a first press.
                         RequireSessionReadyToSend();
-                        await RecallOrRecordLoadCancellationAsync(
+                        recordedByThisPress = await RecallOrRecordLoadCancellationAsync(
                                 now,
-                                cancellationId,
+                                subjectKey,
                                 operation.SlotOperationAttemptId,
                                 reason,
                                 cancellationToken)
@@ -1543,9 +1546,11 @@ public sealed partial class WireToGateBusinessService
                 return true;
             }
 
-            recordedNow = true;
             state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        // This press's id, on file before anything is sent: the one just journaled, or the unanswered one's it resends.
+        string cancellationId = (recordedByThisPress ?? state.PendingLoadCancellation!).CancellationId;
 
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
         // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
@@ -1557,12 +1562,12 @@ public sealed partial class WireToGateBusinessService
 
         if (await AskForLoadCancellationAsync(
                 state,
-                cancellationId,
+                subjectKey,
                 operation.DemandId,
                 operation.SlotOperationAttemptId,
                 reason,
                 cancellationToken,
-                recordedNow)
+                recordedByThisPress is not null)
             .ConfigureAwait(false) is not var (authorization, operatorContext))
         {
             return false;
@@ -1657,7 +1662,7 @@ public sealed partial class WireToGateBusinessService
                 cancellationToken,
                 result => SendRecoveryVectorResultAsync(
                     vector,
-                    $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}",
+                    LoadCancellationResultKey(vector),
                     result,
                     cancellationToken),
                 releaseSettledFailure: () => ForgetSettledRecoveryVectorAsync(vector, cancellationToken))
@@ -1750,10 +1755,7 @@ public sealed partial class WireToGateBusinessService
     private static bool IsUnansweredInFlightCancellation(
         WireToGateRecoveryState state,
         WireToGateRecoveryOperationContext load) =>
-        string.Equals(
-            state.PendingLoadCancellation?.CancellationId,
-            InFlightLoadCancellationId(load.DemandId, load.SlotOperationAttemptId),
-            StringComparison.Ordinal);
+        IsPendingFor(state.PendingLoadCancellation, InFlightLoadCancellationKey(load.DemandId, load.SlotOperationAttemptId));
 
     /// <summary>
     /// The cancellation entry while a severe safety fault is latched: the cancellation before any sublot, and the one over the
@@ -1823,13 +1825,15 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     /// <remarks>
     /// Shared by the cancellation of a load in flight and the one before any sublot, which differ only
-    /// in the attempt they name: the content of a retry is the first press's
-    /// (<see cref="RecallOrRecordLoadCancellationAsync"/>) and every send takes a new messageId.
+    /// in the attempt they name: a new press goes out under a new cancellationId, a retry of one still
+    /// waiting for its answer under that one's id and content (<see cref="RecallOrRecordLoadCancellationAsync"/>),
+    /// and every send takes a new messageId.
     /// </remarks>
+    /// <param name="subjectKey">What this cancellation is about (<see cref="WireToGatePendingLoadCancellation.SubjectKey"/>).</param>
     private async Task<(LoadCancellationAuthorizationPayload Authorization, WireToGateOperatorContextPayload Operator)?>
         AskForLoadCancellationAsync(
             WireToGateRecoveryState state,
-            string cancellationId,
+            string subjectKey,
             string demandId,
             string? slotOperationAttemptId,
             string reason,
@@ -1842,18 +1846,15 @@ public sealed partial class WireToGateBusinessService
         RequireSessionReadyToSend();
         // A press over a load in flight journals itself between the load's pulses before it gets here
         // (8005-agv-onboard-hmi#392): on file, but this press's, not an earlier one's.
-        bool recalled = !recordedByThisPress
-            && string.Equals(
-                state.PendingLoadCancellation?.CancellationId,
-                cancellationId,
-                StringComparison.Ordinal);
+        bool recalled = !recordedByThisPress && IsPendingFor(state.PendingLoadCancellation, subjectKey);
         WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
-                cancellationId,
+                subjectKey,
                 slotOperationAttemptId,
                 reason,
                 cancellationToken)
             .ConfigureAwait(false);
+        string cancellationId = pending.CancellationId;
         if (slotOperationAttemptId is null)
         {
             // Published before the send, which waits for the answer: sublot entry closes from here
@@ -2029,7 +2030,7 @@ public sealed partial class WireToGateBusinessService
                 + "不是此刻选中的这条。 ");
         }
 
-        if (await LoadCancellationResultOnFileAsync(target.CancellationId, cancellationToken).ConfigureAwait(false)
+        if (await LoadCancellationResultOnFileAsync(target.SubjectKey, cancellationToken).ConfigureAwait(false)
             is { } concluded)
         {
             return AnswerLoadCancellationAlreadyConcluded(concluded);
@@ -2037,7 +2038,7 @@ public sealed partial class WireToGateBusinessService
 
         if (await AskForLoadCancellationAsync(
                 state,
-                target.CancellationId,
+                target.SubjectKey,
                 target.DemandId,
                 null,
                 reason,
@@ -2063,7 +2064,11 @@ public sealed partial class WireToGateBusinessService
             null,
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
-            operatorContext.VerifiedAt);
+            operatorContext.VerifiedAt)
+        {
+            // The id is this press's; the result goes on file under the demand's key at this stop (onboard-hmi#421).
+            LoadCancellationSubjectKey = target.SubjectKey
+        };
         // Read for its side effect alone: it refreshes the cached recovery state every entry gate
         // reads. The write below takes its own base from inside the journal step, so no copy of the
         // state is needed here any more (onboard-hmi#136).
@@ -2187,48 +2192,77 @@ public sealed partial class WireToGateBusinessService
             ? WireToGateLoadCancellationText.RowPressPhrase
             : $"「{LoadCancellationCaptionHere()}」";
 
+    /// <summary>
+    /// The outbox key of a load cancellation vector's result: its subject's, not its cancellationId's (onboard-hmi#421).
+    /// </summary>
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
-        LoadCancellationResultKey(vector.PrimaryId);
+        LoadCancellationResultKey(LoadCancellationSubjectKeyOf(vector));
 
     /// <summary>
-    /// The cancellationId a press subject names when it is a cancellation before any sublot -- new
-    /// (<c>before-sublot:</c>) or authorized and reporting (<c>vector:</c> over such a vector) -- or <c>null</c>.
+    /// What a load cancellation vector cancels, as a subject key (<see cref="WireToGatePendingLoadCancellation.SubjectKey"/>).
     /// </summary>
     /// <remarks>
-    /// A <c>vector:</c> subject over a load in flight names a cancellation id too; the caller tells the two apart by the
+    /// Over a load in flight it is derived from the vector's own demand and attempt, whatever is on file; before any sublot
+    /// it is the key the vector was prepared with. A vector an earlier version wrote carries none, and there its
+    /// cancellationId was derived the same way, so it is that key.
+    /// </remarks>
+    private static string LoadCancellationSubjectKeyOf(WireToGateRecoveryVectorContext vector) =>
+        vector.SlotOperationAttemptId is { } attempt
+            ? InFlightLoadCancellationKey(vector.DemandId, attempt)
+            : vector.LoadCancellationSubjectKey ?? vector.PrimaryId;
+
+    /// <summary>
+    /// The subject key of a load cancellation still waiting for its answer. An entry an earlier version wrote has none,
+    /// and there the cancellationId was that key.
+    /// </summary>
+    private static string SubjectKeyOf(WireToGatePendingLoadCancellation pending) =>
+        pending.SubjectKey ?? pending.CancellationId;
+
+    /// <summary>Whether <paramref name="pending"/> is the unanswered cancellation about <paramref name="subjectKey"/>.</summary>
+    private static bool IsPendingFor(WireToGatePendingLoadCancellation? pending, string subjectKey) =>
+        pending is not null && string.Equals(SubjectKeyOf(pending), subjectKey, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The subject key a press subject names when it is a cancellation before any sublot -- new (<c>before-sublot:</c>) or
+    /// authorized and reporting (<c>vector:</c> over such a vector) -- or <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// A <c>vector:</c> subject over a load in flight names a subject key too; the caller tells the two apart by the
     /// result row (<see cref="IsBeforeSublotCancellationResult"/>). A <c>load:</c> subject names an attempt, not a
     /// cancellation, and is left to its own path.
     /// </remarks>
-    private static string? BeforeSublotCancellationIdOf(string pressedSubject) =>
+    private static string? BeforeSublotSubjectKeyOf(string pressedSubject) =>
         pressedSubject.StartsWith("before-sublot:", StringComparison.Ordinal)
             ? pressedSubject["before-sublot:".Length..]
             : pressedSubject.StartsWith("vector:", StringComparison.Ordinal)
                 ? pressedSubject["vector:".Length..]
                 : null;
 
-    private static string LoadCancellationResultKey(string cancellationId) =>
-        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{cancellationId}";
+    private static string LoadCancellationResultKey(string subjectKey) =>
+        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{subjectKey}";
 
     /// <summary>
-    /// The result this vehicle has on file for the cancellation <paramref name="cancellationId"/>, or <c>null</c> when
-    /// there is none or the journal cannot say (8005-agv-onboard-hmi#408).
+    /// The result this vehicle has on file for the cancellation about <paramref name="subjectKey"/>, or <c>null</c> when
+    /// there is none or the journal cannot say (8005-agv-onboard-hmi#408, #421).
     /// </summary>
     /// <remarks>
-    /// A result on file means the server authorized this cancellation and this vehicle reported it: the cancellation has
-    /// concluded, or is concluding, under this id. A cancellation before any sublot derives its id from the demand and the
-    /// operation session, so a press made after that -- the row still on the screen because the server resent the same
-    /// entry request before its worklist without the demand arrived (agv02 at 217, 2026-10-22 and 2026-10-24) -- would ask
-    /// about the same cancellation again with its own operator verification time, and the server refuses that as
-    /// <c>BUSINESS_ID_CONTENT_CONFLICT</c>. Nothing is sent for it; the press is answered from this row instead.
+    /// A result on file means the server authorized a cancellation of this subject and this vehicle reported it: the
+    /// cancellation has concluded, or is concluding. A press made after that -- the row still on the screen because the
+    /// server resent the same entry request before its worklist without the demand arrived (agv02 at 217, 2026-10-22 and
+    /// 2026-10-24) -- would ask about the same demand again. Before onboard-hmi#421 it did so under the same derived id with
+    /// its own operator verification time, which the server refuses as <c>BUSINESS_ID_CONTENT_CONFLICT</c>; since, it would
+    /// do so under a new id, a second cancellation of a demand already cancelled. Either way nothing is sent for it; the
+    /// press is answered from this row instead. The row is keyed by the subject (<see cref="LoadCancellationResultKey(WireToGateRecoveryVectorContext)"/>),
+    /// so it is found whichever press's id the cancellation went out under.
     /// </remarks>
     private async Task<WireToGateDurableMessage?> LoadCancellationResultOnFileAsync(
-        string cancellationId,
+        string subjectKey,
         CancellationToken cancellationToken)
     {
         try
         {
             return await _session.Journal
-                .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(cancellationId), cancellationToken)
+                .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(subjectKey), cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
@@ -2297,9 +2331,18 @@ public sealed partial class WireToGateBusinessService
                 : string.Empty;
     }
 
-    /// <summary>The cancellationId every press over this load in flight asks about.</summary>
-    private static string InFlightLoadCancellationId(string demandId, string slotOperationAttemptId) =>
+    /// <summary>
+    /// The subject key of a cancellation of this load in flight: what every press over it is about, and the key its result
+    /// goes into the outbox under. Until onboard-hmi#421 it was also the cancellationId every such press went out under.
+    /// </summary>
+    private static string InFlightLoadCancellationKey(string demandId, string slotOperationAttemptId) =>
         StableUuid($"{demandId}|{slotOperationAttemptId}|load-cancellation");
+
+    /// <summary>
+    /// The cancellationId of a new press (onboard-hmi#421, protocol 98f17264, as for <c>skipRequestId</c>): one press, one
+    /// id, journaled before it is sent. Only a resend of a press still waiting for its answer reuses one, with its content.
+    /// </summary>
+    private static string NewLoadCancellationId() => Guid.NewGuid().ToString("D");
 
     /// <summary>
     /// Whether a <c>SlotOperationCommand</c> names an attempt that is no longer a new command for this
@@ -2314,8 +2357,8 @@ public sealed partial class WireToGateBusinessService
     /// </para>
     /// <para>
     /// A settled cancellation leaves nothing in the recovery state, so it is recognised by its result in
-    /// the durable outbox: the cancellationId is derived from the demand and the attempt, and so is the
-    /// result's key. The caller has claimed the attempt already, so "nobody running it" is this claim.
+    /// the durable outbox: the result's key is derived from the demand and the attempt
+    /// (<see cref="InFlightLoadCancellationKey"/>), whichever press's cancellationId it went out under. The caller has claimed the attempt already, so "nobody running it" is this claim.
     /// </para>
     /// </remarks>
     private async Task<bool> IsAttemptTakenOverAsync(
@@ -2338,7 +2381,7 @@ public sealed partial class WireToGateBusinessService
 
         string cancellationResultKey =
             $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:"
-            + InFlightLoadCancellationId(command.DemandId, command.SlotOperationAttemptId);
+            + InFlightLoadCancellationKey(command.DemandId, command.SlotOperationAttemptId);
         return await _session.Journal
             .ReadOutgoingByDeduplicationKeyAsync(cancellationResultKey, cancellationToken)
             .ConfigureAwait(false) is not null;
@@ -5201,16 +5244,18 @@ public sealed partial class WireToGateBusinessService
             : "SESSION";
 
     /// <summary>
-    /// The operator and reason a load cancellation goes out with, fixed by the first press that
-    /// sends it. The cancellationId is derived from the demand and the attempt, so every press asks
-    /// about the same cancellation, and the server compares each request's whole payload with the
-    /// one it authorized first (<c>UpsertSimpleWorkflowAsync</c>). A press retrying an unanswered
-    /// request -- timed out, the answer lost on the way, the process restarted in between -- must
-    /// repeat that content, or the server takes it for a different request under the same id and
-    /// drops the connection. The journal is what outlives a restart, so the content is written there
-    /// once the session has been found ready and immediately before the send; the caller checks
-    /// readiness first and forgets an entry this press wrote if the client still refuses it as not
-    /// ready, so a press that never left is never remembered as the first.
+    /// The cancellationId, operator and reason a load cancellation goes out with, fixed by the press
+    /// that first sends it (onboard-hmi#421, protocol 98f17264, as for <c>skipRequestId</c>). A new
+    /// press -- none waiting over <paramref name="subjectKey"/>, which includes a press after a
+    /// refusal, since a refusal forgets its entry -- takes a new id. A press retrying an unanswered
+    /// request -- timed out, the answer lost on the way, the process restarted in between -- is that
+    /// request again: the same id and the same content, which the server answers with its first
+    /// decision; under the same id with other content the server refuses it as
+    /// <c>BUSINESS_ID_CONTENT_CONFLICT</c>. The journal is what outlives a restart, so the id and the
+    /// content are written there, under the subject key that finds them again, once the session has
+    /// been found ready and immediately before the send; the caller checks readiness first and
+    /// forgets an entry this press wrote if the client still refuses it as not ready, so a press that
+    /// never left is never remembered as the first.
     ///
     /// The messageId is no part of this; every send takes a new one. The server's ProtocolInbox binds
     /// a messageId to the exact bytes it first carried, and sentAt is new on every press, so reusing
@@ -5218,25 +5263,27 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     private async Task<WireToGatePendingLoadCancellation> RecallOrRecordLoadCancellationAsync(
         WireToGateRecoveryState state,
-        string cancellationId,
+        string subjectKey,
         string? slotOperationAttemptId,
         string reason,
         CancellationToken cancellationToken)
     {
-        if (state.PendingLoadCancellation is { } unanswered
-            && string.Equals(unanswered.CancellationId, cancellationId, StringComparison.Ordinal))
+        if (state.PendingLoadCancellation is { } unanswered && IsPendingFor(unanswered, subjectKey))
         {
             return unanswered;
         }
 
         WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
         WireToGatePendingLoadCancellation pending = new(
-            cancellationId,
+            NewLoadCancellationId(),
             slotOperationAttemptId,
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt,
-            RequireReason(reason));
+            RequireReason(reason))
+        {
+            SubjectKey = subjectKey
+        };
         // Merged under the journal's lock, which is what the read-again-right-before-the-write above
         // was reaching for: the load's executor may write its own checkpoints while this press runs,
         // and a whole-value write put the older copy back over them. Narrowing the gap made that
