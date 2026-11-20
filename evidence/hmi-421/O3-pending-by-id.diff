@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index aa27c14..fc544f7 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -2220,7 +2220,7 @@ public sealed partial class WireToGateBusinessService
+ 
+     /// <summary>Whether <paramref name="pending"/> is the unanswered cancellation about <paramref name="subjectKey"/>.</summary>
+     private static bool IsPendingFor(WireToGatePendingLoadCancellation? pending, string subjectKey) =>
+-        pending is not null && string.Equals(SubjectKeyOf(pending), subjectKey, StringComparison.Ordinal);
++        pending is not null && string.Equals(pending.CancellationId, subjectKey, StringComparison.Ordinal);
+ 
+     /// <summary>
+     /// The subject key a press subject names when it is a cancellation before any sublot -- new (<c>before-sublot:</c>) or
