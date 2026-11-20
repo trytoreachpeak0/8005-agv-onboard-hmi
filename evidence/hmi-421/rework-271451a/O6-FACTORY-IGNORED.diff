@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index 0c5b4ff..8c9afed 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -2363,7 +2363,7 @@ public sealed partial class WireToGateBusinessService
+     /// The cancellationId of a new press (onboard-hmi#421, protocol 98f17264, as for <c>skipRequestId</c>): one press, one
+     /// id, journaled before it is sent. Only a resend of a press still waiting for its answer reuses one, with its content.
+     /// </summary>
+-    private string NewLoadCancellationId() => LoadCancellationIdFactoryForTest();
++    private string NewLoadCancellationId() => LoadCancellationIdFactoryForTest is null ? string.Empty : Guid.NewGuid().ToString("D");
+ 
+     /// <summary>
+     /// Where a new press's cancellationId comes from: a random UUID, except in a test that has to name the id it sends -- a

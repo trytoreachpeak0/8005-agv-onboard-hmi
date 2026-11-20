@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index 0c5b4ff..c766dc5 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -1901,7 +1901,7 @@ public sealed partial class WireToGateBusinessService
+             throw;
+         }
+         catch (InvalidDataException exception) when (
+-            string.Equals(exception.Message, "BUSINESS_ID_CONTENT_CONFLICT", StringComparison.Ordinal))
++            string.Equals(exception.Message, "MUTATED-NEVER", StringComparison.Ordinal))
+         {
+             // The server holds this cancellationId with other content (onboard-hmi#421 review H2): an entry an earlier
+             // version journaled under its derived id after that id was refused once, or answered while this process was

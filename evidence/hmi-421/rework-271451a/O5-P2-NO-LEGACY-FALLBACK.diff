@@ -1,0 +1,21 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index 0c5b4ff..093336d 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -2230,14 +2230,14 @@ public sealed partial class WireToGateBusinessService
+     private static string LoadCancellationSubjectKeyOf(WireToGateRecoveryVectorContext vector) =>
+         vector.SlotOperationAttemptId is { } attempt
+             ? InFlightLoadCancellationKey(vector.DemandId, attempt)
+-            : vector.LoadCancellationSubjectKey ?? vector.PrimaryId;
++            : vector.LoadCancellationSubjectKey ?? "legacy-fallback-removed";
+ 
+     /// <summary>
+     /// The subject key of a load cancellation still waiting for its answer. An entry an earlier version wrote has none,
+     /// and there the cancellationId was that key.
+     /// </summary>
+     private static string SubjectKeyOf(WireToGatePendingLoadCancellation pending) =>
+-        pending.SubjectKey ?? pending.CancellationId;
++        pending.SubjectKey ?? "legacy-fallback-removed";
+ 
+     /// <summary>Whether <paramref name="pending"/> is the unanswered cancellation about <paramref name="subjectKey"/>.</summary>
+     private static bool IsPendingFor(WireToGatePendingLoadCancellation? pending, string subjectKey) =>
