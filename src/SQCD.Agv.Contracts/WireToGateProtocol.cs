@@ -11,16 +11,21 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>7.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>a1facf8674b05c67bfbddc14db4a163e8da2782a</c>, on <c>fp/v2-candidate</c> the merge
+/// <b>This names <c>protocol-v7.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>a1facf8674b05c67bfbddc14db4a163e8da2782a</c>, the commit the annotated tag
+/// <c>protocol-v7.0.0</c> (object <c>250c4d86</c>) points at -- on <c>fp/v2-candidate</c> the merge
 /// of <c>8005-agv-protocol#30</c> (for <c>8005-agv-protocol#29</c>): <c>protocol-v6.0.0</c> with one field added to every
 /// <c>CurrentStopWorklistSnapshot</c> item, <c>eqp</c> -- the MES machine number the control server recorded when it
 /// accepted the demand, required and nullable, for display beside the sublot on the pickup scan list and the unload
 /// list and for nothing else (<c>CV-WORKLIST-EQP-DISPLAY-ONLY</c>). The item is a closed object, so a <c>6.0.0</c>
 /// implementation refuses the field and this is a new major version. Bound by 8005-agv-onboard-hmi#417, in one package
-/// with the control server's 8005-agv-control-server#896. The tag <c>protocol-v7.0.0</c> does not exist yet, so
-/// <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by <see cref="Commit"/>, and
-/// evidence produced on this identity is <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
+/// with the control server's 8005-agv-control-server#896. It was released unchanged on 2026-11-21
+/// (8005-agv-program#210), with one approval in the external attestation (SHA-256 <c>b5240f97...</c>) given by an AI agent
+/// the product owner authorized for that release. The release is byte-identical to the candidate, so the nine identity
+/// values stay as they were and only <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to
+/// <c>APPROVED_RELEASE</c>, on the deployment branch <c>w2g/release/v7-20261121</c>. CI now checks the protocol out by
+/// <see cref="Tag"/>. Evidence produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and does
+/// not count toward a batch exit.
 /// </para>
 /// <para>
 /// <c>protocol-v6.0.0</c> (<c>98f17264</c>, <c>(AGV_FULL_PRODUCT, 7)</c>) was bound before this, <c>protocol-v5.0.0</c>
@@ -64,7 +69,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "44fa0b273810fb2d5326068c03f9647bfd8fdc1c5f01e27a5177b0e0473fe7cb";
     public const string SchemaBundleSha256 = "6361d734f9b1a4f81178c79c0bc18b8287fd747622e60c99073e7fd5a5cf4c88";
     public const string VectorsSha256 = "6295840ec27422dc024a24f6deae9a7379f9b3047a163e903ac862c8b0274eec";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
