@@ -38,8 +38,7 @@
                                FontSize="16"
                                FontWeight="Bold"
                                Text="{Binding AgvId}"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding AgvId}" />
+                               TextWrapping="Wrap" />
                     <!--
                     电量与充电状态（批次9-15，onboard-hmi#220）：只显示服务端下发的 batteryState、chargingCycleState 与
                     manualChargingHold，不显示百分比（线上没有）。UIA 按 AutomationId BatteryStatus、ChargingStatus 找它们，
@@ -58,8 +57,7 @@
                                    FontSize="12"
                                    FontWeight="Bold"
                                    Text="{Binding ChargingStatusText}"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding ChargingStatusText}" />
+                                   TextWrapping="Wrap" />
                     </DockPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="1">
@@ -100,8 +98,7 @@
                                    FontSize="12"
                                    Foreground="{StaticResource MutedBrush}"
                                    Text="{Binding TaskTypeText}"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding TaskTypeText}" />
+                                   TextWrapping="Wrap" />
                     </DockPanel>
                     <TextBlock Margin="0,2,0,0"
                                AutomationProperties.AutomationId="IdleReturnStatus"
@@ -109,8 +106,7 @@
                                FontSize="15"
                                FontWeight="SemiBold"
                                Text="{Binding VisitText}"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding VisitText}" />
+                               TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Grid.Column="5">
                     <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="发车安全" />
@@ -118,8 +114,7 @@
                                FontSize="15"
                                FontWeight="Bold"
                                Text="{Binding DepartureText}"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding DepartureText}" />
+                               TextWrapping="Wrap" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -237,13 +232,15 @@
                     容器宽高固定：五个档位字号不同（20／15），文字从「00:45」到「已到期，等待本站结束」长短不一。
                     Column 2 是 Auto，若随内容伸缩，切档时会挤动左边的提示文案、撑高这一行。200 放得下最长的一条，#78 的
                     「已到期，正在取消本站装货」（15px 粗体量得 180 px，180 的宽度会被 DPI 取整挤出省略号）；46 低于提示文案
-                    ScrollViewer 的 MaxHeight 48。#78 期限过后在途装货的整句「请放入货物并关闭 N 号仓门；不装了请按取消」
+                    ScrollViewer 原来的 MaxHeight 48（#426 起提示文案不再设上限）。#78 期限过后在途装货的整句「请放入货物并关闭 N 号仓门；不装了请按取消」
                     在提示文案那一行（会换行），这里只随时钟显示「已过期 mm:ss」。
+                    8005-agv-onboard-hmi#426：不再截成省略号。宽高改成最小值、文字可换行：放得下时（今天每一条都放得下）和原来一样
+                    一行、46 高；万一哪条放不下，换行撑高这一格，而不是把字截掉。
                 -->
                 <StackPanel Grid.Row="0"
                             Grid.Column="2"
                             Width="200"
-                            Height="46"
+                            MinHeight="46"
                             Margin="12,0,0,0"
                             VerticalAlignment="Center"
                             Visibility="{Binding HasStationDepartureCountdown, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -252,13 +249,14 @@
                                FontSize="12"
                                Foreground="{StaticResource MutedBrush}"
                                Text="{Binding StationDepartureCountdownLabel}" />
-                    <Grid Height="28" Margin="0,2,0,0">
+                    <Grid MinHeight="28" Margin="0,2,0,0">
                         <TextBlock HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
                                    AutomationProperties.AutomationId="StationDepartureCountdown"
                                    AutomationProperties.ItemStatus="{Binding StationDepartureCountdownTier}"
                                    Text="{Binding StationDepartureCountdownText}"
-                                   TextTrimming="CharacterEllipsis">
+                                   TextAlignment="Right"
+                                   TextWrapping="Wrap">
                             <TextBlock.Style>
                                 <!-- 字号与字重放在 Setter 里而不是元素属性上：本地值优先于触发器，写在元素上两个文字档就改不小。 -->
                                 <Style TargetType="TextBlock">
@@ -298,9 +296,12 @@
                         </TextBlock>
                     </Grid>
                 </StackPanel>
+                <!--
+                    提示文案整段显示（8005-agv-onboard-hmi#426 审查 L4）：原来 MaxHeight="48"，超过约两行半就要拖一根细滚动条，
+                    触屏上等于看不到。现在不设上限，长了就撑高这一行（Auto 行），按键在下面的行里，跟着往下移、不会被盖住。
+                -->
                 <ScrollViewer Grid.Row="0"
                               Grid.Column="1"
-                              MaxHeight="48"
                               Margin="12,0"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
@@ -989,9 +990,12 @@
                             1024×768 上一次露出约 3 行（8005-agv-onboard-hmi#387 放大字号后，原来约 4 行），其余手指一拖就到，标题写总条数。机台取货的行照旧两行、没有这个按钮。
                             每行第一个 TextBlock 只放子批：真装置 L2 按「行里第一个 TextBlock 是子批」读清单（L2MultiStopJourney）。
                             子批右边是机台号（MES 的 EQP，协议 7.0.0，8005-agv-onboard-hmi#417）：取货、卸货停靠都在这张表上，原样显示，
-                            服务端没有时为空。只显示，别处不放；它排在子批之后，所以不改变上面那条读法。子批那一格是 *，先拿宽度、
-                            放不下照旧省略号；机台号按内容宽、最多 72（现场 EQP 形如 2ZPB101，约 63），长了自己省略，
-                            所以子批至少留下这一格减 80 的宽度，现场子批（Q26095466-13）整串放得下。
+                            服务端没有时为空。只显示，别处不放；它排在子批之后，所以不改变上面那条读法。
+                            8005-agv-onboard-hmi#426：清单里的字一律整串显示，不截成省略号（触屏看不到 ToolTip）。子批与机台号放在一个
+                            WrapPanel 里：两者一行放得下就并排；放不下，机台号整块挪到子批下面一行，子批仍整串占一行；子批自己比整行
+                            还长时才在行内换行。在 1004×660 的客户区上，现场最长的子批与机台号（Q26101654-11-2、3QHS6012）并排放不下，
+                            机台号落到第二行：待送点取货的行由一行变两行，机台取货与卸货的行由两行变三行（一屏露出的条数随之变少，
+                            其余照旧手指拖）。明细行与行程计划的站点行也一样，放不下就换行。
                         -->
                         <ListBox Margin="0,2,0,8"
                                  Background="Transparent"
@@ -1016,31 +1020,22 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0"
+                                                <WrapPanel>
+                                                    <TextBlock Margin="0,0,8,0"
                                                                FontSize="18"
                                                                FontWeight="Bold"
                                                                Text="{Binding Sublot}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               ToolTip="{Binding Sublot}" />
-                                                    <TextBlock Grid.Column="1"
-                                                               MaxWidth="72"
-                                                               Margin="8,0,0,0"
-                                                               VerticalAlignment="Center"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock VerticalAlignment="Center"
                                                                FontSize="15"
                                                                Foreground="{StaticResource MutedBrush}"
                                                                AutomationProperties.AutomationId="WorklistItemEqp"
                                                                Text="{Binding Eqp}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               ToolTip="{Binding Eqp}" />
-                                                </Grid>
+                                                               TextWrapping="Wrap" />
+                                                </WrapPanel>
                                                 <TextBlock FontSize="14"
                                                            Foreground="{StaticResource MutedBrush}"
-                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="Wrap"
                                                            Visibility="{Binding ShowsDetailLine, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <Run Text="{Binding DirectionText, Mode=OneWay}" />
                                                     <Run Text="  " />
@@ -1092,7 +1087,7 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{Binding SequenceText}" />
-                                        <TextBlock Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis">
+                                        <TextBlock Grid.Column="1" FontSize="12" TextWrapping="Wrap">
                                             <Run FontWeight="SemiBold" Text="{Binding StationId, Mode=OneWay}" />
                                             <Run Text=" " />
                                             <Run Text="{Binding StopPurposeText, Mode=OneWay}" />
@@ -1129,14 +1124,19 @@
                                 </Style>
                             </Border.Style>
                             <StackPanel>
-                                <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" />
-                                <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" />
-                                <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" />
+                                <!--
+                                    卡片一列只有约 143～148 宽：放不下的字换行，不硬裁（8005-agv-onboard-hmi#426 审查 M2，
+                                    「操作未完成，需要管理员恢复」12 号字约 156 宽）。
+                                -->
+                                <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" TextWrapping="Wrap" />
+                                <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" TextWrapping="Wrap" />
+                                <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" TextWrapping="Wrap" />
                                 <TextBlock Margin="0,2,0,0"
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryBrush}"
-                                           Text="{Binding TargetText}" />
+                                           Text="{Binding TargetText}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>

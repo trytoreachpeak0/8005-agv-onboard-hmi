@@ -2,11 +2,14 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
@@ -71,78 +74,403 @@ public sealed class WorklistScrollingLayoutTests
     }
 
     /// <summary>
-    /// 机台号在子批旁边（<c>8005-agv-onboard-hmi#417</c>，审查 L1）：子批放不下时照旧省略号截断、不越过机台号，机台号仍露出来；
-    /// 现场长度的子批（<c>Q26095466-13</c>）与机台号（<c>2ZPB97</c>）都整串显示；机台号再长只截它自己，最多占 72。量的是车载屏客户区上真排出来的三行。
+    /// 清单行的字整串显示（<c>8005-agv-onboard-hmi#426</c>，改写原 #417 审查 L1 那条）：现场最长的子批整串占一行，与它并排放不下的
+    /// 机台号整块挪到下面一行，也不拆开；子批比整行还长时在行内换行、整串都在；机台号再长也整串显示、不出这一行。
+    /// 量的是车载屏客户区上真排出来的三行。
     /// </summary>
     [Fact]
-    public async Task ALongSublotIsEllipsizedAndTheMachineNumberBesideItStaysOnScreen()
+    public async Task EverySublotAndMachineNumberIsShownWholeAndTheMachineNumberMovesBelowWhenTheyDoNotFit()
     {
         await using OnboardController controller = MultiDemandViewModelTests.Controller();
         MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
         string longSublot = "LONG-SUBLOT-" + new string('9', 48);
         viewModel.UpdateWireToGateJourney(MultiDemandViewModelTests.Journey(MultiDemandViewModelTests.Worklist(
             1,
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000001", longSublot, "WIRE_TO_GATE", "PICKUP", 2) with { Eqp = "2ZPB101" },
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000002", "Q26095466-13", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "2ZPB97" },
-            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000003", "Q26096568-10", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "MACHINE-NUMBER-FAR-LONGER-THAN-ANY-MES-SENDS" })));
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000001", FieldLongestSublot, "WIRE_TO_FULL_INSPECTION", "PICKUP", 2) with { Eqp = FieldLongestEqp },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000002", longSublot, "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "2ZPB101" },
+            MultiDemandViewModelTests.Item("aaaaaaaa-0000-4000-8000-000000000003", "Q26096568-10", "WIRE_TO_GATE", "PICKUP", 1) with { Eqp = "MACHINE-NUMBER-FAR-LONGER-THAN-ANY-MES-SENDS-0123456789-ABCDEFGHIJ" })));
 
-        RowLayout[] rows = OnStaThread(() =>
+        (RowLayout[] rows, string[] cut) = OnStaThread(() =>
         {
             (FrameworkElement root, _, _) = Lay(viewModel);
             ListBox list = Find<ListBox>(root, element => AutomationProperties.GetAutomationId(element) == "WorklistItems")!;
-            return Enumerable.Range(0, 3).Select(index =>
-            {
-                ListBoxItem item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(index);
-                TextBlock sublot = Find<TextBlock>(item, _ => true)!;
-                TextBlock eqp = Find<TextBlock>(item, block => AutomationProperties.GetAutomationId(block) == "WorklistItemEqp")!;
-                double itemRight = item.TranslatePoint(new Point(item.ActualWidth, 0), root).X;
-                return new RowLayout(
-                    sublot.Text,
-                    sublot.ActualWidth,
-                    NaturalWidth(sublot),
-                    sublot.TranslatePoint(new Point(sublot.ActualWidth, 0), root).X,
-                    eqp.Text,
-                    eqp.ActualWidth,
-                    NaturalWidth(eqp),
-                    eqp.TranslatePoint(new Point(0, 0), root).X,
-                    eqp.TranslatePoint(new Point(eqp.ActualWidth, 0), root).X,
-                    itemRight,
-                    eqp.Visibility == Visibility.Visible);
-            }).ToArray();
+            RowLayout[] laid =
+            [
+                .. Enumerable.Range(0, 3).Select(index =>
+                {
+                    ListBoxItem item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(index);
+                    TextBlock sublot = Find<TextBlock>(item, _ => true)!;
+                    TextBlock eqp = Find<TextBlock>(item, block => AutomationProperties.GetAutomationId(block) == "WorklistItemEqp")!;
+                    return new RowLayout(
+                        sublot.Text, Box(sublot, root), LineHeight(sublot), eqp.Text, Box(eqp, root), LineHeight(eqp), Box(item, root));
+                })
+            ];
+            return (laid, Cut(list, root));
         });
 
-        RowLayout trimmed = rows[0];
-        Assert.Equal(longSublot, trimmed.Sublot);
-        Assert.True(trimmed.SublotWidth + 1 < trimmed.SublotNatural, $"the long sublot was not trimmed: {trimmed}");
-        Assert.True(trimmed.SublotRight <= trimmed.EqpLeft + 0.5, $"the sublot runs into the machine number: {trimmed}");
-        Assert.True(trimmed.EqpVisible && trimmed.EqpWidth >= trimmed.EqpNatural - 0.5, $"the machine number is cut: {trimmed}");
-        Assert.True(trimmed.EqpRight <= trimmed.ItemRight + 0.5, $"the machine number is pushed off the row: {trimmed}");
+        Assert.Empty(cut);
 
-        RowLayout fieldShaped = rows[1];
-        Assert.Equal("2ZPB97", fieldShaped.Eqp);
-        Assert.True(fieldShaped.SublotWidth + 0.5 >= fieldShaped.SublotNatural, $"a field-length sublot was trimmed: {fieldShaped}");
-        Assert.True(fieldShaped.EqpVisible && fieldShaped.EqpWidth >= fieldShaped.EqpNatural - 0.5, $"the machine number is cut: {fieldShaped}");
+        // The field's longest pair does not fit side by side on a staging pickup row (count, side and the cancel button take the
+        // rest), so the machine number goes below; the sublot keeps a line of its own, unbroken, and so does the machine number.
+        RowLayout field = rows[0];
+        Assert.Equal(FieldLongestSublot, field.Sublot);
+        Assert.True(field.SublotBox.Height < 1.5 * field.SublotLine, $"the field's longest sublot wrapped: {field}");
+        Assert.True(field.EqpBox.Height < 1.5 * field.EqpLine, $"the field's longest machine number wrapped: {field}");
 
-        // A machine number longer than any MES sends is trimmed in its own place, capped, and never runs into the sublot.
+        RowLayout wrapped = rows[1];
+        Assert.Equal(longSublot, wrapped.Sublot);
+        Assert.True(wrapped.SublotBox.Height > 1.5 * wrapped.SublotLine, $"the long sublot should wrap inside the row: {wrapped}");
+        Assert.True(wrapped.EqpBox.Top >= wrapped.SublotBox.Bottom - 0.5, $"the machine number should sit below a sublot that fills the row: {wrapped}");
+
         RowLayout longEqp = rows[2];
-        Assert.True(longEqp.EqpWidth + 1 < longEqp.EqpNatural, $"an over-long machine number was not trimmed: {longEqp}");
-        Assert.True(longEqp.EqpWidth <= 72.5, $"an over-long machine number took more than its cap: {longEqp}");
-        Assert.True(longEqp.SublotRight <= longEqp.EqpLeft + 0.5, $"the sublot runs into the machine number: {longEqp}");
-        Assert.True(longEqp.EqpRight <= longEqp.ItemRight + 0.5, $"the machine number is pushed off the row: {longEqp}");
+        Assert.True(longEqp.EqpBox.Top >= longEqp.SublotBox.Bottom - 0.5, $"an over-long machine number should move below the sublot: {longEqp}");
+        Assert.All(rows, row => Assert.True(
+            row.EqpBox.Right <= row.ItemBox.Right + 0.5 && row.SublotBox.Right <= row.ItemBox.Right + 0.5,
+            $"text runs off the row: {row}"));
     }
 
+    /// <summary>
+    /// 现场最长的真实值摆在车载屏上，每一段看得见的字都整串显示（<c>8005-agv-onboard-hmi#426</c>）。值取自 v2 现场库发件箱的全量历史
+    /// （<c>evidence/hmi-426/field-longest-values.txt</c>）：车名、子批、机台号、站点名、七种任务类型都在。设了环境变量
+    /// <c>HMI_LAYOUT_SCREENSHOT_DIR</c> 时，把这一屏存成 PNG，证据截图就是这样出的。
+    /// </summary>
+    [Fact]
+    public async Task TheFieldsLongestValuesAreShownWholeOnTheOnboardScreen()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        string[] workTypes =
+            ["WIRE_TO_FULL_INSPECTION", "DIE_TO_WIRE_STAGING", "WIRE_TO_NITROGEN", "STAGING_TO_WIRE", "WIRE_TO_GATE", "WIRE_TO_OPTICAL", "DIE_TO_OVEN"];
+        string[] sublots = [FieldLongestSublot, "Q26101619-10-2", "Q26101652-10-2", "Q26101619-11-1", "Q26101654-10-1", "Q26101654-11-1", "Q26101654-10-2"];
+        string[] eqps = [FieldLongestEqp, "3QHS6022", "3QHS3751", "3QHS6016", "3QHS6015", "2ZPB105", "2ZPB101"];
+        WireToGateWorklistItem[] items =
+        [
+            .. workTypes.Select((workType, index) => MultiDemandViewModelTests.Item(
+                $"aaaaaaaa-0000-4000-8000-{index + 1:D12}", sublots[index], workType, "PICKUP", 2) with { Eqp = eqps[index] })
+        ];
+        viewModel.UpdateWireToGateJourney(MultiDemandViewModelTests.Journey(
+            new WireToGateCurrentStopWorklist(FieldLongestStation, 1, null, DateTimeOffset.UtcNow.AddMinutes(30), items, new string('b', 64)),
+            MultiDemandViewModelTests.Plan(
+                1,
+                MultiDemandViewModelTests.Leg(1, "TO_PICKUP", "BUSINESS", items[0].DemandId, FieldLongestStation, "ARRIVED"),
+                MultiDemandViewModelTests.Leg(2, "TO_PICKUP", "BUSINESS", items[1].DemandId, "N17-8_N18-7_N18-8", "PLANNED"),
+                MultiDemandViewModelTests.Leg(3, "TO_DROPOFF", "BUSINESS", items[0].DemandId, "N19-8_N20-7_N20-8", "PLANNED"),
+                MultiDemandViewModelTests.Leg(4, "TO_DROPOFF", "BUSINESS", items[1].DemandId, "T12-1_T12-2_T13-1", "PLANNED"))));
+
+        Assert.Empty(LayAndCut(viewModel, "field-longest-values-1004x660.png"));
+    }
+
+    /// <summary>
+    /// 顶栏最长的状态文案，配现场最长的车名与站点名（<c>8005-agv-onboard-hmi#426</c>）：充电那一格「充电状态未知；需人工充电：服务端保持」，
+    /// 到站那一格清单空了时的「站名 / 电量低，先送车上的货再充电，未装的任务退回待派」。都由真的业务快照推出来，不是往格子里硬塞字。
+    /// </summary>
+    [Fact]
+    public async Task TheLongestStatusTextsAreShownWholeOnTheOnboardScreen()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        viewModel.UpdateWireToGateJourney(new WireToGateJourneySnapshot(
+            new WireToGateVehicleBusinessState(
+                1, "READY", "TRANSPORT", true, "SUFFICIENT", "UNKNOWN", null, [], DateTimeOffset.UtcNow, new string('a', 64)),
+            new WireToGateCurrentStopWorklist(FieldLongestStation, 1, null, null, [], new string('b', 64), "CHARGING_REQUIRED"),
+            MultiDemandViewModelTests.Plan(
+                1,
+                MultiDemandViewModelTests.Leg(1, "TO_PICKUP", "BUSINESS", null, FieldLongestStation, "ARRIVED")),
+            DateTimeOffset.UtcNow));
+        Assert.Equal("充电状态未知；需人工充电：服务端保持", viewModel.ChargingStatusText);
+        Assert.Equal($"{FieldLongestStation} / 电量低，先送车上的货再充电，未装的任务退回待派", viewModel.VisitText);
+
+        Assert.Empty(LayAndCut(viewModel, "longest-status-texts-1004x660.png"));
+    }
+
+    private static async Task<MainViewModel> FieldVehicleViewModelAsync(OnboardController controller)
+    {
+        MainViewModel viewModel = new(
+            controller,
+            new RecordingLogger(),
+            FieldLongestAgvId,
+            OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
+        {
+            Clock = new SystemClock(),
+            DisplayTimeZone = TimeZoneInfo.CreateCustomTimeZone("China", TimeSpan.FromHours(8), "China", "China")
+        };
+        await viewModel.InitializeAsync();
+        return viewModel;
+    }
+
+    /// <summary>Lays the screen out, saves it as <paramref name="screenshot"/> when asked to, and returns what is cut.</summary>
+    private static string[] LayAndCut(MainViewModel viewModel, string screenshot) => OnStaThread(() =>
+    {
+        (FrameworkElement root, _, _) = Lay(viewModel, hasRows: viewModel.WorklistItems.Count > 0);
+        if (Environment.GetEnvironmentVariable("HMI_LAYOUT_SCREENSHOT_DIR") is { Length: > 0 } directory)
+        {
+            Screenshot(root, Path.Combine(directory, screenshot));
+        }
+
+        return Cut(root, root);
+    });
+
+    /// <summary>
+    /// 仓位卡片上的目标仓文案整串显示（<c>8005-agv-onboard-hmi#426</c> 审查 M2）：八个仓都停在「操作未完成，需要管理员恢复」，
+    /// 这句 12 号字宽约 156，卡片一列只有 143～148，原来不换行、被硬裁。每张卡片都要整句看得见。
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryRequiredOperationIsShownWholeOnEverySlotCard()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            DateTimeOffset.UtcNow,
+            "OPERATION_PROGRESS",
+            "进度",
+            new WireToGateHmiOperationSnapshot(
+                "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.RecoveryRequired, "上次装货操作未完成：1、2、3、4、5、6、7、8号仓，需要管理员恢复。", DateTimeOffset.UtcNow)));
+        Assert.All(viewModel.Lockers, locker => Assert.Equal("操作未完成，需要管理员恢复", locker.TargetText));
+
+        (int shown, string[] cut) = OnStaThread(() =>
+        {
+            (FrameworkElement root, _, _) = Lay(viewModel, hasRows: false);
+            int targets = Descendants<TextBlock>(root).Count(block => block.Text == "操作未完成，需要管理员恢复" && Shown(block));
+            if (Environment.GetEnvironmentVariable("HMI_LAYOUT_SCREENSHOT_DIR") is { Length: > 0 } directory)
+            {
+                Screenshot(root, Path.Combine(directory, "recovery-required-slots-1004x660.png"));
+            }
+
+            return (targets, Cut(root, root));
+        });
+
+        Assert.Equal(8, shown);
+        Assert.Empty(cut);
+    }
+
+    /// <summary>
+    /// 提示区的文案整段显示、不用拖滚动条（<c>8005-agv-onboard-hmi#426</c> 审查 L4）：原来提示区是 <c>MaxHeight="48"</c> 的滚动区，
+    /// 超过约两行半就要拖一根细滚动条，触屏上等于看不到。文案取产品里最长的一条提示：拒收「这次装货已经取消过……」连同原因码
+    /// （<c>OnboardCommandRejectionText</c>，经 <c>ReportOperatorRejection</c> 顶到提示行）。在这个窗口尺寸上它只占两行，
+    /// 原来的 48 也放得下，所以另跑一档三倍长的：那一档才是在原来的布局上要拖滚动条的样子。
+    /// 整段看得见的同时，提示区里的按键（这里是「取消装货」）仍在窗口里、在提示区里。
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task TheLongestPromptIsShownWholeWithoutScrollingAndTheButtonsStayOnScreen(int repeat)
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: DateTimeOffset.UtcNow));
+        string prompt = string.Concat(Enumerable.Repeat(
+            OnboardCommandRejectionText.DescribeWithCode("LOAD_CANCELLATION_ALREADY_CONCLUDED"), repeat));
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            DateTimeOffset.UtcNow,
+            "OPERATION_PROGRESS",
+            "进度",
+            new WireToGateHmiOperationSnapshot(
+                "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.WaitingOperator, "请在1、2、3、4、5、6、7、8号仓放入货物并关门。", DateTimeOffset.UtcNow)));
+        // The controller's own IO poll would otherwise publish while the STA thread has the screen bound.
+        await controller.DisposeAsync();
+        if (repeat == 1)
+        {
+            viewModel.ReportOperatorRejection("LOAD_CANCELLATION_ALREADY_CONCLUDED");
+        }
+        else
+        {
+            viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+                DateTimeOffset.UtcNow,
+                "OPERATION_PROGRESS",
+                "进度",
+                new WireToGateHmiOperationSnapshot(
+                    "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.WaitingOperator, prompt, DateTimeOffset.UtcNow)));
+        }
+
+        Assert.Equal(prompt, viewModel.Guidance);
+        Assert.True(viewModel.CanRequestLoadCancellation);
+
+        (string[] hidden, string[] cut) = OnStaThread(() =>
+        {
+            (FrameworkElement root, _, _) = Lay(viewModel, hasRows: false);
+            TextBlock guidance = Find<TextBlock>(root, block => block.Text == prompt)!;
+            Border area = Ancestor<Border>(guidance)!;
+            Rect areaBox = Box(area, root);
+            List<string> notShown = [];
+            if (Ancestor<ScrollViewer>(guidance) is { ScrollableHeight: > 0.5 } scroller)
+            {
+                notShown.Add($"the prompt needs scrolling: {scroller.ExtentHeight:0.#} in {scroller.ViewportHeight:0.#}");
+            }
+
+            foreach (Button button in Descendants<Button>(area).Where(Shown))
+            {
+                Rect box = Box(button, root);
+                if (!Contains(areaBox, box) || !Contains(new Rect(0, 0, root.ActualWidth, root.ActualHeight), box))
+                {
+                    notShown.Add($"button {button.Content} at {box} is outside the prompt area {areaBox} or the window");
+                }
+            }
+
+            if (!Descendants<Button>(area).Any(button => Shown(button) && button.Content as string == viewModel.LoadCancellationCaption))
+            {
+                notShown.Add("the load cancellation button is not in the prompt area");
+            }
+
+            if (Environment.GetEnvironmentVariable("HMI_LAYOUT_SCREENSHOT_DIR") is { Length: > 0 } directory)
+            {
+                Screenshot(root, Path.Combine(directory, $"longest-prompt-x{repeat}-1004x660.png"));
+            }
+
+            return (notShown.ToArray(), Cut(root, root));
+        });
+
+        Assert.Empty(hidden);
+        Assert.Empty(cut);
+    }
+
+    private static readonly int[] AllSlots = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    /// <summary>现场（v2 库发件箱 11-23 全量历史）最长的子批、机台号、站点名与车名。</summary>
+    private const string FieldLongestSublot = "Q26101654-11-2";
+
+    private const string FieldLongestEqp = "3QHS6012";
+
+    private const string FieldLongestStation = "N15-8_N16-7_N16-8";
+
+    private const string FieldLongestAgvId = "老厂前线新多仓位1";
+
     private sealed record RowLayout(
-        string Sublot,
-        double SublotWidth,
-        double SublotNatural,
-        double SublotRight,
-        string Eqp,
-        double EqpWidth,
-        double EqpNatural,
-        double EqpLeft,
-        double EqpRight,
-        double ItemRight,
-        bool EqpVisible);
+        string Sublot, Rect SublotBox, double SublotLine, string Eqp, Rect EqpBox, double EqpLine, Rect ItemBox);
+
+    /// <summary>
+    /// Every visible <see cref="TextBlock"/> under <paramref name="scope"/> whose text is not all on screen: one that trims, one
+    /// narrower than its unwrapped text, or one that its own slot or an ancestor short of a scroll viewer clips.
+    /// </summary>
+    private static string[] Cut(DependencyObject scope, FrameworkElement root)
+    {
+        List<string> cut = [];
+        foreach (TextBlock block in Descendants<TextBlock>(scope))
+        {
+            if (!Shown(block) || string.IsNullOrEmpty(block.Text))
+            {
+                continue;
+            }
+
+            string name = $"{AutomationProperties.GetAutomationId(block)} \"{block.Text}\"";
+            if (block.TextTrimming != TextTrimming.None)
+            {
+                cut.Add($"{name} trims");
+            }
+
+            if (block.TextWrapping == TextWrapping.NoWrap && NaturalWidth(block) > block.ActualWidth + 1)
+            {
+                cut.Add($"{name} is {block.ActualWidth:0.#} wide for {NaturalWidth(block):0.#} of text");
+            }
+
+            Rect box = new(0, 0, block.ActualWidth, block.ActualHeight);
+            for (FrameworkElement? element = block;
+                element is not null and not ScrollContentPresenter;
+                element = VisualTreeHelper.GetParent(element) as FrameworkElement)
+            {
+                Rect local = block.TransformToAncestor(element).TransformBounds(box);
+                if (LayoutInformation.GetLayoutClip(element)?.Bounds is { IsEmpty: false } clip && !Contains(clip, local))
+                {
+                    cut.Add($"{name} is clipped by {element.GetType().Name} {element.Name}: {local} outside {clip}");
+                    break;
+                }
+
+                if (ReferenceEquals(element, root))
+                {
+                    if (!Contains(new Rect(0, 0, root.ActualWidth, root.ActualHeight), local))
+                    {
+                        cut.Add($"{name} runs off the window: {local}");
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return [.. cut];
+    }
+
+    /// <summary>
+    /// Whether the block and every ancestor are <see cref="Visibility.Visible"/>. Not <see cref="UIElement.IsVisible"/>: a tree
+    /// laid out without a window has no presentation source, and there it is false for everything.
+    /// </summary>
+    private static bool Shown(DependencyObject element)
+    {
+        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is UIElement { Visibility: not Visibility.Visible })
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool Contains(Rect outer, Rect inner) =>
+        inner.Left >= outer.Left - 0.5 && inner.Top >= outer.Top - 0.5
+        && inner.Right <= outer.Right + 0.5 && inner.Bottom <= outer.Bottom + 0.5;
+
+    private static Rect Box(FrameworkElement element, Visual root) =>
+        element.TransformToAncestor(root).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+
+    private static double LineHeight(TextBlock block)
+    {
+        TextBlock probe = new() { Text = "Q", FontFamily = block.FontFamily, FontSize = block.FontSize, FontWeight = block.FontWeight };
+        probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return probe.DesiredSize.Height;
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+            if (child is T typed)
+            {
+                yield return typed;
+            }
+
+            foreach (T nested in Descendants<T>(child))
+            {
+                yield return nested;
+            }
+        }
+    }
+
+    private static void Screenshot(FrameworkElement root, string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        DrawingVisual page = new();
+        using (DrawingContext context = page.RenderOpen())
+        {
+            Vector margin = VisualTreeHelper.GetOffset(root);
+            context.DrawRectangle(Brushes.White, null, new Rect(0, 0, root.ActualWidth + 2 * margin.X, root.ActualHeight + 2 * margin.Y));
+        }
+
+        // The root sits at its margin's offset; the bitmap is the whole client area around it.
+        Vector offset = VisualTreeHelper.GetOffset(root);
+        RenderTargetBitmap bitmap = new(
+            (int)Math.Ceiling(root.ActualWidth + 2 * offset.X), (int)Math.Ceiling(root.ActualHeight + 2 * offset.Y), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(page);
+        bitmap.Render(root);
+        PngBitmapEncoder encoder = new();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using FileStream file = File.Create(path);
+        encoder.Save(file);
+    }
 
     /// <summary>How wide the block's text would be with no limit: the same text, font and size, measured unconstrained.</summary>
     private static double NaturalWidth(TextBlock block)
@@ -175,7 +503,7 @@ public sealed class WorklistScrollingLayoutTests
     }
 
     /// <summary>The window's content laid out at the onboard screen's client size (1024×768, maximized, title bar and taskbar).</summary>
-    private static (FrameworkElement Root, ListBoxItem FirstRow, ScrollViewer Column) Lay(MainViewModel viewModel)
+    private static (FrameworkElement Root, ListBoxItem FirstRow, ScrollViewer Column) Lay(MainViewModel viewModel, bool hasRows = true)
     {
         Window window = (Window)XamlReader.Parse(LoadableMainWindowXaml());
         FrameworkElement root = (FrameworkElement)window.Content;
@@ -188,7 +516,7 @@ public sealed class WorklistScrollingLayoutTests
 
         ListBox list = Find<ListBox>(root, element => AutomationProperties.GetAutomationId(element) == "WorklistItems")!;
         ListBoxItem first = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
-        Assert.NotNull(first);
+        Assert.True(!hasRows || first is not null, "the worklist has no first row");
         ScrollViewer column = Ancestor<ScrollViewer>(list)!;
         while (Ancestor<ScrollViewer>(column) is { } outer)
         {

@@ -9,8 +9,13 @@ $xaml = Get-Content -LiteralPath $xamlPath -Raw
 $stationDeadlineTiersStyled = @('Absent', 'Warning', 'Critical', 'Expired' | ForEach-Object {
         $xaml -match ('Binding StationDepartureCountdownTier\}" Value="' + $_ + '"')
     }) -notcontains $false -and ($xaml -match 'Binding StationDepartureCountdownDimmed\}" Value="True"')
-# 倒计时容器宽高写死，切档时不挤动提示文案、不撑高提示行。
-$stationDeadlineFixedSize = $xaml -match 'Grid\.Column="2"\s+Width="\d+"\s+Height="\d+"[^>]*Binding HasStationDepartureCountdown'
+# 倒计时容器宽高有下限，切档时不挤动提示文案、不撑高提示行。两种写法都算：宽高写死（#426 之前），或宽、高有下限
+# （Width/MinWidth 加 MinHeight），倒计时文字放不下时换行撑高这一格（8005-agv-onboard-hmi#426：字一律整串显示、不截断）。
+# 只有下限而文字不换行，等于放不下时被裁，不算。
+$stationDeadlineBox = [regex]::Match($xaml, 'Grid\.Column="2"\s+(?:Min)?Width="\d+"\s+(?<height>(?:Min)?Height)="\d+"[^>]*Binding HasStationDepartureCountdown')
+$stationDeadlineWraps = $xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"[^>]*TextWrapping="Wrap"'
+$stationDeadlineFixedSize = $stationDeadlineBox.Success -and
+    ($stationDeadlineBox.Groups['height'].Value -eq 'Height' -or $stationDeadlineWraps)
 # 持货等单时的「本站作业」口径（onboard-hmi#310）：倒计时上方的小字绑视图模型的标签，不是写死的「离站剩余」；
 # 持货时已到期那一档的中性样式由 IsStationWorkCountdown 触发器给出，它必须排在各档位与闪烁触发器之后——
 # WPF 的样式触发器后写的赢，排在前面就被 Expired 档的红字盖回去，而视图模型的判据看不见 XAML 的先后。
