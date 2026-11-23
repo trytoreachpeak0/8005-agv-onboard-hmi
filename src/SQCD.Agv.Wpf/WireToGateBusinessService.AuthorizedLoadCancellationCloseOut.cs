@@ -108,6 +108,13 @@ public sealed partial class WireToGateBusinessService
         }
 
         await RefuseWhileAwaitingManualCheckAsync(vector, state, cancellationToken).ConfigureAwait(false);
+        if (!WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+        {
+            // As a second press over this vector is (onboard-hmi#174): not run while a severe safety fault is latched. The
+            // entry stays offered, and a press after the reset runs it.
+            RefuseDoorOpeningCancellationWhileLatched();
+        }
+
         _logger.Write(
             LogSeverity.Warning,
             nameof(WireToGateBusinessService),

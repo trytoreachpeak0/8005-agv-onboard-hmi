@@ -108,7 +108,9 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     public async Task ALatchRefusesToExecuteAnInFlightCancellationVectorAlreadyOnFile()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        bool latched = false;
+        // Latched from the start: since onboard-hmi#409 a vector on file is also run by the vehicle itself once the
+        // session can carry its result, so the latch has to be there before the session comes up to refuse that run too.
+        bool latched = true;
         WireToGateRecoveryOperationContext load = new(
             Guid.NewGuid().ToString("D"),
             null,
@@ -155,7 +157,6 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             token);
         Assert.Equal(0, harness.Io.UnlockCount);
 
-        Volatile.Write(ref latched, true);
         (bool pressed, NotSupportedException? ioAttempted) = await PressRecordingIoAsync(
             harness, "设备故障，本站不装了。", rowPress: false, token);
 

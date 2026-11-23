@@ -97,6 +97,61 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The close-out's result goes out and its <c>DurableAck</c> is lost: the vector stays on file with the result owed.
+    /// The next session's handshake replays that result and its acknowledgement clears the vector; the READY that follows
+    /// does not run the cancellation again -- one execution, one result under one messageId. (A second lost ack fails that
+    /// handshake, so a READY session with the result still owed is reached only by a race; the close-out's check for a
+    /// result on file covers that race.)
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AClosedOutCancellationWhoseResultIsUnacknowledgedIsNotRunAgainOnTheNextReadySession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SwitchableVehicle vehicle = new();
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
+            },
+            vehicleSafety: vehicle);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        await ShutEmptyForCancellationAsync(harness, token);
+        int unlocksBefore = harness.Io.UnlockCount;
+        await AuthorizeWhileTheVehicleIsNotReadyAsync(harness, vehicle, token);
+
+        vehicle.Stopped = true;
+        harness.Server.LoadCancellationResultAcksToDrop = 1;
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+        Assert.NotNull(harness.ReadRecoveryState(token).RecoveryVector);
+
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        await harness.WaitForEventAsync("RECOVERY_VECTOR_COMPLETED", token);
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).RecoveryVector is null,
+            "the acknowledged replay to clear the vector",
+            token,
+            harness.DescribeEvents);
+        await Task.Delay(500, token);
+
+        Assert.Single(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("会话就绪：装货取消已获授权但未执行，现在收口", StringComparison.Ordinal));
+        Assert.Single(harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCancellationResult")
+            .Select(envelope => JsonDocument.Parse(envelope.WireLine).RootElement.GetProperty("messageId").GetString())
+            .Distinct());
+        Assert.Equal(unlocksBefore, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// The same refusal, then the vehicle restarts before anyone presses again. The restarted vehicle finds the vector on
     /// file and closes it out with one <c>ALL_EMPTY</c> once its session is READY: no <c>OperationResult</c> for the
     /// load the cancellation took over, and no pulse.
