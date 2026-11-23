@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index b4a5cc4..bbcff60 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -42,7 +42,7 @@ public sealed partial class WireToGateBusinessService
+         if (string.Equals(
+                 Interlocked.Exchange(ref _authorizedLoadCancellationReviewKey, key),
+                 key,
+-                StringComparison.Ordinal))
++                StringComparison.Ordinal) && false)
+         {
+             return;
+         }

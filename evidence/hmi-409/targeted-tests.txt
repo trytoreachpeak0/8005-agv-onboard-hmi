@@ -1,0 +1,43 @@
+== Round 1 (head 8170a4e)
+Red on the defect base 0ebb9eb + test commit 5fdfece:
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAuthorizedCancellationRefusedAsNotReadyIsClosedOutOnceAfterARestart [10 s]
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAuthorizedCancellationRefusedAsNotReadyIsClosedOutOnceTheReconnectedSessionIsReady [10 s]
+exit=1
+Neighbouring G2 at 1248e7f (incl. 11 G2 ArchitectureTests):
+已通过! - 失败:     0，通过:   615，已跳过:     0，总计:   615，持续时间: 5 m 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+First run at bb63d15, before the latch fix:
+  失败 SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.ALatchRefusesToExecuteAnInFlightCancellationVectorAlreadyOnFile [212 ms]
+失败!  - 失败:     1，通过:   613，已跳过:     0，总计:   614，持续时间: 5 m 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+
+== Round 2 (review rework)
+Review M1 test on the 8170a4e product code + test commit 120dc7f (red), with the L2 test (green: it covers an existing branch, killed by m6):
+  失败 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ACloseOutRefusedAtReconnectBecauseTheStopIsStillOnRunsOnceTheStopIsReleased [10 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AnAuthorizedCancellationBeforeAnySublotLeftUnreportedIsReportedOnceTheSessionIsUp [714 ms]
+exit=1
+After the fix 7bec1e7, the seven new/changed tests:
+  已通过 SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.ALatchRefusesToExecuteAnInFlightCancellationVectorAlreadyOnFile [270 ms]
+  已通过 SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.AnAuthorizedCancellationBeforeAnySublotLeftUnreportedIsReportedOnceTheSessionIsUp [582 ms]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ACloseOutRefusedAtReconnectBecauseTheStopIsStillOnRunsOnceTheStopIsReleased [762 ms]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AClosedOutCancellationWhoseResultIsUnacknowledgedIsNotRunAgainOnTheNextReadySession [2 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAuthorizedCancellationRefusedAsNotReadyIsClosedOutOnceAfterARestart [1 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAuthorizedCancellationRefusedAsNotReadyIsClosedOutOnceTheReconnectedSessionIsReady [1 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAuthorizedCancellationRefusedDuringAnEmergencyStopIsClosedOutOnceTheSameSessionIsReadyAgain [681 ms]
+exit=0
+Neighbouring G2 classes (StationDeadlineExpired*, *LoadCancellation*, RecoveryVectorG2Tests*, MultiDemandJourneyG2Tests*) at 8d21e66:
+已通过! - 失败:     0，通过:   604，已跳过:     0，总计:   604，持续时间: 5 m 16 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+SQCD.Agv.UnitTests (incl. IntegrationSliceTraitArchitectureTests) at 8d21e66:
+已通过! - 失败:     0，通过:  1361，已跳过:     0，总计:  1361，持续时间: 34 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+
+== Round 3 (incremental review: probes P2, P3 as G2)
+The two tests at 262be0c, unmutated:
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ARefusedCloseOutIsRetriedOnlyOnPublicationsAndClosedOutOnce [7 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ARefusedCloseOutRunsOnceTheReleasedStopIsSeenThroughTheSafetySignal [1 s]
+exit=0
+Under m8 (key kept after a refusal): round3-p2p3/mutations-summary.txt, both red.
+SQCD.Agv.UnitTests at 262be0c:
+已通过! - 失败:     0，通过:  1361，已跳过:     0，总计:  1361，持续时间: 48 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0

@@ -1,0 +1,14 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index b4a5cc4..ef54dd9 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -32,8 +32,7 @@ public sealed partial class WireToGateBusinessService
+     {
+         if (!session.Connected
+             || session.SessionGeneration is not { } generation
+-            || session.Readiness is not (WireToGateSessionReadiness.Ready
+-                or WireToGateSessionReadiness.RecoveryRequired))
++            || session.Readiness is not WireToGateSessionReadiness.Ready)
+         {
+             return;
+         }

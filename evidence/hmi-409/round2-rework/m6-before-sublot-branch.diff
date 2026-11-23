@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index cc1f8e2..e02f479 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -165,7 +165,7 @@ public sealed partial class WireToGateBusinessService
+             nameof(WireToGateBusinessService),
+             $"会话就绪：装货取消已获授权但未执行，现在收口（不开仓门，按实时IO判空上报）：cancellation={vector.PrimaryId}，"
+             + $"attempt={vector.SlotOperationAttemptId ?? "null"}，generation={generation}。");
+-        if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
++        if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector) && vector.PrimaryId.Length < 0)
+         {
+             return await ReportLoadCancellationBeforeSublotAsync(vector, cancellationToken).ConfigureAwait(false);
+         }

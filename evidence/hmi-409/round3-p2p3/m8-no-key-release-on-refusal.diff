@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index cc1f8e2..db9966f 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -74,7 +74,7 @@ public sealed partial class WireToGateBusinessService
+                     cancellationToken)
+                 .ConfigureAwait(false))
+             {
+-                await ReleaseCloseOutKeyIfStillOwedAsync(key, cancellationToken).ConfigureAwait(false);
++                // mutated: key kept
+             }
+         }
+         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

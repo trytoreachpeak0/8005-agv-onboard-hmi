@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index b4a5cc4..c94336b 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -112,7 +112,7 @@ public sealed partial class WireToGateBusinessService
+         {
+             // As a second press over this vector is (onboard-hmi#174): not run while a severe safety fault is latched. The
+             // entry stays offered, and a press after the reset runs it.
+-            RefuseDoorOpeningCancellationWhileLatched();
++            // mutated: latch not checked
+         }
+ 
+         _logger.Write(

@@ -1,0 +1,4 @@
+== m8-no-key-release-on-refusal
+exit=1
+  失败 StationDeadlineExpiredG2Tests.ARefusedCloseOutRunsOnceTheReleasedStopIsSeenThroughTheSafetySignal [11 s]
+  失败 StationDeadlineExpiredG2Tests.ARefusedCloseOutIsRetriedOnlyOnPublicationsAndClosedOutOnce [5 s]
