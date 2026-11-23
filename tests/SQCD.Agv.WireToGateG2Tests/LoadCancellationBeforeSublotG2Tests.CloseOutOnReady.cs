@@ -8,6 +8,11 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// 扫码前取消的就绪收口（8005-agv-onboard-hmi#409，PR #425 审查 L2）：授权已到、向量已记盘，上报之前进程没了。
 /// 重启后会话一就绪，车辆自己把它按空范围报 <c>ALL_EMPTY</c>，不等人再按、不重新申请、不开门。
 /// </summary>
+/// <remarks>
+/// 车辆运动状态读不出停稳（急停中）也照报：扫码前取消没有仓门 IO，不做停稳检查（<c>ReportLoadCancellationBeforeSublotAsync</c>）。
+/// 收口若不走这一支而走在途取消的执行路径，同样报空范围 <c>ALL_EMPTY</c>，区别只在那条路先查停稳、在这里被
+/// <c>VEHICLE_NOT_READY</c> 挡下——所以运动状态未知才分得出两支（审查变异 m6）。
+/// </remarks>
 public sealed partial class LoadCancellationBeforeSublotG2Tests
 {
     [Fact]
@@ -37,7 +42,8 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                     LoadCancellationSubjectKey = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a"
                 }
             },
-            awaitEntryRequest: false);
+            awaitEntryRequest: false,
+            vehicle: new MotionUnknownVehicle());
 
         await BeforeSublotHarness.WaitUntilAsync(
             () => harness.ResultsReceived().Count > 0,
@@ -55,5 +61,11 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.Empty(result.GetProperty("slotResults").EnumerateArray());
         Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
         Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>Motion never readable as stopped, as during an emergency stop; always freshly observed.</summary>
+    private sealed class MotionUnknownVehicle : IVehicleSafetySignalProvider
+    {
+        public VehicleSafetySignal Read() => new(VehicleMotionState.Unknown, DateTimeOffset.UtcNow, "G2_TEST");
     }
 }
