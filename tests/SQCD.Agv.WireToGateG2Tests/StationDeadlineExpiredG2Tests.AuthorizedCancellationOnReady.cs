@@ -157,7 +157,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// load the cancellation took over, and no pulse.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     public async Task AnAuthorizedCancellationRefusedAsNotReadyIsClosedOutOnceAfterARestart()
     {
