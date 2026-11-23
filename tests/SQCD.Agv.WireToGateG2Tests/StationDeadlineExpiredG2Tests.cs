@@ -455,7 +455,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             Action<WireToGateSessionService>? observeSession = null,
             IClock? businessClock = null,
-            TimeSpan? messageTimeout = null)
+            TimeSpan? messageTimeout = null,
+            IVehicleSafetySignalProvider? vehicleSafety = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -468,7 +469,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             }
 
             RecordingLogger logger = new();
-            StoppedVehicle vehicle = new();
+            IVehicleSafetySignalProvider vehicle = vehicleSafety ?? new StoppedVehicle();
             OnboardAlarmBoard alarmBoard = new("AGV-8005-01", TimeProvider.System);
             WireToGateSessionService session = new(
                 new WireToGateSessionOptions(
