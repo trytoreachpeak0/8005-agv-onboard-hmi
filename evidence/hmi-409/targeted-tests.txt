@@ -31,3 +31,13 @@ exit=0
 SQCD.Agv.UnitTests (incl. IntegrationSliceTraitArchitectureTests) at 8d21e66:
 已通过! - 失败:     0，通过:  1361，已跳过:     0，总计:  1361，持续时间: 34 s - SQCD.Agv.UnitTests.dll (net8.0)
 unit exit=0
+
+== Round 3 (incremental review: probes P2, P3 as G2)
+The two tests at 262be0c, unmutated:
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ARefusedCloseOutIsRetriedOnlyOnPublicationsAndClosedOutOnce [7 s]
+  已通过 SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ARefusedCloseOutRunsOnceTheReleasedStopIsSeenThroughTheSafetySignal [1 s]
+exit=0
+Under m8 (key kept after a refusal): round3-p2p3/mutations-summary.txt, both red.
+SQCD.Agv.UnitTests at 262be0c:
+已通过! - 失败:     0，通过:  1361，已跳过:     0，总计:  1361，持续时间: 48 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
