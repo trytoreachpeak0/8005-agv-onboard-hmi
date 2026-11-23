@@ -1033,6 +1033,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         ReviewUnauthorizedRecoveryVector(args.Value);
+        // A load cancellation authorized and never carried out is run once the session can carry its result
+        // (8005-agv-onboard-hmi#409).
+        CloseOutAuthorizedLoadCancellation(args.Value);
 
         if (CanPublishSafetyRevision(args.Value))
         {

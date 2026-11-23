@@ -61,6 +61,42 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The @217 shape on one connection: the session goes RECOVERY_REQUIRED <c>DEPARTURE_UNSAFE</c> for the emergency stop,
+    /// the cancellation is authorized and refused <c>VEHICLE_NOT_READY</c> in it, and the stop is released -- the same
+    /// session announced READY again with the vehicle stopped. That READY closes the cancellation out once.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AnAuthorizedCancellationRefusedDuringAnEmergencyStopIsClosedOutOnceTheSameSessionIsReadyAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SwitchableVehicle vehicle = new();
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.RespondToLoadCancellationRequests = true,
+            vehicleSafety: vehicle);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        await ShutEmptyForCancellationAsync(harness, token);
+        int unlocksBefore = harness.Io.UnlockCount;
+
+        harness.Server.ReadinessReasonOverride = "DEPARTURE_UNSAFE";
+        await harness.Server.SendSessionReadinessAsync();
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the session to be RECOVERY_REQUIRED for the emergency stop",
+            token);
+        await AuthorizeWhileTheVehicleIsNotReadyAsync(harness, vehicle, token);
+
+        vehicle.Stopped = true;
+        harness.Server.ReadinessReasonOverride = null;
+        await harness.Server.SendSessionReadinessAsync();
+
+        await AssertClosedOutOnceAsync(harness, unlocksBefore, token);
+    }
+
+    /// <summary>
     /// The same refusal, then the vehicle restarts before anyone presses again. The restarted vehicle finds the vector on
     /// file and closes it out with one <c>ALL_EMPTY</c> once its session is READY: no <c>OperationResult</c> for the
     /// load the cancellation took over, and no pulse.
