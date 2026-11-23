@@ -231,7 +231,7 @@ public sealed class WorklistScrollingLayoutTests
         List<string> cut = [];
         foreach (TextBlock block in Descendants<TextBlock>(scope))
         {
-            if (!block.IsVisible || string.IsNullOrEmpty(block.Text))
+            if (!Shown(block) || string.IsNullOrEmpty(block.Text))
             {
                 continue;
             }
@@ -272,6 +272,23 @@ public sealed class WorklistScrollingLayoutTests
         }
 
         return [.. cut];
+    }
+
+    /// <summary>
+    /// Whether the block and every ancestor are <see cref="Visibility.Visible"/>. Not <see cref="UIElement.IsVisible"/>: a tree
+    /// laid out without a window has no presentation source, and there it is false for everything.
+    /// </summary>
+    private static bool Shown(DependencyObject element)
+    {
+        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is UIElement { Visibility: not Visibility.Visible })
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool Contains(Rect outer, Rect inner) =>
