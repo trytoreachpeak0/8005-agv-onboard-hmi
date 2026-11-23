@@ -31,9 +31,32 @@ public sealed class NoTextTrimmingXamlTests
         Assert.Empty(trimming);
     }
 
-    private static IEnumerable<string> Trimming(string path)
+    /// <summary>
+    /// Every way XAML can set the property is caught (review L1 of PR #427: the property-element form slipped past), and
+    /// <c>None</c> in each of them is let through.
+    /// </summary>
+    [Theory]
+    [InlineData("<TextBlock TextTrimming=\"CharacterEllipsis\" />", true)]
+    [InlineData("<TextBlock TextBlock.TextTrimming=\"WordEllipsis\" />", true)]
+    [InlineData("<TextBlock><TextBlock.TextTrimming>CharacterEllipsis</TextBlock.TextTrimming></TextBlock>", true)]
+    [InlineData("<Style TargetType=\"TextBlock\"><Setter Property=\"TextTrimming\" Value=\"CharacterEllipsis\" /></Style>", true)]
+    [InlineData("<Style TargetType=\"TextBlock\"><Setter Property=\"TextBlock.TextTrimming\"><Setter.Value>WordEllipsis</Setter.Value></Setter></Style>", true)]
+    [InlineData("<TextBlock TextTrimming=\"None\" />", false)]
+    [InlineData("<TextBlock><TextBlock.TextTrimming>None</TextBlock.TextTrimming></TextBlock>", false)]
+    [InlineData("<Style TargetType=\"TextBlock\"><Setter Property=\"TextTrimming\"><Setter.Value> None </Setter.Value></Setter></Style>", false)]
+    [InlineData("<TextBlock TextWrapping=\"Wrap\" />", false)]
+    public void EveryFormOfSettingTheTrimmingIsCaught(string snippet, bool trims)
     {
-        XElement document = XElement.Load(path, LoadOptions.SetLineInfo);
+        XElement document = XElement.Parse(
+            $"<Grid xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\">{snippet}</Grid>", LoadOptions.SetLineInfo);
+
+        Assert.Equal(trims, Trimming(document).Any());
+    }
+
+    private static IEnumerable<string> Trimming(string path) => Trimming(XElement.Load(path, LoadOptions.SetLineInfo));
+
+    private static IEnumerable<string> Trimming(XElement document)
+    {
         foreach (XElement element in document.DescendantsAndSelf())
         {
             foreach (XAttribute attribute in element.Attributes())

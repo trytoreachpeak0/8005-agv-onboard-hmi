@@ -210,6 +210,133 @@ public sealed class WorklistScrollingLayoutTests
         return Cut(root, root);
     });
 
+    /// <summary>
+    /// 仓位卡片上的目标仓文案整串显示（<c>8005-agv-onboard-hmi#426</c> 审查 M2）：八个仓都停在「操作未完成，需要管理员恢复」，
+    /// 这句 12 号字宽约 156，卡片一列只有 143～148，原来不换行、被硬裁。每张卡片都要整句看得见。
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryRequiredOperationIsShownWholeOnEverySlotCard()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            DateTimeOffset.UtcNow,
+            "OPERATION_PROGRESS",
+            "进度",
+            new WireToGateHmiOperationSnapshot(
+                "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.RecoveryRequired, "上次装货操作未完成：1、2、3、4、5、6、7、8号仓，需要管理员恢复。", DateTimeOffset.UtcNow)));
+        Assert.All(viewModel.Lockers, locker => Assert.Equal("操作未完成，需要管理员恢复", locker.TargetText));
+
+        (int shown, string[] cut) = OnStaThread(() =>
+        {
+            (FrameworkElement root, _, _) = Lay(viewModel, hasRows: false);
+            int targets = Descendants<TextBlock>(root).Count(block => block.Text == "操作未完成，需要管理员恢复" && Shown(block));
+            if (Environment.GetEnvironmentVariable("HMI_LAYOUT_SCREENSHOT_DIR") is { Length: > 0 } directory)
+            {
+                Screenshot(root, Path.Combine(directory, "recovery-required-slots-1004x660.png"));
+            }
+
+            return (targets, Cut(root, root));
+        });
+
+        Assert.Equal(8, shown);
+        Assert.Empty(cut);
+    }
+
+    /// <summary>
+    /// 提示区的文案整段显示、不用拖滚动条（<c>8005-agv-onboard-hmi#426</c> 审查 L4）：原来提示区是 <c>MaxHeight="48"</c> 的滚动区，
+    /// 超过约两行半就要拖一根细滚动条，触屏上等于看不到。文案取产品里最长的一条提示：拒收「这次装货已经取消过……」连同原因码
+    /// （<c>OnboardCommandRejectionText</c>，经 <c>ReportOperatorRejection</c> 顶到提示行）。在这个窗口尺寸上它只占两行，
+    /// 原来的 48 也放得下，所以另跑一档三倍长的：那一档才是在原来的布局上要拖滚动条的样子。
+    /// 整段看得见的同时，提示区里的按键（这里是「取消装货」）仍在窗口里、在提示区里。
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task TheLongestPromptIsShownWholeWithoutScrollingAndTheButtonsStayOnScreen(int repeat)
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await FieldVehicleViewModelAsync(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: DateTimeOffset.UtcNow));
+        string prompt = string.Concat(Enumerable.Repeat(
+            OnboardCommandRejectionText.DescribeWithCode("LOAD_CANCELLATION_ALREADY_CONCLUDED"), repeat));
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            DateTimeOffset.UtcNow,
+            "OPERATION_PROGRESS",
+            "进度",
+            new WireToGateHmiOperationSnapshot(
+                "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.WaitingOperator, "请在1、2、3、4、5、6、7、8号仓放入货物并关门。", DateTimeOffset.UtcNow)));
+        // The controller's own IO poll would otherwise publish while the STA thread has the screen bound.
+        await controller.DisposeAsync();
+        if (repeat == 1)
+        {
+            viewModel.ReportOperatorRejection("LOAD_CANCELLATION_ALREADY_CONCLUDED");
+        }
+        else
+        {
+            viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+                DateTimeOffset.UtcNow,
+                "OPERATION_PROGRESS",
+                "进度",
+                new WireToGateHmiOperationSnapshot(
+                    "ATTEMPT-1", OperationType.Load, AllSlots, WireToGateHmiOperationStage.WaitingOperator, prompt, DateTimeOffset.UtcNow)));
+        }
+
+        Assert.Equal(prompt, viewModel.Guidance);
+        Assert.True(viewModel.CanRequestLoadCancellation);
+
+        (string[] hidden, string[] cut) = OnStaThread(() =>
+        {
+            (FrameworkElement root, _, _) = Lay(viewModel, hasRows: false);
+            TextBlock guidance = Find<TextBlock>(root, block => block.Text == prompt)!;
+            Border area = Ancestor<Border>(guidance)!;
+            Rect areaBox = Box(area, root);
+            List<string> notShown = [];
+            if (Ancestor<ScrollViewer>(guidance) is { ScrollableHeight: > 0.5 } scroller)
+            {
+                notShown.Add($"the prompt needs scrolling: {scroller.ExtentHeight:0.#} in {scroller.ViewportHeight:0.#}");
+            }
+
+            foreach (Button button in Descendants<Button>(area).Where(Shown))
+            {
+                Rect box = Box(button, root);
+                if (!Contains(areaBox, box) || !Contains(new Rect(0, 0, root.ActualWidth, root.ActualHeight), box))
+                {
+                    notShown.Add($"button {button.Content} at {box} is outside the prompt area {areaBox} or the window");
+                }
+            }
+
+            if (!Descendants<Button>(area).Any(button => Shown(button) && button.Content as string == viewModel.LoadCancellationCaption))
+            {
+                notShown.Add("the load cancellation button is not in the prompt area");
+            }
+
+            if (Environment.GetEnvironmentVariable("HMI_LAYOUT_SCREENSHOT_DIR") is { Length: > 0 } directory)
+            {
+                Screenshot(root, Path.Combine(directory, $"longest-prompt-x{repeat}-1004x660.png"));
+            }
+
+            return (notShown.ToArray(), Cut(root, root));
+        });
+
+        Assert.Empty(hidden);
+        Assert.Empty(cut);
+    }
+
+    private static readonly int[] AllSlots = [1, 2, 3, 4, 5, 6, 7, 8];
+
     /// <summary>现场（v2 库发件箱 11-23 全量历史）最长的子批、机台号、站点名与车名。</summary>
     private const string FieldLongestSublot = "Q26101654-11-2";
 
