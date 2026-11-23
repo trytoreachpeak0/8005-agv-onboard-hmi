@@ -27,7 +27,10 @@ public sealed partial class WireToGateBusinessService
 {
     private string? _authorizedLoadCancellationReviewKey;
 
-    /// <summary>Once per session generation and readiness that can carry a recovery result.</summary>
+    /// <summary>
+    /// Once per session generation and readiness that can carry a recovery result, and again on the next session state
+    /// change after a run that left the cancellation unfinished (<see cref="ReleaseCloseOutKeyIfStillOwedAsync"/>).
+    /// </summary>
     private void CloseOutAuthorizedLoadCancellation(WireToGateSessionSnapshot session)
     {
         if (!session.Connected
@@ -47,10 +50,13 @@ public sealed partial class WireToGateBusinessService
             return;
         }
 
-        TrackTask(CloseOutAuthorizedLoadCancellationAsync(generation, _stopping.Token));
+        TrackTask(CloseOutAuthorizedLoadCancellationAsync(key, generation, _stopping.Token));
     }
 
-    private async Task CloseOutAuthorizedLoadCancellationAsync(long generation, CancellationToken cancellationToken)
+    private async Task CloseOutAuthorizedLoadCancellationAsync(
+        string key,
+        long generation,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -62,11 +68,14 @@ public sealed partial class WireToGateBusinessService
                 return;
             }
 
-            await RunRecoveryRequestAsync(
+            if (!await RunRecoveryRequestAsync(
                     WireToGateRecoveryVectorTypes.LoadCancellation,
                     () => CloseOutAuthorizedLoadCancellationCoreAsync(generation, cancellationToken),
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                await ReleaseCloseOutKeyIfStillOwedAsync(key, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -78,8 +87,44 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"会话就绪后检查已授权未执行的装货取消未完成：generation={generation}，reason={exception.Message}。",
                 exception);
+            ReleaseCloseOutKey(key);
         }
     }
+
+    /// <summary>
+    /// Lets the next session state change run the close-out again when this run left it owed: the vector still on file and
+    /// no result for it in the outbox (PR #425 review M1).
+    /// </summary>
+    /// <remarks>
+    /// A refusal -- <c>VEHICLE_NOT_READY</c> while the emergency stop is on, a latch, a journal read that failed -- is not
+    /// the close-out's last word. After a reconnect the session is RECOVERY_REQUIRED, the taken-over attempt pending, and
+    /// stays so when the stop is released: only the reasons change, and a key of generation and readiness alone never
+    /// came round again. Retried on the next session state the client publishes, not on a timer: every readiness the
+    /// server announces is one, and the server announces after any inbound message that may change it. So each retry
+    /// follows a message on the link, and a vehicle that stays not ready is refused once per announcement, not in a loop.
+    /// </remarks>
+    private async Task ReleaseCloseOutKeyIfStillOwedAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateRecoveryState state = await _session.Journal.ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (state.RecoveryVector is { VectorType: WireToGateRecoveryVectorTypes.LoadCancellation } vector
+                && await LoadCancellationResultOnFileAsync(LoadCancellationSubjectKeyOf(vector), cancellationToken)
+                    .ConfigureAwait(false) is null)
+            {
+                ReleaseCloseOutKey(key);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            ReleaseCloseOutKey(key);
+        }
+    }
+
+    /// <summary>Only the key this run took: a newer session's run keeps its own.</summary>
+    private void ReleaseCloseOutKey(string key) =>
+        Interlocked.CompareExchange(ref _authorizedLoadCancellationReviewKey, null, key);
 
     /// <summary>
     /// Under the recovery request gate, against the journal as it stands then: a press may have run the cancellation while
