@@ -8,8 +8,9 @@ namespace SQCD.Agv.UnitTests;
 /// 放不下的字要换行或改排版，不能截掉。
 /// </summary>
 /// <remarks>
-/// 扫 <c>src</c> 下每一个 <c>.xaml</c>：元素上的 <c>TextTrimming</c> 属性，和样式里 <c>Property="TextTrimming"</c> 的 setter，
-/// 值只准是 <c>None</c>。读的是源码文本，所以以后新加的窗口、对话框也在管内。
+/// 扫 <c>src</c> 下每一个 <c>.xaml</c>：元素上的 <c>TextTrimming</c> 属性、<c>&lt;TextBlock.TextTrimming&gt;</c> 属性元素，
+/// 和样式里 <c>Property="TextTrimming"</c> 的 setter，值只准是 <c>None</c>。C# 里设的管不到（<c>src</c> 目前没有）；
+/// 不换行又给不够宽的字被裁，由 G2 的 <c>WorklistScrollingLayoutTests</c> 按摆出的状态量。读的是源码文本，所以以后新加的窗口、对话框也在管内。
 /// </remarks>
 public sealed class NoTextTrimmingXamlTests
 {
@@ -67,6 +68,12 @@ public sealed class NoTextTrimmingXamlTests
                 {
                     yield return $"{Line(element)} {element.Name.LocalName} {attribute.Name.LocalName}=\"{attribute.Value}\"";
                 }
+            }
+
+            // The property-element form, <TextBlock.TextTrimming>…</TextBlock.TextTrimming> (review L1 of PR #427).
+            if (element.Name.LocalName.EndsWith(".TextTrimming", StringComparison.Ordinal) && !IsNone(element.Value))
+            {
+                yield return $"{Line(element)} {element.Name.LocalName}=\"{element.Value}\"";
             }
 
             if (element.Name.LocalName == "Setter"

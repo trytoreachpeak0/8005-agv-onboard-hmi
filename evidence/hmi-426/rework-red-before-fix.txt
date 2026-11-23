@@ -1,0 +1,12 @@
+# review rework: new tests at 3bee674, product XAML and guard still at 64824bf9 (before the fix)
+  失败 SQCD.Agv.UnitTests.NoTextTrimmingXamlTests.EveryFormOfSettingTheTrimmingIsCaught(snippet: "<TextBlock><TextBlock.TextTrimming>CharacterEllips"···, trims: True) [1 ms]
+失败!  - 失败:     1，通过:     9，已跳过:     0，总计:    10，持续时间: 37 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+  失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.TheLongestPromptIsShownWholeWithoutScrollingAndTheButtonsStayOnScreen(repeat: 3) [65 ms]
+   Assert.Empty() Failure: Collection was not empty
+Collection: ["the prompt needs scrolling: 88.9 in 48"]
+  失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.ARecoveryRequiredOperationIsShownWholeOnEverySlotCard [54 ms]
+   Assert.Empty() Failure: Collection was not empty
+Collection: [" \"操作未完成，需要管理员恢复\" is clipped by TextBlock : 0,0,1"···, " \"操作未完成，需要管理员恢复\" is clipped by TextBlock : 0,0,1"···, " \"操作未完成，需要管理员恢复\" is clipped by TextBlock : 0,0,1"···, " \"操作未完成，需要�
+失败!  - 失败:     2，通过:     1，已跳过:     0，总计:     3，持续时间: 454 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
