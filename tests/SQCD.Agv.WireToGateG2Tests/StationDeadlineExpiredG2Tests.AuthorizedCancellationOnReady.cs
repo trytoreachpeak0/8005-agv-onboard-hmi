@@ -97,6 +97,58 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// The emergency stop is still on when the link comes back (PR #425 review M1, probe P1): the reconnected session is
+    /// RECOVERY_REQUIRED -- the taken-over attempt is pending -- and the close-out it starts is refused
+    /// <c>VEHICLE_NOT_READY</c>. The stop is released and the server announces readiness again, still RECOVERY_REQUIRED on
+    /// the same generation. That announcement closes the cancellation out once, without a press and without a pulse.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACloseOutRefusedAtReconnectBecauseTheStopIsStillOnRunsOnceTheStopIsReleased()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SwitchableVehicle vehicle = new();
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
+            },
+            vehicleSafety: vehicle);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        await ShutEmptyForCancellationAsync(harness, token);
+        int unlocksBefore = harness.Io.UnlockCount;
+        await AuthorizeWhileTheVehicleIsNotReadyAsync(harness, vehicle, token);
+        int refusals = CountNotReadyRefusals(harness);
+
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        await Harness.WaitUntilAsync(
+            () => CountNotReadyRefusals(harness) > refusals,
+            "the close-out on the reconnected session to be refused VEHICLE_NOT_READY",
+            token,
+            harness.DescribeEvents);
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Client.Current.Readiness);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationResult");
+
+        vehicle.Stopped = true;
+        await harness.Server.SendSessionReadinessAsync();
+
+        await AssertClosedOutOnceAsync(harness, unlocksBefore, token);
+        Assert.Equal(
+            2,
+            harness.Logger.Entries.Count(entry =>
+                entry.Message.StartsWith("会话就绪：装货取消已获授权但未执行，现在收口", StringComparison.Ordinal)));
+    }
+
+    private static int CountNotReadyRefusals(Harness harness) =>
+        harness.Logger.Entries.Count(
+            entry => entry.Message.Contains("未执行：reason=VEHICLE_NOT_READY", StringComparison.Ordinal));
+
+    /// <summary>
     /// The close-out's result goes out and its <c>DurableAck</c> is lost: the vector stays on file with the result owed.
     /// The next session's handshake replays that result and its acknowledgement clears the vector; the READY that follows
     /// does not run the cancellation again -- one execution, one result under one messageId. (A second lost ack fails that
