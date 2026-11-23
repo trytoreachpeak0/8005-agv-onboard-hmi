@@ -1,0 +1,15 @@
+# mutation: src/SQCD.Agv.Wpf/MainWindow.xaml replaced by origin/w2g/fp-v2-impl (033de05d, the defect); tests at 4b7f37e
+  失败 SQCD.Agv.UnitTests.NoTextTrimmingXamlTests.NoXamlInTheProductTrimsText [18 ms]
+失败!  - 失败:     1，通过:     0，已跳过:     0，总计:     1，持续时间: 30 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+  失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.EverySublotAndMachineNumberIsShownWholeAndTheMachineNumberMovesBelowWhenTheyDoNotFit [329 ms]
+   Assert.Empty() Failure: Collection was not empty
+Collection: [" \"Q26101654-11-2\" trims", " \"Q26101654-11-2\" is 123.9 wide for 152.5 of tex"···, "WorklistItemEqp \"3QHS6012\" trims", "WorklistItemEqp \"3QHS6012\" is 71.1 wide for 76.5"···, " \"LONG-SUBLOT-99999999999999999999999999999999999"···, ···]
+  失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.TheLongestStatusTextsAreShownWholeOnTheOnboardScreen [86 ms]
+   Assert.Empty() Failure: Collection was not empty
+Collection: [" \"老厂前线新多仓位1\" trims", "ChargingStatus \"充电状态未知；需人工充电：服务端保持\" trims", "ChargingStatus \"充电状态未知；需人工充电：服务端保持\" is 120.7 wid"···, "IdleReturnStatus \"N15-8_N16-7_N16-8 / 电量低，先送车上的货再"···, "IdleReturnStatus \"N15-8_N16-7_N16-8 / 电量低，先送车上的货再"···, ···]
+  失败 SQCD.Agv.WireToGateG2Tests.WorklistScrollingLayoutTests.TheFieldsLongestValuesAreShownWholeOnTheOnboardScreen [84 ms]
+   Assert.Empty() Failure: Collection was not empty
+Collection: [" \"老厂前线新多仓位1\" trims", "IdleReturnStatus \"N15-8_N16-7_N16-8\" trims", " \"允许发车\" trims", "StationDepartureCountdown \"30:00\" trims", " \"Q26101654-11-2\" trims", ···]
+失败!  - 失败:     3，通过:     2，已跳过:     0，总计:     5，持续时间: 648 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
