@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1fa929e..705c832 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1035,7 +1035,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+         ReviewUnauthorizedRecoveryVector(args.Value);
+         // A load cancellation authorized and never carried out is run once the session can carry its result
+         // (8005-agv-onboard-hmi#409).
+-        CloseOutAuthorizedLoadCancellation(args.Value);
++        // mutated: no close-out
+ 
+         if (CanPublishSafetyRevision(args.Value))
+         {

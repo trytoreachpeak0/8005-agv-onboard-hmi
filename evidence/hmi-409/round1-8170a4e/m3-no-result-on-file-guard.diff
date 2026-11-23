@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+index b4a5cc4..64bdce9 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.AuthorizedLoadCancellationCloseOut.cs
+@@ -97,7 +97,7 @@ public sealed partial class WireToGateBusinessService
+         }
+ 
+         if (await LoadCancellationResultOnFileAsync(LoadCancellationSubjectKeyOf(vector), cancellationToken)
+-                .ConfigureAwait(false) is { } onFile)
++                .ConfigureAwait(false) is { } onFile && false)
+         {
+             _logger.Write(
+                 LogSeverity.Information,
